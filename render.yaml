@@ -1,0 +1,14 @@
+# Render Blueprint — Static Site for Number Match
+# Dashboard: New → Blueprint → connect this repo
+# Or: New → Static Site → root directory / publish path "."
+services:
+  - type: web
+    name: ten-spot
+    runtime: static
+    branch: main
+    buildCommand: "true"
+    staticPublishPath: .
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -1,0 +1,332 @@
+/* =====================================================================
+   NUMBER MATCH — STYLES
+   Look: a sheet from a green engineering computation pad.
+   Graphite ink, red-pencil strikes, yellow highlighter for the selection,
+   coloured-pencil inks for the tile families.
+   Dark theme ("Chalkboard"): slate-green board with chalk colours.
+   Mobile-first. Light theme on :root, dark theme on :root.dark.
+   Every colour comes from a token below.
+   ===================================================================== */
+
+/* ---------- 1. TOKENS ---------- */
+:root {
+  --bg: #e3e9d8;        /* page (the pad's cover-ish green) */
+  --paper: #f2f6ea;     /* the sheet */
+  --card: var(--paper); /* alias used by a few rules */
+  --grid: #c9d8b5;      /* pad grid lines */
+  --line: #b8c5a6;      /* borders, progress track */
+  --ink: #2c2f2b;       /* graphite: text, primary button, rules */
+  --muted: #59614f;     /* secondary text */
+  --done: #ccd5c0;      /* cleared cell content: deliberately faint */
+  --strike: #b23a2e;    /* red pencil: strikes, score marks, bad pick */
+  --sel: #f3e24c;       /* yellow highlighter */
+  --pen: #f6a9a1;       /* pink highlighter: marks a mixed (penalised) pair */
+  --sel-ink: #2c2f2b;
+  --focus: #27466f;     /* keyboard focus ring */
+  --binding: #30503d;   /* the gummed strip at the top of the sheet */
+  --overlay: rgba(242, 246, 234, .96);
+  --bar: rgba(227, 233, 216, .95);
+  --blend: multiply;    /* highlighter blends with the paper */
+  /* coloured-pencil inks: h1 blue, h2 green, h3 orange, h4 red,
+     h5 purple, h6 teal, h7 ochre, h8 lamp black. Chosen to be far apart in hue and dark enough
+     (light) / bright enough (dark) to read at a glance.
+     Classic: h1 = 1&9, h2 = 2&8, h3 = 3&7, h4 = 4&6, h5 = 5. Gridiron uses all eight. */
+  /* strong, well-separated pigments: blue, green, orange, red, purple, teal, ochre, near-black */
+  --h1i: #1747a6; --h2i: #1d7a2c; --h3i: #c25400; --h4i: #c4122f;
+  --h5i: #7426b5; --h6i: #00737d; --h7i: #946200; --h8i: #1e2328;
+  color-scheme: light;
+}
+:root.dark {
+  --bg: #18211d; --paper: #1f2b25; --grid: #2d3c34; --line: #3b4b42;
+  --ink: #e8e5d8; --muted: #a7b0a3; --done: #34443b; --strike: #e3877a;
+  --sel: #d9c75e; --pen: #8e3a34; --sel-ink: #1f2b25; --focus: #9dbce3; --binding: #0e1411;
+  --overlay: rgba(31, 43, 37, .96); --bar: rgba(24, 33, 29, .95); --blend: normal;
+  --h1i: #79adff; --h2i: #6fdc79; --h3i: #ff9a3d; --h4i: #ff6470;
+  --h5i: #c792ff; --h6i: #3fd6d0; --h7i: #ffd23f; --h8i: #f4f1e6;
+  color-scheme: dark;
+}
+
+/* ---------- 2. PAGE ---------- */
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  font-family: 'Barlow', system-ui, sans-serif;
+  color: var(--ink);
+  transition: background-color .3s ease, color .3s ease;
+}
+.app { padding: 16px 16px 0; }
+[hidden] { display: none !important; }
+
+/* ---------- 3. LAYOUT (mobile first) ---------- */
+.layout {
+  width: 100%; max-width: 560px; margin: 0 auto;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px;
+  grid-template-areas: "head" "settings" "stats" "board" "note" "actions";
+  /* the 1fr row (status line) soaks up spare height so the bottom bar
+     sits at the bottom of the screen even when the board is short */
+  grid-template-rows: auto auto auto auto 1fr auto;
+  min-height: calc(100vh - 16px);
+}
+.a-head { grid-area: head; } .a-set { grid-area: settings; } .a-stats { grid-area: stats; }
+.a-board { grid-area: board; } .a-note { grid-area: note; } .a-act { grid-area: actions; }
+
+/* ---------- 4. HEADER ---------- */
+.a-head { display: flex; align-items: center; gap: 8px; }
+.title-wrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+h1 { margin: 0; font-size: 27px; line-height: 1.1; font-weight: 700; }
+.subline { font-size: 14px; color: var(--muted); }
+.icon-btn {
+  width: 44px; height: 44px; flex: 0 0 44px; padding: 0; border-radius: 6px;
+  border: 1.5px solid var(--line); background: transparent; color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.icon-btn:hover { border-color: var(--ink); }
+.icon-btn[aria-expanded="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.i-sun { display: none; }
+:root.dark .i-sun { display: block; }
+:root.dark .i-moon { display: none; }
+
+/* ---------- 5. SETTINGS PANEL (ruled section, no card) ---------- */
+.a-set { display: none; flex-direction: column; gap: 18px; padding: 16px 0; border-top: 1.5px solid var(--ink); border-bottom: 1.5px solid var(--ink); }
+.a-set.open { display: flex; animation: nmDrop .2s ease both; }
+.set-group { display: flex; flex-direction: column; gap: 8px; }
+.set-title { margin: 0; font-size: 15px; font-weight: 700; }
+.set-help { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+.how { margin: 0; font-size: 15px; line-height: 1.55; }
+.seg { display: flex; width: 100%; border: 1.5px solid var(--ink); border-radius: 6px; overflow: hidden; }
+.seg button {
+  flex: 1 1 0; min-height: 44px; padding: 0 6px; border: 0; background: transparent;
+  font: inherit; font-size: 14px; color: var(--ink); cursor: pointer;
+}
+.seg button + button { border-left: 1.5px solid var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); font-weight: 700; }
+
+/* ---------- 6. SCOREBOARD (a tally line) ---------- */
+.a-stats { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; border-bottom: 1.5px solid var(--ink); }
+.stat-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 14px; align-items: start; }
+.stat-pct { text-align: right; }
+.stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.stat-l { font-size: 13px; color: var(--muted); }
+.stat-big { font-size: 32px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.stat-small { font-size: 24px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.score-tag { color: var(--strike); margin-left: 4px; }
+.progress-row { display: flex; align-items: center; gap: 10px; }
+.progress { flex: 1 1 auto; height: 5px; background: var(--line); overflow: hidden; }
+.progress-fill { height: 100%; width: 0; background: var(--ink); transition: width .45s ease; }
+.progress-text { font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+/* ---------- 7. BOARD: a sheet torn from the pad ---------- */
+.sheet {
+  position: relative; align-self: start; background: var(--paper); border-radius: 3px;
+  padding: 22px 10px 12px;
+  /* two more sheets peeking out underneath */
+  box-shadow: 0 3px 0 -1px var(--paper), 0 3px 0 0 var(--line), 0 6px 0 -1px var(--paper), 0 6px 0 0 var(--line);
+}
+.sheet::before { /* gummed binding strip */
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 12px;
+  background: var(--binding); border-radius: 3px 3px 0 0;
+}
+.sheet.ended { min-height: 360px; }   /* room for the end-of-level card */
+.board-inner { position: relative; }
+/* the pad grid IS the board: cells share 1px grid lines, no gaps */
+.grid9 { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); border-top: 1px solid var(--grid); border-left: 1px solid var(--grid); }
+
+/* cell */
+.c {
+  position: relative; isolation: isolate; aspect-ratio: 1; width: 100%; padding: 0;
+  border: 0; border-right: 1px solid var(--grid); border-bottom: 1px solid var(--grid); border-radius: 0;
+  background: transparent; color: var(--ink);
+  font-family: inherit; font-weight: 700; font-size: clamp(17px, 5.4vw, 27px); line-height: 1;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color .3s ease;
+}
+.c:hover:not(.c-done) { background: rgba(127, 140, 110, .12); }
+.c::after { /* red-pencil strike, hidden until .c-done */
+  content: ''; position: absolute; left: 16%; right: 16%; top: 50%; height: 2px; border-radius: 2px;
+  background: var(--strike); transform: scaleX(0) rotate(-38deg); transition: transform .28s ease .3s;
+}
+/* coloured-pencil inks (Dots, Icons, Gridiron) */
+.c-tile { color: var(--tink); }
+.c-tile.h0 { --tink: var(--ink); }
+.c-tile.h1 { --tink: var(--h1i); } .c-tile.h2 { --tink: var(--h2i); } .c-tile.h3 { --tink: var(--h3i); } .c-tile.h4 { --tink: var(--h4i); }
+.c-tile.h5 { --tink: var(--h5i); } .c-tile.h6 { --tink: var(--h6i); } .c-tile.h7 { --tink: var(--h7i); } .c-tile.h8 { --tink: var(--h8i); }
+/* Gridiron: details on SOLID mascots (football laces, feather spine) are re-drawn in the paper colour */
+.knock { stroke: var(--paper); }
+.pips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 6%; width: 80%; aspect-ratio: 1; }
+.pip { border-radius: 50%; background: transparent; }
+.pip.on { /* mahjong circle 1-5: a heavy ring with a dot in the middle */
+  background: radial-gradient(circle, var(--tink, var(--ink)) 0 28%, transparent 31% 43%, var(--tink, var(--ink)) 46% 70%, transparent 73%);
+}
+.pips.solid .pip.on { /* 6-9: shaded discs */
+  background: radial-gradient(circle, var(--tink, var(--ink)) 0 70%, transparent 73%);
+}
+/* Numbers: 1-5 outlined box, 6-9 shaded box with the digit reversed out */
+.numbox {
+  display: flex; align-items: center; justify-content: center; width: 72%; height: 72%;
+  border: 2.5px solid var(--tink, var(--ink)); border-radius: 4px; color: var(--tink, var(--ink));
+  font-size: clamp(15px, 4.8vw, 24px); line-height: 1;
+}
+.numbox.solid { background: var(--tink, var(--ink)); color: var(--paper); }
+.honour { font-family: 'Noto Serif TC', 'Noto Serif CJK TC', 'Songti TC', 'PMingLiU', 'MingLiU', serif; font-weight: 700; font-size: clamp(16px, 5.2vw, 26px); line-height: 1; color: var(--tink, var(--ink)); }
+.glyph { width: 68%; height: 68%; color: var(--tink, var(--ink)); }
+.corner { position: absolute; top: 3px; left: 4px; font-size: clamp(8px, 2.3vw, 12px); font-weight: 700; line-height: 1; color: var(--tink, var(--ink)); }
+/* states — ORDER MATTERS */
+.c-sel::before { /* yellow highlighter swipe behind the mark */
+  content: ''; position: absolute; inset: 16% 5%; z-index: -1; background: var(--sel); mix-blend-mode: var(--blend);
+  border-radius: 2px 5px 3px 6px; transform: rotate(-4deg);
+}
+.c-sel .knock { stroke: var(--sel); }
+.c-done { color: var(--done); cursor: default; }
+.c-done::after { transform: scaleX(1) rotate(-38deg); opacity: .4; }
+.c-done .pip.on, .c-done .pips.solid .pip.on { background: radial-gradient(circle, var(--done) 0 70%, transparent 73%); }
+.c-done .numbox { border-color: var(--done); color: var(--done); }
+.c-done .numbox.solid { background: var(--done); color: var(--paper); }
+.c-done .glyph, .c-done .corner, .c-done .honour { color: var(--done); }
+.c-flash { animation: nmPop .55s ease both; z-index: 2; }
+.c-flash-pen { animation-name: nmPopPen; }
+.c-bad { animation: nmShake .32s ease both; color: var(--strike); }
+.c.c-bad { --tink: var(--strike); }
+.c-hint::before { /* a quick pencil circle around the cell */
+  content: ''; position: absolute; inset: 7%; z-index: -1; border: 2px solid var(--ink);
+  border-radius: 46% 54% 50% 48%; transform: rotate(8deg); animation: nmPulse 1s ease-in-out infinite;
+}
+.c-born { animation: nmBorn .4s ease both; }
+
+/* end-of-level card */
+.overlay {
+  position: absolute; inset: 12px 0 0 0; min-height: 320px; z-index: 6; background: var(--overlay);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 20px;
+  animation: nmWin .45s ease .6s both;
+}
+.end-kicker { font-size: 15px; color: var(--muted); }
+.end-title { font-size: 36px; font-weight: 700; line-height: 1.05; }
+.end-number { font-size: 44px; font-weight: 700; color: var(--strike); transform: rotate(-4deg); }
+.end-detail { font-size: 15px; line-height: 1.45; color: var(--muted); max-width: 300px; }
+.end-best { font-size: 15px; font-weight: 700; }
+.end-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 6px; }
+
+/* ---------- 8. MATCH EFFECTS LAYER ---------- */
+.fx { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 4; }
+.fx-group { position: absolute; inset: 0; }
+.spark { position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 1px; opacity: 0;
+  animation-duration: .6s; animation-timing-function: cubic-bezier(.15,.7,.3,1); animation-fill-mode: forwards; animation-delay: .08s; }
+/* pencil-shaving flecks in the pencil inks */
+.k0 { background: var(--h3i); } .k1 { background: var(--h1i); } .k2 { background: var(--strike); } .k3 { background: var(--h2i); } .k4 { background: var(--h5i); }
+.s0 { animation-name: nmS0; } .s1 { animation-name: nmS1; } .s2 { animation-name: nmS2; } .s3 { animation-name: nmS3; } .s4 { animation-name: nmS4; }
+.s5 { animation-name: nmS5; } .s6 { animation-name: nmS6; } .s7 { animation-name: nmS7; } .s8 { animation-name: nmS8; } .s9 { animation-name: nmS9; }
+.ring { position: absolute; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; border: 2px solid var(--ink); opacity: 0; animation: nmRing .5s ease-out .04s forwards; }
+.zap-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.zap { fill: none; stroke: var(--ink); stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: nmZap .55s ease-out forwards; }
+.zap-wide { stroke: var(--sel); mix-blend-mode: var(--blend); }   /* highlighter under the pencil line */
+.floatpt { /* points written in red pencil */
+  position: absolute; font-weight: 700; font-size: 22px; line-height: 1; color: var(--strike); white-space: nowrap;
+  opacity: 0; animation: nmFloat .85s ease-out .1s forwards;
+}
+/* mixed pair (outline + shaded): the same effect drawn in red pencil over a pink highlighter */
+.fx-pen .zap { stroke: var(--strike); }
+.fx-pen .zap-wide { stroke: var(--pen); }
+.fx-pen .ring { border-color: var(--strike); }
+.fx-pen .spark { background: var(--strike); }
+.fx-pen .floatpt { background: var(--pen); color: var(--strike); padding: 1px 5px; border-radius: 2px 5px 3px 6px; }
+.sweep { position: absolute; left: -4px; right: -4px; border-radius: 3px; background: var(--sel); mix-blend-mode: var(--blend); transform-origin: left center; opacity: 0; animation: nmSweep .7s ease-out .15s forwards; }
+
+/* while Settings or a confirmation is open, the board and its controls are switched off (and inert) */
+.is-off { opacity: .35; filter: saturate(.4); transition: opacity .2s ease; }
+
+/* ---------- confirmation dialog ---------- */
+.confirm-backdrop { position: fixed; inset: 0; z-index: 20; background: rgba(44, 47, 43, .35); display: flex; align-items: center; justify-content: center; padding: 16px; }
+:root.dark .confirm-backdrop { background: rgba(0, 0, 0, .5); }
+.confirm {
+  width: 100%; max-width: 380px; background: var(--paper); border-radius: 3px; padding: 26px 20px 18px; position: relative;
+  box-shadow: 0 3px 0 -1px var(--paper), 0 3px 0 0 var(--line);
+}
+.confirm::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 10px; background: var(--binding); border-radius: 3px 3px 0 0; }
+.confirm h2 { margin: 0 0 8px; font-size: 22px; font-weight: 700; }
+.confirm p { margin: 0 0 18px; font-size: 15px; line-height: 1.5; color: var(--muted); }
+.confirm-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+
+/* ---------- 9. STATUS LINE + BOTTOM BAR ---------- */
+.a-note { margin: 6px 0 0; min-height: 20px; font-size: 15px; line-height: 1.4; color: var(--muted); text-align: center; }
+.a-act {
+  position: sticky; bottom: 0; z-index: 5; margin: 0 -16px;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bar); border-top: 1.5px solid var(--line);
+  display: flex; gap: 8px; align-items: stretch;
+}
+.tool {
+  flex: 0 0 72px; min-height: 56px; padding: 0; border-radius: 6px;
+  border: 1.5px solid var(--line); background: transparent; color: var(--ink);
+  font-family: inherit; font-size: 13px; font-weight: 700;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer;
+}
+.tool:hover:not(:disabled) { border-color: var(--ink); }
+.tool:disabled { opacity: .4; cursor: not-allowed; }
+.tool small { font-size: 11px; font-weight: 400; color: var(--muted); }
+.btn {
+  min-height: 48px; padding: 0 18px; border-radius: 6px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink);
+  font-family: inherit; font-weight: 700; font-size: 15px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;
+}
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-primary { background: var(--ink); color: var(--paper); }
+.btn-add { flex: 1 1 auto; min-height: 56px; justify-content: flex-start; padding: 0 16px; }
+.btn-add-text { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.15; }
+.btn-add-main { font-size: 16px; font-weight: 700; }
+.btn-add-sub { font-size: 12.5px; font-weight: 400; opacity: .85; }
+
+/* focus rings for every control */
+.icon-btn:focus-visible, .tool:focus-visible, .btn:focus-visible, .c:focus-visible { outline: 2.5px solid var(--focus); outline-offset: 2px; }
+.seg button:focus-visible { outline: 2.5px solid var(--focus); outline-offset: -4px; }
+
+/* ---------- 10. KEYFRAMES ---------- */
+@keyframes nmPopPen { 0% { background: var(--pen); } 35% { background: var(--pen); transform: scale(1.08); } 100% { background: transparent; transform: scale(1); } }
+@keyframes nmPop { 0% { background: var(--sel); } 35% { background: var(--sel); transform: scale(1.14); } 100% { background: transparent; transform: scale(1); } }
+@keyframes nmShake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
+@keyframes nmPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes nmBorn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes nmWin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes nmDrop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes nmRing { 0% { opacity: .8; transform: scale(.4); } 100% { opacity: 0; transform: scale(1.6); } }
+@keyframes nmZap { 0% { stroke-dashoffset: 1; opacity: 1; } 40% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes nmFloat {
+  0%   { opacity: 0; transform: translate(-50%, -30%) rotate(-6deg); }
+  22%  { opacity: 1; transform: translate(-50%, -90%) rotate(-6deg); }
+  70%  { opacity: 1; transform: translate(-50%, -150%) rotate(-6deg); }
+  100% { opacity: 0; transform: translate(-50%, -190%) rotate(-6deg); }
+}
+@keyframes nmSweep { 0% { opacity: 0; transform: scaleX(0); } 35% { opacity: .75; transform: scaleX(1); } 100% { opacity: 0; transform: scaleX(1); } }
+/* 10 fleck directions, every 36 degrees; even = 30px away, odd = 22px away; each spins as it flies */
+@keyframes nmS0 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(30px, 0) rotate(90deg); } }
+@keyframes nmS1 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(18px, 13px) rotate(90deg); } }
+@keyframes nmS2 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(9px, 28px) rotate(90deg); } }
+@keyframes nmS3 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(-7px, 21px) rotate(90deg); } }
+@keyframes nmS4 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(-24px, 18px) rotate(90deg); } }
+@keyframes nmS5 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(-22px, 0) rotate(90deg); } }
+@keyframes nmS6 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(-24px, -18px) rotate(90deg); } }
+@keyframes nmS7 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(-7px, -21px) rotate(90deg); } }
+@keyframes nmS8 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(9px, -28px) rotate(90deg); } }
+@keyframes nmS9 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(18px, -13px) rotate(90deg); } }
+
+/* ---------- 11. WIDER SCREENS ---------- */
+@media (min-width: 960px) {
+  .layout {
+    max-width: 1040px; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 36px; row-gap: 16px;
+    grid-template-areas: "head head" "board stats" "board actions" "board note" "board settings" "board .";
+    grid-template-rows: auto auto auto auto auto 1fr;
+    min-height: 0;
+    padding-bottom: 32px;
+  }
+  .a-act { position: static; margin: 0; padding: 0; background: none; border-top: 0; }
+  .a-note { text-align: left; }
+}
+
+/* ---------- 12. REDUCED MOTION ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .c, .c::after { transition: none; }
+  .c-flash, .c-bad, .c-hint::before, .c-born, .a-set.open, .overlay { animation: none; }
+  .fx { display: none; }
+}
