@@ -1,6 +1,7 @@
-# Render Blueprint — Static Site for Number Match
-# Dashboard: New → Blueprint → connect this repo
-# Or: New → Static Site → root directory / publish path "."
+# Render Blueprint
+# The static site stays the game. The node service must use the name and plan
+# of the paid instance that already exists, so the blueprint updates that
+# instance instead of creating another one.
 services:
   - type: web
     name: ten-spot
@@ -12,3 +13,23 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+
+  - type: web
+    name: REPLACE_WITH_EXISTING_SERVICE_NAME
+    runtime: node
+    plan: 0.5c-512mb
+    branch: main
+    buildCommand: "true"
+    startCommand: node server/index.js
+    envVars:
+      - key: NODE_VERSION
+        value: "22.22.1"
+      - key: SCORES_DB
+        value: /var/data/scores.sqlite
+      - key: SCORES_ORIGIN
+        sync: false
+    disk:
+      name: scores
+      mountPath: /var/data
+      sizeGB: 1
+    healthCheckPath: /health
