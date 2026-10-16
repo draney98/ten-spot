@@ -118,6 +118,48 @@
     return vals;
   }
 
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = Math.imul(a ^ (a >>> 15), a | 1);
+      t = (t + Math.imul(t ^ (t >>> 7), t | 61)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function nextSeed(seed) { return (seed + 0x9E3779B9) >>> 0; }
+
+  function randomSeed() {
+    var buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return buf[0];
+  }
+
+  function seekSeed(seed, build, ok) {
+    var s = seed >>> 0;
+    for (var i = 0; i < 32; i++) {
+      var board = build(s);
+      if (ok(board)) return board;
+      s = nextSeed(s);
+    }
+    throw new Error('no beatable board');
+  }
+
+  function parsePuzzle(text) {
+    var m = /^(easy|normal|hard)-(\d+)-(num|tiles|icons|teams)-([0-9a-f]{8})$/.exec(String(text || '').trim().toLowerCase());
+    if (!m) return null;
+    var level = Number(m[2]);
+    if (level < 1 || level > 99) return null;
+    return { diff: m[1], level: level, mode: m[3], seed: parseInt(m[4], 16) };
+  }
+
+  function formatPuzzle(spec) {
+    var hex = (spec.seed >>> 0).toString(16);
+    while (hex.length < 8) hex = '0' + hex;
+    return spec.diff + '-' + spec.level + '-' + spec.mode + '-' + hex;
+  }
+
   /** Levels 2+: random values dealt IN PAIRS that could match each other
       (equal, or summing to 10), then shuffled (Fisher–Yates). */
   function randomBoard(level, rng) {
@@ -390,6 +432,19 @@
     return s;
   }
 
+  function dealPuzzle(spec) {
+    return seekSeed(spec.seed, function (seed) {
+      var s = levelFields(spec.diff, spec.level || 1, mulberry32(seed), spec.rules);
+      s.diff = spec.diff;
+      s.seed = seed;
+      s.moves = spec.moves || 0;
+      s.score = spec.score || 0;
+      s.penalties = spec.penalties || 0;
+      s.best = spec.best ? copy(spec.best) : { easy: 0, normal: 0, hard: 0 };
+      return s;
+    }, isBeatable);
+  }
+
   function snapshot(s) {
     var h = s.history.concat([{
       cells: s.cells, nextId: s.nextId, moves: s.moves, cleared: s.cleared, total: s.total,
@@ -608,8 +663,10 @@
     allPairs: allPairs, isBeatable: isBeatable,
     doneRows: doneRows, compact: compact, pairPoints: pairPoints, levelBonus: levelBonus,
     STYLE_BONUS: STYLE_BONUS, shadeOf: shadeOf, sameShade: sameShade, mixedShade: mixedShade, mismatchPenalty: mismatchPenalty,
-    newGame: newGame, select: select, addNumbers: addNumbers, undo: undo, hint: hint,
+    newGame: newGame, dealPuzzle: dealPuzzle, select: select, addNumbers: addNumbers, undo: undo, hint: hint,
     nextLevel: nextLevel, compactBoard: compactBoard,
+    mulberry32: mulberry32, nextSeed: nextSeed, randomSeed: randomSeed, seekSeed: seekSeed,
+    parsePuzzle: parsePuzzle, formatPuzzle: formatPuzzle,
     indexOfId: indexOfId, remaining: remaining, canUndo: canUndo, canHint: canHint, canAdd: canAdd
   };
 });

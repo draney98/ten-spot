@@ -398,5 +398,45 @@ test('allPairs lists every legal pair, not only the first', function () {
   assert.deepStrictEqual(pairs, [[0, 1], [1, 2]]); // 0-2 blocked by active cell between
 });
 
+test('seekSeed skips a rejected seed', function () {
+  var seen = [];
+  var board = L.seekSeed(1, function (seed) { seen.push(seed); return { seed: seed }; }, function (b) { return b.seed !== 1; });
+  assert.deepStrictEqual(seen, [1, L.nextSeed(1)]);
+  assert.strictEqual(board.seed, L.nextSeed(1));
+});
+
+test('parsePuzzle accepts only a full puzzle code', function () {
+  assert.strictEqual(L.parsePuzzle('nope'), null);
+  assert.strictEqual(L.parsePuzzle('normal-0-icons-00a1b2c3'), null);
+  assert.strictEqual(L.parsePuzzle('normal-1-icons-00a1b2c'), null);
+  assert.deepStrictEqual(L.parsePuzzle(' NORMAL-1-ICONS-00A1B2C3 '), {
+    diff: 'normal', level: 1, mode: 'icons', seed: 0x00a1b2c3
+  });
+  assert.strictEqual(L.formatPuzzle({ diff: 'normal', level: 1, mode: 'icons', seed: 0x00a1b2c3 }), 'normal-1-icons-00a1b2c3');
+});
+
+test('classic level 1 is the fixed board on every difficulty', function () {
+  ['easy', 'normal', 'hard'].forEach(function (diff) {
+    var s = L.dealPuzzle({ diff: diff, level: 1, rules: 'classic', seed: 5 });
+    assert.deepStrictEqual(s.cells.map(function (c) { return c.v; }), L.classicBoard());
+    assert.strictEqual(L.isBeatable(s), true);
+    assert.strictEqual(s.seed, 5);
+  });
+});
+
+test('the same puzzle code deals the same cells', function () {
+  var first = L.dealPuzzle({ diff: 'normal', level: 2, rules: 'classic', seed: 1, score: 40, moves: 3, penalties: 2, best: { easy: 0, normal: 9, hard: 0 } });
+  assert.strictEqual(L.isBeatable(first), true);
+  assert.strictEqual(first.score, 40);
+  assert.strictEqual(first.best.normal, 9);
+  var again = L.dealPuzzle({ diff: 'normal', level: 2, rules: 'classic', seed: first.seed });
+  assert.deepStrictEqual(again.cells.map(function (c) { return c.v; }), first.cells.map(function (c) { return c.v; }));
+  assert.strictEqual(again.seed, first.seed);
+  var pairs = L.dealPuzzle({ diff: 'hard', level: 1, rules: 'pairs', seed: 9 });
+  var tiles = L.dealPuzzle({ diff: 'easy', level: 1, rules: 'mahjong', seed: 9 });
+  assert.strictEqual(L.isBeatable(pairs), true);
+  assert.strictEqual(L.isBeatable(tiles), true);
+});
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
