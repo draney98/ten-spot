@@ -619,10 +619,10 @@
     e.preventDefault();
     var spec = L.parsePuzzle($('puzzleInput').value);
     if (!spec) { ui.puzzleError = 'That puzzle code is not valid.'; render(); return; }
-    var go = function () { $('puzzleInput').value = ''; startPuzzle(spec); };
-    if (state.moves > 0 || state.level > 1 || state.score > 0 || (state.penalties || 0) > 0) {
-      confirmReset('Play this puzzle?', 'This starts that puzzle over from its first deal.', 'Play this puzzle', go);
-    } else go();
+    confirmReset('Play this puzzle?', 'This starts that puzzle over from its first deal.', 'Play this puzzle', function () {
+      $('puzzleInput').value = '';
+      startPuzzle(spec);
+    });
   });
   $('btnScoreCreate').addEventListener('click', function () {
     if (!SCORES_API) { ui.scoreError = "Couldn't reach the score server."; render(); return; }
