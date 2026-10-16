@@ -88,7 +88,7 @@
 
   /* ---------- 2. STATE ---------- */
   var savedMode = MODES.indexOf(store.get(KEY_MODE)) >= 0 ? store.get(KEY_MODE) : 'icons';
-  var state = L.newGame('normal', loadBest(), Math.random, rulesFor(savedMode));   // game state — see game-logic.js
+  var state = L.dealPuzzle({ diff: 'normal', level: 1, rules: rulesFor(savedMode), best: loadBest(), seed: L.randomSeed() });
   var ui = {                                      // UI-only state
     mode: savedMode,
     dark: loadDark(),
@@ -101,7 +101,8 @@
     born: [],      // cell ids just added (fade-in)
     gain: 0,       // last points earned, shown in the score tag
     note: '',      // status line text ('' = default text)
-    scoreError: ''
+    scoreError: '',
+    puzzleError: ''
   };
 
   /* ---------- 3. TIMERS ----------
@@ -378,6 +379,9 @@
 
     // header
     $('subline').textContent = 'Level ' + s.level + ' on ' + D.label + ', points ×' + mult;
+    $('title').classList.toggle('is-stuck', !L.isBeatable(s));
+    $('puzzleCode').textContent = L.formatPuzzle({ diff: s.diff, level: s.level, mode: ui.mode, seed: s.seed });
+    $('puzzleError').textContent = ui.puzzleError || '';
 
     // scoreboard
     $('score').textContent = fmt(s.score);
@@ -395,20 +399,6 @@
     // board + status line
     syncBoard();
     $('note').textContent = ui.note || ('Select two ' + PICK_NOUN[ui.mode] + ' to clear them.');
-
-    // beatability indicator (API search; skip when the level has already ended)
-    var beat = $('beatability');
-    if (s.status === 'clear') {
-      beat.textContent = 'Cleared';
-      beat.dataset.state = 'clear';
-    } else if (s.status === 'lose') {
-      beat.textContent = 'Not beatable';
-      beat.dataset.state = 'no';
-    } else {
-      var ok = L.isBeatable(s);
-      beat.textContent = ok ? 'Beatable' : 'Not beatable';
-      beat.dataset.state = ok ? 'yes' : 'no';
-    }
 
     // bottom bar
     $('btnUndo').disabled = !L.canUndo(s);
@@ -560,17 +550,19 @@
   }
 
   function onNextLevel() {
-    var r = L.nextLevel(state, Math.random);
-    if (!r.event) return;
+    var carried = { score: state.score, moves: state.moves, penalties: state.penalties || 0, best: state.best, diff: state.diff, rules: state.rules, level: state.level + 1 };
     resetAll();
-    state = r.state;
+    state = L.dealPuzzle({
+      diff: carried.diff, level: carried.level, rules: carried.rules, best: carried.best,
+      seed: L.randomSeed(), score: carried.score, moves: carried.moves, penalties: carried.penalties
+    });
     ui.note = levelNote();
     render();
   }
 
   function newGame(diff) {
     resetAll();
-    state = L.newGame(diff || state.diff, state.best, Math.random, rulesFor(ui.mode));
+    state = L.dealPuzzle({ diff: diff || state.diff, level: 1, rules: rulesFor(ui.mode), best: state.best, seed: L.randomSeed() });
     render();
   }
 
@@ -613,6 +605,25 @@
   $('btnNew').addEventListener('click', askNewGame);
   $('btnTheme').addEventListener('click', function () { setTheme(!ui.dark); });
   $('btnSettings').addEventListener('click', function () { ui.settingsOpen = !ui.settingsOpen; render(); });
+  function startPuzzle(spec) {
+    var best = state.best;
+    ui.mode = spec.mode;
+    store.set(KEY_MODE, spec.mode);
+    ui.settingsOpen = false;
+    ui.puzzleError = '';
+    resetAll();
+    state = L.dealPuzzle({ diff: spec.diff, level: spec.level, rules: rulesFor(spec.mode), best: best, seed: spec.seed });
+    render();
+  }
+  $('puzzleForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var spec = L.parsePuzzle($('puzzleInput').value);
+    if (!spec) { ui.puzzleError = 'That puzzle code is not valid.'; render(); return; }
+    var go = function () { $('puzzleInput').value = ''; startPuzzle(spec); };
+    if (state.moves > 0 || state.level > 1 || state.score > 0 || (state.penalties || 0) > 0) {
+      confirmReset('Play this puzzle?', 'This starts that puzzle over from its first deal.', 'Play this puzzle', go);
+    } else go();
+  });
   $('btnScoreCreate').addEventListener('click', function () {
     if (!SCORES_API) { ui.scoreError = "Couldn't reach the score server."; render(); return; }
     ui.scoreError = '';
@@ -687,6 +698,7 @@
       s.nextId = values.length + 1;
       s.total = values.length;
       for (var k in (extra || {})) s[k] = extra[k];
+      s.seed = s.seed || 0;
       state = s;
       render();
     },

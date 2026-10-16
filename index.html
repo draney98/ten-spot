@@ -78,6 +78,15 @@
       <p class="set-help" id="scoreSyncError" role="status"></p>
     </div>
     <div class="set-group">
+      <h2 class="set-title">Puzzle</h2>
+      <p class="set-help">Enter a puzzle code to deal that same board again.</p>
+      <form class="score-sync-row" id="puzzleForm">
+        <input id="puzzleInput" type="text" autocomplete="off" spellcheck="false" maxlength="32" placeholder="normal-1-icons-00a1b2c3" aria-label="Puzzle code">
+        <button type="submit" class="btn" id="btnPuzzle">Play this puzzle</button>
+      </form>
+      <p class="set-help" id="puzzleError" role="status"></p>
+    </div>
+    <div class="set-group">
       <h2 class="set-title">How to play</h2>
       <p class="how">Clear two numbers that are equal or add up to 10. They must touch, or have only crossed-out cells between them, including across the end of a row. Stuck? Add numbers copies everything left onto the bottom, but each level allows only a few. Clear the board to reach the next level: bigger boards, fewer adds, more points. Pairs drawn the same way (two outlines, or two shaded) earn a style bonus. An outline with a shaded tile still clears, but costs half its points. Picking two tiles that don’t match costs half the points they would have scored.</p>
     </div>
@@ -104,7 +113,7 @@
       <div class="grid9" id="grid"></div>          <!-- cells are created by the game script -->
       <div class="fx" id="fx" aria-hidden="true"></div>  <!-- match effects go here -->
     </div>
-    <p class="beatability" id="beatability" role="status" aria-live="polite">Beatable</p>
+    <p class="puzzle-code" id="puzzleCode">normal-1-icons-00000000</p>
     <div class="overlay" id="overlay" role="status" hidden>
       <span class="end-kicker" id="endKicker"></span>
       <span class="end-title" id="endTitle"></span>
