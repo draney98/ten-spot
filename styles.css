@@ -292,6 +292,13 @@ h1 { margin: 0; font-size: 27px; line-height: 1.1; font-weight: 700; }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: .4; cursor: not-allowed; }
 .btn-primary { background: var(--ink); color: var(--paper); }
+.score-code { font-family: ui-monospace, 'Barlow', monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.04em; margin: 0; }
+.score-sync-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.score-sync-row input {
+  flex: 1 1 160px; min-height: 48px; border: 1.5px solid var(--ink); border-radius: 6px;
+  background: transparent; color: var(--ink); font: inherit; padding: 0 12px;
+}
+.score-sync-row input:focus-visible { outline: 2.5px solid var(--focus); outline-offset: 2px; }
 .btn-add { flex: 1 1 auto; min-height: 56px; justify-content: flex-start; padding: 0 16px; }
 .btn-add-text { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.15; }
 .btn-add-main { font-size: 16px; font-weight: 700; }

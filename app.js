@@ -25,6 +25,9 @@
   var KEY_BEST = 'numbermatch.best.';   // + easy|normal|hard
   var KEY_THEME = 'numbermatch.theme';  // 'light'|'dark'
   var KEY_MODE = 'numbermatch.mode';    // 'num'|'tiles'|'icons'|'teams'
+  var KEY_PLAYER = 'numbermatch.player';
+  var S = window.NumberMatchScores;
+  var SCORES_API = (window.NM_SCORES_API || '').replace(/\/$/, '');
   var MODES = ['num', 'tiles', 'icons', 'teams'];
   // Tile style -> rule set. Numbers and Icons share the classic rules (only the look differs).
   // 'tiles' (shown as "Mahjong") uses the 'mahjong' rules; 'teams' (shown as "Gridiron") uses 'pairs'.
@@ -41,6 +44,40 @@
   function saveBestIfHigher() {
     var d = state.diff, v = state.best[d] || 0;
     if (v > (Number(store.get(KEY_BEST + d)) || 0)) store.set(KEY_BEST + d, String(v));
+    pushBests();
+  }
+  function scoreError(res) {
+    if (!res || res.ok) return '';
+    if (res.status === 0) return "Couldn't reach the score server.";
+    if (res.status === 404) return 'That code was not found.';
+    if (res.status === 400) return 'That code is not valid.';
+    return "Couldn't reach the score server.";
+  }
+  function adoptBests(remote) {
+    var merged = S.mergeBests(loadBest(), remote);
+    Object.keys(merged).forEach(function (k) {
+      if (merged[k] > 0) store.set(KEY_BEST + k, String(merged[k]));
+    });
+    state.best = merged;
+    render();
+  }
+  function pushBests() {
+    var code = store.get(KEY_PLAYER);
+    if (!S || !S.shouldSync(SCORES_API, code)) return;
+    S.putBests(SCORES_API, code, loadBest(), fetch).then(function (res) {
+      if (res.ok) adoptBests(res.body);
+      else { ui.scoreError = scoreError(res); render(); }
+    });
+  }
+  function pullBests() {
+    var code = store.get(KEY_PLAYER);
+    if (!S || !S.shouldSync(SCORES_API, code)) return;
+    S.getPlayer(SCORES_API, code, fetch).then(function (res) {
+      if (!res.ok) { ui.scoreError = scoreError(res); render(); return; }
+      var merged = S.mergeBests(loadBest(), res.body);
+      adoptBests(merged);
+      S.putBests(SCORES_API, code, merged, fetch);
+    });
   }
   function loadDark() {
     var t = store.get(KEY_THEME);
@@ -63,7 +100,8 @@
     hint: [],      // cell ids circled as a hint
     born: [],      // cell ids just added (fade-in)
     gain: 0,       // last points earned, shown in the score tag
-    note: ''       // status line text ('' = default text)
+    note: '',      // status line text ('' = default text)
+    scoreError: ''
   };
 
   /* ---------- 3. TIMERS ----------
@@ -318,6 +356,13 @@
     $('btnTheme').setAttribute('aria-pressed', String(ui.dark));
     $('settings').classList.toggle('open', ui.settingsOpen);
     $('btnSettings').setAttribute('aria-expanded', String(ui.settingsOpen));
+    var player = store.get(KEY_PLAYER) || '';
+    $('scoreCode').textContent = player;
+    $('scoreCode').hidden = !player;
+    $('btnScoreCreate').hidden = !!player;
+    $('btnScoreCopy').hidden = !player;
+    $('btnScoreForget').hidden = !player;
+    $('scoreSyncError').textContent = ui.scoreError || '';
     setPressed('[data-diff]', 'data-diff', s.diff);
     setPressed('[data-mode]', 'data-mode', ui.mode);
     setPressed('[data-theme]', 'data-theme', ui.dark ? 'dark' : 'light');
@@ -568,6 +613,41 @@
   $('btnNew').addEventListener('click', askNewGame);
   $('btnTheme').addEventListener('click', function () { setTheme(!ui.dark); });
   $('btnSettings').addEventListener('click', function () { ui.settingsOpen = !ui.settingsOpen; render(); });
+  $('btnScoreCreate').addEventListener('click', function () {
+    if (!SCORES_API) { ui.scoreError = "Couldn't reach the score server."; render(); return; }
+    ui.scoreError = '';
+    S.createPlayer(SCORES_API, fetch).then(function (res) {
+      if (!res.ok || !res.body || !res.body.code) { ui.scoreError = scoreError(res); render(); return; }
+      store.set(KEY_PLAYER, res.body.code);
+      pushBests();
+      render();
+    });
+  });
+  $('btnScoreCopy').addEventListener('click', function () {
+    var code = store.get(KEY_PLAYER) || '';
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code);
+  });
+  $('btnScoreForget').addEventListener('click', function () {
+    store.set(KEY_PLAYER, '');
+    try { window.localStorage.removeItem(KEY_PLAYER); } catch (e) { /* ignore */ }
+    ui.scoreError = '';
+    render();
+  });
+  $('scoreSyncForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var typed = S.normalizeCode($('scoreCodeInput').value);
+    if (!typed) { ui.scoreError = 'That code is not valid.'; render(); return; }
+    if (!SCORES_API) { ui.scoreError = "Couldn't reach the score server."; render(); return; }
+    ui.scoreError = '';
+    S.getPlayer(SCORES_API, typed, fetch).then(function (res) {
+      if (!res.ok) { ui.scoreError = scoreError(res); render(); return; }
+      store.set(KEY_PLAYER, res.body.code);
+      var merged = S.mergeBests(loadBest(), res.body);
+      adoptBests(merged);
+      S.putBests(SCORES_API, res.body.code, merged, fetch);
+      $('scoreCodeInput').value = '';
+    });
+  });
   $('btnEndPrimary').addEventListener('click', function () { if (state.status === 'clear') onNextLevel(); else newGame(); });
   $('btnEndUndo').addEventListener('click', onUndo);
   document.querySelectorAll('[data-diff]').forEach(function (b) {
@@ -592,6 +672,7 @@
   });
 
   render();
+  pullBests();
 
   /* ---------- 12. OPTIONAL TEST HOOK ----------
      Lets automated tests and screenshots set up exact boards.
