@@ -369,5 +369,34 @@ test('undo does not give back mismatch penalties', function () {
   assert.strictEqual(s.score, 0);                         // 0 - 11, floored at 0
 });
 
+/* ---------------- beatability ---------------- */
+test('isBeatable: tiny clearable board', function () {
+  assert.strictEqual(L.isBeatable(stateWith([3, 7])), true);
+});
+test('isBeatable: values never match and no adds', function () {
+  assert.strictEqual(L.isBeatable(stateWith([2, 3], 'normal', { addsLeft: 0 })), false);
+});
+test('isBeatable: lone tile needs Add to become a pair', function () {
+  assert.strictEqual(L.isBeatable(stateWith([5], 'normal', { addsLeft: 1 })), true);
+  assert.strictEqual(L.isBeatable(stateWith([5], 'normal', { addsLeft: 0 })), false);
+});
+test('isBeatable: classic level-1 Normal board', function () {
+  assert.strictEqual(L.isBeatable(L.newGame('normal')), true);
+});
+test('isBeatable: already clear or empty remaining', function () {
+  var cleared = stateWith([3, 7], 'normal', { status: 'clear', cleared: 2 });
+  assert.strictEqual(L.isBeatable(cleared), true);
+  var empty = stateWith([], 'normal', { total: 0, cleared: 0, nextId: 1 });
+  assert.strictEqual(L.isBeatable(empty), true);
+});
+test('isBeatable: lose status is not beatable', function () {
+  assert.strictEqual(L.isBeatable(stateWith([2, 3], 'normal', { status: 'lose', addsLeft: 0 })), false);
+});
+test('allPairs lists every legal pair, not only the first', function () {
+  var cells = board([1, 1, 1]);
+  var pairs = L.allPairs(cells, true, 'classic');
+  assert.deepStrictEqual(pairs, [[0, 1], [1, 2]]); // 0-2 blocked by active cell between
+});
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

@@ -211,6 +211,66 @@
     return first;
   }
 
+  /** Every legal pair [i, j] (indexes, i < j). Order matters for solvability. */
+  function allPairs(cells, diag, rules) {
+    var out = [];
+    for (var i = 0; i < cells.length; i++) {
+      if (cells[i].done) continue;
+      for (var j = i + 1; j < cells.length; j++) {
+        if (cells[j].done) continue;
+        if (matches(cells[i].v, cells[j].v, rules) && canLink(cells, i, j, diag)) out.push([i, j]);
+      }
+    }
+    return out;
+  }
+
+  /** Fingerprint for memoizing beatability search. */
+  function beatableKey(s) {
+    var parts = [s.rules || 'classic', s.addsLeft];
+    for (var i = 0; i < s.cells.length; i++) {
+      var c = s.cells[i];
+      parts.push(c.done ? 'x' : c.v);
+    }
+    return parts.join('|');
+  }
+
+  /** True if the board can reach status 'clear' via legal matches and Add
+      (using remaining addsLeft). Does not use Hint or mismatches. */
+  function isBeatable(state) {
+    if (!state) return false;
+    if (state.status === 'clear' || remaining(state) === 0) return true;
+    if (state.status === 'lose') return false;
+    if (state.status !== 'playing') return false;
+
+    var seen = Object.create(null);
+    function search(s) {
+      if (s.status === 'clear' || remaining(s) === 0) return true;
+      if (s.status !== 'playing') return false;
+      var key = beatableKey(s);
+      if (seen[key]) return false;
+      seen[key] = true;
+
+      var diag = LEVELS[s.diff].diag;
+      var pairs = allPairs(s.cells, diag, s.rules);
+      for (var p = 0; p < pairs.length; p++) {
+        var i = pairs[p][0], j = pairs[p][1];
+        var r1 = select(s, s.cells[i].id);
+        var r2 = select(r1.state, s.cells[j].id);
+        if (!r2.event || r2.event.type !== 'match') continue;
+        var next = r2.state;
+        if (next.status === 'playing') next = compactBoard(next);
+        if (search(next)) return true;
+      }
+
+      if (canAdd(s)) {
+        var added = addNumbers(s);
+        if (added.event && search(added.state)) return true;
+      }
+      return false;
+    }
+    return search(state);
+  }
+
   /** Row numbers whose cells are ALL done. */
   function doneRows(cells) {
     var out = [];
@@ -545,6 +605,7 @@
     mascots: mascots, mascotOf: mascotOf, isSolid: isSolid,
     MAX_HONOURS: MAX_HONOURS, honoursInPlay: honoursInPlay, isHonour: isHonour, mahjongBoard: mahjongBoard,
     addsFor: addsFor, pointMult: pointMult, matches: matches, canLink: canLink, findPair: findPair,
+    allPairs: allPairs, isBeatable: isBeatable,
     doneRows: doneRows, compact: compact, pairPoints: pairPoints, levelBonus: levelBonus,
     STYLE_BONUS: STYLE_BONUS, shadeOf: shadeOf, sameShade: sameShade, mixedShade: mixedShade, mismatchPenalty: mismatchPenalty,
     newGame: newGame, select: select, addNumbers: addNumbers, undo: undo, hint: hint,

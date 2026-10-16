@@ -58,7 +58,7 @@
     settingsOpen: false,
     confirm: null, // the open confirmation dialog: { yes: function } or null
     flash: [],     // cell ids playing the match "pop"
-    flashPen: false, // true while that pop is for a mixed (penalised) pair
+    flashPen: false, // true while that pop is for a score-losing clear
     bad: [],       // cell ids playing the "shake"
     hint: [],      // cell ids circled as a hint
     born: [],      // cell ids just added (fade-in)
@@ -254,7 +254,8 @@
     if (!a || !b) return;
     var A = centre(a), B = centre(b);
     var g = document.createElement('div');
-    g.className = 'fx-group' + (ev.mixed ? ' fx-pen' : '');   // mixed pair: red line, pink highlighter
+    // Score-up clears use blue FX; score-down clears keep the red/pink "pen" look.
+    g.className = 'fx-group' + (ev.gain < 0 ? ' fx-pen' : ' fx-gain');
     var html = '';
 
     // 1) row sweeps (behind everything else)
@@ -276,7 +277,7 @@
         html += '<i class="spark s' + k + ' k' + ((k + n * 2) % SPARK_COLOURS) + '" style="left:' + p.x + 'px;top:' + p.y + 'px"></i>';
       }
     });
-    // 5) points written in red pencil at the midpoint
+    // 5) floating points at the midpoint (blue for gains, red for losses via CSS)
     html += '<span class="floatpt" style="left:' + (A.x + B.x) / 2 + 'px;top:' + (A.y + B.y) / 2 + 'px">' + (ev.gain < 0 ? '−' + Math.abs(ev.gain) : '+' + ev.gain) + '</span>';
 
     g.innerHTML = html;
@@ -340,6 +341,7 @@
     var tag = gainTxt + (s.combo > 1 ? (gainTxt ? ', ' : '') + 'combo ×' + s.combo : '');
     $('scoreTag').textContent = tag;
     $('scoreTag').hidden = !tag;
+    $('scoreTag').classList.toggle('is-loss', ui.gain < 0);
     var pct = s.total ? Math.floor(s.cleared / s.total * 100) : 0;   // floor: 100% only when the board is clear
     $('pct').textContent = pct + '%';
     $('progressFill').style.width = pct + '%';
@@ -348,6 +350,20 @@
     // board + status line
     syncBoard();
     $('note').textContent = ui.note || ('Select two ' + PICK_NOUN[ui.mode] + ' to clear them.');
+
+    // beatability indicator (API search; skip when the level has already ended)
+    var beat = $('beatability');
+    if (s.status === 'clear') {
+      beat.textContent = 'Cleared';
+      beat.dataset.state = 'clear';
+    } else if (s.status === 'lose') {
+      beat.textContent = 'Not beatable';
+      beat.dataset.state = 'no';
+    } else {
+      var ok = L.isBeatable(s);
+      beat.textContent = ok ? 'Beatable' : 'Not beatable';
+      beat.dataset.state = ok ? 'yes' : 'no';
+    }
 
     // bottom bar
     $('btnUndo').disabled = !L.canUndo(s);
@@ -437,7 +453,7 @@
       var myTok = ++tok;
       spawnFx(ev);                 // measure BEFORE anything moves
       ui.flash = ev.ids.slice();
-      ui.flashPen = !!ev.mixed;
+      ui.flashPen = ev.gain < 0;   // pink pop only when the clear costs points
       ui.hint = [];
       ui.gain = ev.gain;
       ui.note = ev.mixed
@@ -598,6 +614,7 @@
       ui.mode = mode; store.set(KEY_MODE, mode);
       if (rulesFor(mode) !== state.rules) newGame(); else render();
     },
-    openSettings: function (open) { ui.settingsOpen = open; render(); }
+    openSettings: function (open) { ui.settingsOpen = open; render(); },
+    beatable: function () { return L.isBeatable(state); }
   };
 })();
