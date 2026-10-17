@@ -13,10 +13,10 @@ var html = fs.readFileSync('index.html', 'utf8');
 var css = fs.readFileSync('styles.css', 'utf8');
 var app = fs.readFileSync('app.js', 'utf8');
 
-test('the page loads the score client and leaves the API unset', function () {
+test('the page loads the score client and points it at the score service', function () {
   assert.ok(html.indexOf('scores-client.js') !== -1);
   assert.ok(html.indexOf('window.NM_SCORES_API') !== -1);
-  assert.ok(html.indexOf("window.NM_SCORES_API = ''") !== -1);
+  assert.ok(html.indexOf("window.NM_SCORES_API = 'https://ten-spot-scores.onrender.com'") !== -1);
   var clientAt = html.indexOf('scores-client.js');
   var appAt = html.indexOf('app.js');
   assert.ok(clientAt !== -1 && clientAt < appAt);

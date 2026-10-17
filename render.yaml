@@ -15,7 +15,7 @@ services:
         destination: /index.html
 
   - type: web
-    name: REPLACE_WITH_EXISTING_SERVICE_NAME
+    name: ten-spot-scores
     runtime: node
     plan: 0.5c-512mb
     branch: main
