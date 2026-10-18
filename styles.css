@@ -1,7 +1,7 @@
 /* =====================================================================
    NUMBER MATCH — STYLES
    Look: a sheet from a green engineering computation pad.
-   Graphite ink, red-pencil strikes, yellow highlighter for the selection,
+   Graphite ink, red-pencil strikes, a graphite frame for the selection,
    coloured-pencil inks for the tile families.
    Dark theme ("Chalkboard"): slate-green board with chalk colours.
    Mobile-first. Light theme on :root, dark theme on :root.dark.
@@ -15,15 +15,13 @@
   --card: var(--paper); /* alias used by a few rules */
   --grid: #c9d8b5;      /* pad grid lines */
   --line: #b8c5a6;      /* borders, progress track */
-  --ink: #2c2f2b;       /* graphite: text, primary button, rules */
-  --muted: #59614f;     /* secondary text */
+  --ink: #161815;       /* graphite: text, primary button, rules */
+  --muted: #343a2e;     /* secondary text */
   --done: #ccd5c0;      /* cleared cell content: deliberately faint */
   --strike: #b23a2e;    /* red pencil: strikes, score losses, bad pick */
   --gain: #1747a6;      /* blue pencil: score gains / positive clear FX */
   --gain-hi: #9ec0f0;   /* blue highlighter under a scoring clear */
-  --sel: #f3e24c;       /* yellow highlighter (selection only) */
   --pen: #f6a9a1;       /* pink highlighter: marks a score-losing clear */
-  --sel-ink: #2c2f2b;
   --focus: #27466f;     /* keyboard focus ring */
   --binding: #30503d;   /* the gummed strip at the top of the sheet */
   --overlay: rgba(242, 246, 234, .96);
@@ -41,9 +39,9 @@
 }
 :root.dark {
   --bg: #18211d; --paper: #1f2b25; --grid: #2d3c34; --line: #3b4b42;
-  --ink: #e8e5d8; --muted: #a7b0a3; --done: #34443b; --strike: #e3877a;
+  --ink: #f6f3ea; --muted: #d5ddd0; --done: #34443b; --strike: #e3877a;
   --gain: #79adff; --gain-hi: #2a4a7a;
-  --sel: #d9c75e; --pen: #8e3a34; --sel-ink: #1f2b25; --focus: #9dbce3; --binding: #0e1411;
+  --pen: #8e3a34; --focus: #9dbce3; --binding: #0e1411;
   --overlay: rgba(31, 43, 37, .96); --bar: rgba(24, 33, 29, .95); --blend: normal;
   --h1i: #79adff; --h2i: #6fdc79; --h3i: #ff9a3d; --h4i: #ff6470;
   --h5i: #c792ff; --h6i: #3fd6d0; --h7i: #ffd23f; --h8i: #f4f1e6; --h9i: #ec6b7a;
@@ -186,9 +184,9 @@ h1.is-stuck { color: var(--strike); }
 .glyph.mascot { width: 88%; height: 88%; }   /* Gridiron: no corner number, so the mascot can fill the cell */
 .corner { position: absolute; top: 3px; left: 4px; font-size: clamp(8px, 2.3vw, 12px); font-weight: 700; line-height: 1; color: var(--tink, var(--ink)); }
 /* states — ORDER MATTERS */
-.c-sel::before { /* yellow highlighter swipe behind the mark */
-  content: ''; position: absolute; inset: 16% 5%; z-index: -1; background: var(--sel); mix-blend-mode: var(--blend);
-  border-radius: 2px 5px 3px 6px; transform: rotate(-4deg);
+.c-sel::before { /* straight graphite frame around the selected cell */
+  content: ''; position: absolute; inset: 8%; z-index: 1; pointer-events: none;
+  border: 2.5px solid var(--ink); border-radius: 0; background: transparent;
 }
 .c-done { color: var(--done); cursor: default; }
 .c-done::after { transform: scaleX(1) rotate(-38deg); opacity: .4; }
@@ -214,7 +212,7 @@ h1.is-stuck { color: var(--strike); }
 }
 .end-kicker { font-size: 15px; color: var(--muted); }
 .end-title { font-size: 36px; font-weight: 700; line-height: 1.05; }
-.end-number { font-size: 44px; font-weight: 700; color: var(--strike); transform: rotate(-4deg); }
+.end-number { font-size: 44px; font-weight: 700; color: var(--strike); }
 .end-detail { font-size: 15px; line-height: 1.45; color: var(--muted); max-width: 300px; }
 .end-best { font-size: 15px; font-weight: 700; }
 .end-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 6px; }
@@ -231,7 +229,7 @@ h1.is-stuck { color: var(--strike); }
 .ring { position: absolute; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; border: 2px solid var(--ink); opacity: 0; animation: nmRing .5s ease-out .04s forwards; }
 .zap-svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .zap { fill: none; stroke: var(--ink); stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: nmZap .55s ease-out forwards; }
-.zap-wide { stroke: var(--sel); mix-blend-mode: var(--blend); }   /* default highlighter; overridden by fx-gain / fx-pen */
+.zap-wide { stroke: var(--gain-hi); mix-blend-mode: var(--blend); }   /* default underline; overridden by fx-gain / fx-pen */
 .floatpt {
   position: absolute; font-weight: 700; font-size: 22px; line-height: 1; color: var(--gain); white-space: nowrap;
   opacity: 0; animation: nmFloat .85s ease-out .1s forwards;
@@ -318,10 +316,10 @@ h1.is-stuck { color: var(--strike); }
 @keyframes nmRing { 0% { opacity: .8; transform: scale(.4); } 100% { opacity: 0; transform: scale(1.6); } }
 @keyframes nmZap { 0% { stroke-dashoffset: 1; opacity: 1; } 40% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
 @keyframes nmFloat {
-  0%   { opacity: 0; transform: translate(-50%, -30%) rotate(-6deg); }
-  22%  { opacity: 1; transform: translate(-50%, -90%) rotate(-6deg); }
-  70%  { opacity: 1; transform: translate(-50%, -150%) rotate(-6deg); }
-  100% { opacity: 0; transform: translate(-50%, -190%) rotate(-6deg); }
+  0%   { opacity: 0; transform: translate(-50%, -30%); }
+  22%  { opacity: 1; transform: translate(-50%, -90%); }
+  70%  { opacity: 1; transform: translate(-50%, -150%); }
+  100% { opacity: 0; transform: translate(-50%, -190%); }
 }
 @keyframes nmSweep { 0% { opacity: 0; transform: scaleX(0); } 35% { opacity: .75; transform: scaleX(1); } 100% { opacity: 0; transform: scaleX(1); } }
 /* 10 fleck directions, every 36 degrees; even = 30px away, odd = 22px away; each spins as it flies */
