@@ -201,13 +201,31 @@
       s: 'M11.87 1L11.28 1.08L10.71 1.26L10.19 1.54L9.77 1.86L9.37 2.30L9.09 2.75L8.86 3.29L8.73 3.87L8.70 4.46L8.77 4.99L8.92 5.49L9.19 6.02L9.54 6.50L9.92 6.86L10.36 7.16L10.90 7.41L10.90 8.66L10.87 8.70L7.64 8.70L7.60 8.73L7.61 10.90L10.90 10.91L10.90 20.68L10.87 20.71L10.42 20.62L9.53 20.39L8.77 20.12L8.09 19.82L7.44 19.48L6.83 19.10L6.26 18.67L5.75 18.21L5.22 17.62L4.79 17L6.47 15.33L6.48 15.28L2.10 12.01L2.10 15.37L2.16 16.09L2.29 16.73L2.53 17.41L2.83 18.01L3.27 18.68L3.81 19.34L4.41 19.95L5.07 20.51L5.93 21.11L6.72 21.58L7.55 21.99L8.47 22.36L9.38 22.64L10.29 22.85L11.20 22.97L12.09 23L13.19 22.92L14.29 22.72L15.39 22.40L16.51 21.95L17.62 21.38L18.67 20.70L19.48 20.06L20.22 19.32L20.74 18.67L21.21 17.95L21.52 17.29L21.76 16.54L21.85 16.03L21.90 15.51L21.90 12.01L17.52 15.28L17.53 15.33L19.21 17L18.78 17.62L18.25 18.21L17.74 18.67L17.17 19.10L16.56 19.48L15.91 19.82L15.23 20.12L14.47 20.39L13.58 20.62L13.13 20.71L13.10 20.68L13.10 10.91L16.39 10.90L16.40 8.73L16.36 8.70L13.13 8.70L13.10 8.66L13.10 7.41L13.75 7.09L14.27 6.69L14.70 6.19L15.02 5.61L15.18 5.18L15.27 4.73L15.30 4.27L15.26 3.81L15.12 3.23L14.88 2.69L14.54 2.20L14.13 1.78L13.64 1.44L13.10 1.19L12.53 1.04ZM12.07 3.20L12.33 3.25L12.51 3.33L12.82 3.57L13.03 3.91L13.08 4.10L13.10 4.37L13.07 4.56L12.97 4.81L12.73 5.12L12.51 5.27L12.33 5.35L11.93 5.40L11.55 5.30L11.38 5.21L11.18 5.03L11.03 4.81L10.95 4.63L10.90 4.23L11 3.85L11.09 3.68L11.27 3.48L11.49 3.33L11.67 3.25Z' }
   ];
 
-  function cellInnerHTML(v, mode) {
-    // Numbers: 1-5 in an outlined box, 6-9 reversed out of a shaded box.
-    if (mode === 'num') return '<span class="numbox' + (v >= 6 ? ' solid' : '') + '" aria-hidden="true">' + v + '</span>';
+  var SOLID_DISC = 'M3.2 12a8.8 8.8 0 1 0 17.6 0a8.8 8.8 0 1 0 -17.6 0Z';
+
+  function drawnSolid(v, solid) {
+    return typeof solid === 'boolean' ? solid : v >= 6;
+  }
+
+  // Outline uses the low value's path; solid uses the high value's path.
+  // Mirror it when this tile is the other end, so a solid 1 is the un-mirrored
+  // solid and an outline 9 is the mirrored outline. A solid 5 is a filled disc.
+  function iconSpec(v, solid) {
+    if (typeof solid !== 'boolean') return { d: ICONS[v], mirror: false };
+    if (v === 5) return { d: solid ? SOLID_DISC : ICONS[5], mirror: false };
+    var low = Math.min(v, 10 - v), high = 10 - low;
+    if (solid) return { d: ICONS[high], mirror: v <= 5 };
+    return { d: ICONS[low], mirror: v >= 6 };
+  }
+
+  function cellInnerHTML(v, mode, solid) {
+    // Numbers: outlined box, or reversed out of a shaded box. The cell's shade
+    // wins, so a light 9 is an outline and a shaded 1 is solid.
+    if (mode === 'num') return '<span class="numbox' + (drawnSolid(v, solid) ? ' solid' : '') + '" aria-hidden="true">' + v + '</span>';
     if (mode === 'teams') {
-      var M = MASCOTS[L.mascotOf(v)], solid = L.isSolid(v);
+      var M = MASCOTS[L.mascotOf(v)], filled = L.isSolid(v);
       return '<svg class="glyph mascot" viewBox="0 0 24 24" aria-hidden="true">' +
-        '<path fill="currentColor" fill-rule="evenodd" d="' + (solid ? M.s : M.o) + '"/></svg>';
+        '<path fill="currentColor" fill-rule="evenodd" d="' + (filled ? M.s : M.o) + '"/></svg>';
     }
     if (mode === 'tiles') {
       if (L.isHonour(v)) {
@@ -215,13 +233,14 @@
         return (H.ch ? '<span class="honour" aria-hidden="true">' + H.ch + '</span>' : WHITE_DRAGON) +
           (H.letter ? '<span class="corner" aria-hidden="true">' + H.letter + '</span>' : '');
       }
-      // Circle tiles: 1-5 are rings (outline), 6-9 are shaded discs.
-      var html = '<span class="pips' + (v >= 6 ? ' solid' : '') + '" aria-hidden="true">';
+      var html = '<span class="pips' + (drawnSolid(v, solid) ? ' solid' : '') + '" aria-hidden="true">';
       for (var k = 0; k < 9; k++) html += '<i class="pip' + (PIPS[v].indexOf(k) >= 0 ? ' on' : '') + '"></i>';
       return html + '</span>';
     }
+    var spec = iconSpec(v, solid);
+    var tf = spec.mirror ? ' transform="translate(24 0) scale(-1 1)"' : '';
     return '<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">' +
-      '<path fill="currentColor" fill-rule="evenodd" d="' + ICONS[v] + '"/>' +
+      '<path fill="currentColor" fill-rule="evenodd"' + tf + ' d="' + spec.d + '"/>' +
       '</svg><span class="corner" aria-hidden="true">' + v + '</span>';
   }
 
@@ -232,10 +251,12 @@
     if (ui.mode === 'tiles' && L.isHonour(v)) return HONOURS[v].h;
     return Math.min(v, 10 - v);
   }
-  function cellName(v) {
+  function cellName(v, solid) {
     if (ui.mode === 'teams') return MASCOTS[L.mascotOf(v)].name + (L.isSolid(v) ? ', solid' : ', outline');
-    if (ui.mode === 'tiles') return L.isHonour(v) ? HONOURS[v].name : plural(v, 'circle', 'circles');
-    return String(v);
+    if (ui.mode === 'tiles' && L.isHonour(v)) return HONOURS[v].name;
+    var name = ui.mode === 'tiles' ? plural(v, 'circle', 'circles') : String(v);
+    if (typeof solid === 'boolean') name += solid ? ', solid' : ', outline';
+    return name;
   }
 
   function cellClass(c) {
@@ -273,11 +294,12 @@
         nodes.set(c.id, el);
       }
       if (grid.children[i] !== el) grid.insertBefore(el, grid.children[i] || null);
-      var key = c.v + '|' + ui.mode;
-      if (el.dataset.key !== key) { el.innerHTML = cellInnerHTML(c.v, ui.mode); el.dataset.key = key; }
+      var shadeKey = typeof c.solid === 'boolean' ? (c.solid ? 's' : 'o') : '';
+      var key = c.v + '|' + ui.mode + '|' + shadeKey;
+      if (el.dataset.key !== key) { el.innerHTML = cellInnerHTML(c.v, ui.mode, c.solid); el.dataset.key = key; }
       var cls = cellClass(c);
       if (el.className !== cls) el.className = cls;
-      var name = cellName(c.v);
+      var name = cellName(c.v, c.solid);
       var label = c.done ? name + ', cleared' : (c.id === state.selected ? name + ', selected' : name);
       if (el.getAttribute('aria-label') !== label) el.setAttribute('aria-label', label);
     });
@@ -697,7 +719,11 @@
     load: function (values, extra) {
       resetAll();
       var s = L.newGame(state.diff, state.best, Math.random, state.rules);
-      s.cells = values.map(function (v, i) { return { id: i + 1, v: v, done: false }; });
+      s.cells = values.map(function (v, i) {
+        var cell = { id: i + 1, v: (v && typeof v === 'object') ? v.v : v, done: false };
+        if (v && typeof v === 'object' && typeof v.solid === 'boolean') cell.solid = v.solid;
+        return cell;
+      });
       s.nextId = values.length + 1;
       s.total = values.length;
       for (var k in (extra || {})) s[k] = extra[k];

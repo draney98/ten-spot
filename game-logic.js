@@ -82,12 +82,17 @@
   function mascotOf(v) { return Math.ceil(v / 2); }   // 1..8
   function isSolid(v) { return v % 2 === 0; }
 
-  /** Gridiron board: pick a mascot, push two tiles of it (each randomly outline or solid), repeat; shuffle. */
+  /** Gridiron board: pick a mascot, then prefer one version (3/8 both outline,
+      3/8 both solid, 1/4 one of each). Shuffle. */
   function pairsBoard(level, rng) {
     var size = boardSize(level, 'pairs'), fams = mascots(level), vals = [];
     for (var i = 0; i < size / 2; i++) {
       var f = 1 + Math.floor(rng() * fams);
-      vals.push(2 * f - (rng() < 0.5 ? 1 : 0), 2 * f - (rng() < 0.5 ? 1 : 0));
+      var roll = rng();
+      var outline = 2 * f - 1, solid = 2 * f;
+      if (roll < 0.375) vals.push(outline, outline);
+      else if (roll < 0.75) vals.push(solid, solid);
+      else vals.push(outline, solid);
     }
     return shuffle(vals, rng);
   }
@@ -98,8 +103,16 @@
   }
   function isHonour(v) { return v >= HONOUR_FIRST; }
 
+  /** A circle pair is always a complement (1 with 9, 2 with 8, 3 with 7,
+      4 with 6, or 5 with 5) and both tiles share one shade. */
+  function circlePair(rng) {
+    var low = 1 + Math.floor(rng() * 5);
+    var solid = rng() >= 0.5;
+    return [{ v: low, solid: solid }, { v: 10 - low, solid: solid }];
+  }
+
   /** Mahjong board: about a third of the pairs are identical honour tiles,
-      the rest are circle-tile pairs (same count, or adding to 10). Shuffled. */
+      the rest are circle complements that share one shade. Shuffled. */
   function mahjongBoard(level, rng) {
     var size = boardSize(level, 'mahjong'), kinds = honoursInPlay(level), vals = [];
     for (var i = 0; i < size / 2; i++) {
@@ -107,8 +120,8 @@
         var h = HONOUR_FIRST + Math.floor(rng() * kinds);
         vals.push(h, h);
       } else {
-        var a = 1 + Math.floor(rng() * 9);
-        vals.push(a, rng() < 0.5 ? a : 10 - a);
+        var pair = circlePair(rng);
+        vals.push(pair[0], pair[1]);
       }
     }
     return shuffle(vals, rng);
@@ -164,14 +177,14 @@
     return spec.diff + '-' + spec.level + '-' + spec.mode + '-' + hex;
   }
 
-  /** Levels 2+: random values dealt IN PAIRS that could match each other
-      (equal, or summing to 10), then shuffled (Fisher–Yates). */
+  /** Levels 2+: complements that share one shade (1 with 9, never 1 with 1),
+      then shuffled (Fisher–Yates). 5 pairs with itself. */
   function randomBoard(level, rng) {
     var size = boardSize(level);
     var vals = [];
     for (var i = 0; i < size / 2; i++) {
-      var a = 1 + Math.floor(rng() * 9);          // 1..9
-      vals.push(a, rng() < 0.5 ? a : 10 - a);     // partner: same or complement
+      var pair = circlePair(rng);
+      vals.push(pair[0], pair[1]);
     }
     return shuffle(vals, rng);
   }
@@ -249,7 +262,7 @@
       for (var j = i + 1; j < cells.length; j++) {
         if (cells[j].done) continue;
         if (matches(cells[i].v, cells[j].v, rules) && canLink(cells, i, j, diag)) {
-          if (!preferSame || !mixedShade(cells[i].v, cells[j].v, rules)) return [i, j];
+          if (!preferSame || !tilesMixed(cells[i], cells[j], rules)) return [i, j];
           if (!first) first = [i, j];
         }
       }
@@ -270,8 +283,14 @@
     return out;
   }
 
+  function copyCell(c, done) {
+    var o = { id: c.id, v: c.v, done: done == null ? c.done : done };
+    if (typeof c.solid === 'boolean') o.solid = c.solid;
+    return o;
+  }
+
   function copyCells(cells) {
-    return cells.map(function (c) { return { id: c.id, v: c.v, done: c.done }; });
+    return cells.map(function (c) { return copyCell(c); });
   }
 
   function positionKey(cells) {
@@ -299,7 +318,7 @@
 
   function markDone(cells, a, b) {
     return cells.map(function (c, i) {
-      return (i === a || i === b) ? { id: c.id, v: c.v, done: true } : c;
+      return (i === a || i === b) ? copyCell(c, true) : c;
     });
   }
 
@@ -467,7 +486,26 @@
     if (rules === 'mahjong' && isHonour(v)) return null;
     return v >= 6 ? 'solid' : 'outline';
   }
-  /** True when both tiles are outlines, or both are solid. */
+  /** Shade of a dealt cell. A stored `solid` flag wins over the value, so a
+      light 9 stays an outline. Missing flag keeps the value-based shade. */
+  function shadeOfTile(tile, rules) {
+    if (tile && typeof tile === 'object') {
+      if (rules === 'pairs') return isSolid(tile.v) ? 'solid' : 'outline';
+      if (rules === 'mahjong' && isHonour(tile.v)) return null;
+      if (typeof tile.solid === 'boolean') return tile.solid ? 'solid' : 'outline';
+      return shadeOf(tile.v, rules);
+    }
+    return shadeOf(tile, rules);
+  }
+  function tilesSame(x, y, rules) {
+    var a = shadeOfTile(x, rules);
+    return a !== null && a === shadeOfTile(y, rules);
+  }
+  function tilesMixed(x, y, rules) {
+    var a = shadeOfTile(x, rules), b = shadeOfTile(y, rules);
+    return a !== null && b !== null && a !== b;
+  }
+  /** True when both tiles are outlines, or both are solid. Value-based. */
   function sameShade(x, y, rules) {
     var a = shadeOf(x, rules);
     return a !== null && a === shadeOf(y, rules);
@@ -487,7 +525,7 @@
   /** Points taken away for a mismatch (two tiles that don't match): half of what
       the pair would have scored as a real match (no row bonus), rounded. */
   function mismatchPenalty(s, x, y) {
-    return Math.round(pairPoints(s.combo + 1, 0, pointMult(s.diff, s.level), sameShade(x, y, s.rules)) / 2);
+    return Math.round(pairPoints(s.combo + 1, 0, pointMult(s.diff, s.level), tilesSame(x, y, s.rules)) / 2);
   }
 
   /** Bonus for clearing a level. */
@@ -531,7 +569,12 @@
     return {
       level: level,
       rules: (rules === 'pairs' || rules === 'mahjong') ? rules : 'classic',
-      cells: vals.map(function (v, i) { return { id: i + 1, v: v, done: false }; }),
+      cells: vals.map(function (tile, i) {
+        var v = (tile && typeof tile === 'object') ? tile.v : tile;
+        var cell = { id: i + 1, v: v, done: false };
+        if (tile && typeof tile === 'object' && typeof tile.solid === 'boolean') cell.solid = tile.solid;
+        return cell;
+      }),
       nextId: vals.length + 1,
       selected: null,
       combo: 0,
@@ -650,7 +693,7 @@
     n.combo = 0;       // a miss breaks the streak
     // A mismatch (values don't match) costs half the points the pair would have earned.
     // A matching pair that just isn't reachable costs nothing. Score never goes below 0.
-    var penalty = okValue ? 0 : Math.min(s.score, mismatchPenalty(s, s.cells[a].v, s.cells[b].v));
+    var penalty = okValue ? 0 : Math.min(s.score, mismatchPenalty(s, s.cells[a], s.cells[b]));
     n.score = s.score - penalty;
     n.penalties = (s.penalties || 0) + penalty;
     return { state: n, event: { type: 'bad', id: id, reason: okValue ? 'path' : 'value', penalty: penalty } };
@@ -659,14 +702,14 @@
   function applyMatch(s, a, b) {
     var before = s.cells;
     var cells = before.map(function (c, i) {
-      return (i === a || i === b) ? { id: c.id, v: c.v, done: true } : c;
+      return (i === a || i === b) ? copyCell(c, true) : c;
     });
     var had = doneRows(before);
     var rowsCleared = doneRows(cells).filter(function (r) { return had.indexOf(r) < 0; });
     var combo = s.combo + 1;
     var mult = pointMult(s.diff, s.level);
-    var sameStyle = sameShade(before[a].v, before[b].v, s.rules);
-    var mixed = mixedShade(before[a].v, before[b].v, s.rules);
+    var sameStyle = tilesSame(before[a], before[b], s.rules);
+    var mixed = tilesMixed(before[a], before[b], s.rules);
     var rowBonus = Math.round(50 * rowsCleared.length * mult);
     // A mixed pair (outline + solid) still clears, but instead of points it costs half
     // of what the pair is worth (any row bonus is still paid). The score never goes below 0.
@@ -698,7 +741,7 @@
         mixed: mixed,
         penalty: penalty,
         styleBonus: sameStyle ? Math.round(STYLE_BONUS * mult) : 0,
-        shade: sameStyle ? shadeOf(before[a].v, s.rules) : null,
+        shade: sameStyle ? shadeOfTile(before[a], s.rules) : null,
         status: n.status,
         newBest: n.newBest
       }
@@ -712,7 +755,11 @@
     if (!active.length) return { state: s, event: null };
 
     var nextId = s.nextId;
-    var added = active.map(function (c) { return { id: nextId++, v: c.v, done: false }; });
+    var added = active.map(function (c) {
+      var tile = { id: nextId++, v: c.v, done: false };
+      if (typeof c.solid === 'boolean') tile.solid = c.solid;
+      return tile;
+    });
 
     var n = copy(s);
     n.history = snapshot(s);

@@ -12,7 +12,15 @@ function test(name, fn) {
 // Build a cells array from values; `doneIdx` lists indexes that are done.
 function board(values, doneIdx) {
   doneIdx = doneIdx || [];
-  return values.map(function (v, i) { return { id: i + 1, v: v, done: doneIdx.indexOf(i) >= 0 }; });
+  return values.map(function (v, i) {
+    var cell = { id: i + 1, v: (v && typeof v === 'object') ? v.v : v, done: doneIdx.indexOf(i) >= 0 };
+    if (v && typeof v === 'object' && typeof v.solid === 'boolean') cell.solid = v.solid;
+    return cell;
+  });
+}
+function scripted(seq) {
+  var i = 0;
+  return function () { return i < seq.length ? seq[i++] : 0.999; };
 }
 // A state with a custom board (level 1, given difficulty).
 function stateWith(values, diff, extra) {
@@ -32,10 +40,30 @@ test('classic board is the 27 digits of 1..19 without 10', function () {
 test('board sizes per level', function () {
   assert.deepStrictEqual([1,2,3,4,9].map(L.boardSize), [27,36,44,54,54]);
 });
+function tileV(t) { return (t && typeof t === 'object') ? t.v : t; }
 test('random board has right size and every value 1..9', function () {
   var b = L.randomBoard(3, Math.random);
   assert.strictEqual(b.length, 44);
-  b.forEach(function (v) { assert.ok(v >= 1 && v <= 9); });
+  b.forEach(function (t) { var v = tileV(t); assert.ok(v >= 1 && v <= 9); });
+});
+test('dealt number pairs are complements that share one shade', function () {
+  var outline = [], shaded = [];
+  [0.01, 0.21, 0.41, 0.61, 0.81].forEach(function (low) {
+    outline.push(low, 0);
+    shaded.push(low, 0.5);
+  });
+  var light = L.randomBoard(2, scripted(outline));
+  [1, 9, 2, 8, 3, 7, 4, 6, 5, 5].forEach(function (v, i) {
+    assert.strictEqual(light[i].v, v);
+    assert.strictEqual(light[i].solid, false);
+  });
+  var dark = L.randomBoard(2, scripted(shaded));
+  assert.strictEqual(dark[0].v, 1);
+  assert.strictEqual(dark[1].v, 9);
+  assert.strictEqual(dark[0].solid, true);
+  assert.strictEqual(dark[1].solid, true);
+  assert.ok(light.every(function (t, i) { return i % 2 === 1 || t.v === 5 || t.v !== light[i + 1].v; }));
+  assert.ok(!L.sameShade(1, 9, 'classic'));
 });
 
 /* ---------------- matching ---------------- */
@@ -249,6 +277,11 @@ test('pairs: board sizes are 28, 36, 44, 54 and use only the allowed mascots', f
     b.forEach(function (v) { assert.ok(v >= 1 && v <= 2 * t[2], 'value ' + v + ' on level ' + t[0]); });
   });
 });
+test('pairs: prefer both outline or both solid', function () {
+  assert.deepStrictEqual(L.pairsBoard(1, scripted([0, 0])).slice(0, 2), [1, 1]);
+  assert.deepStrictEqual(L.pairsBoard(1, scripted([0, 0.375])).slice(0, 2), [2, 2]);
+  assert.deepStrictEqual(L.pairsBoard(1, scripted([0, 0.75])).slice(0, 2), [1, 2]);
+});
 test('pairs: every mascot appears an even number of times', function () {
   var b = L.pairsBoard(4, Math.random), count = {};
   b.forEach(function (v) { var m = L.mascotOf(v); count[m] = (count[m] || 0) + 1; });
@@ -287,12 +320,22 @@ test('mahjong: board sizes 28, 36, 44, 54, honours limited to those in play, dea
   [[1,28,2],[2,36,3],[3,44,4],[4,54,5]].forEach(function (t) {
     var b = L.mahjongBoard(t[0], Math.random), count = {};
     assert.strictEqual(b.length, t[1]);
-    b.forEach(function (v) {
+    b.forEach(function (tile) {
+      var v = tileV(tile);
       assert.ok((v >= 1 && v <= 9) || (v >= 11 && v < 11 + t[2]), 'value ' + v + ' on level ' + t[0]);
       if (v >= 11) count[v] = (count[v] || 0) + 1;
     });
     Object.keys(count).forEach(function (h) { assert.strictEqual(count[h] % 2, 0); });
   });
+});
+test('mahjong circles are complements that share one shade; honours stay identical', function () {
+  var circles = L.mahjongBoard(1, scripted([0.5, 0.01, 0]));
+  assert.strictEqual(circles[0].v, 1);
+  assert.strictEqual(circles[1].v, 9);
+  assert.strictEqual(circles[0].solid, false);
+  assert.strictEqual(circles[1].solid, false);
+  var honours = L.mahjongBoard(1, scripted([0, 0]));
+  assert.deepStrictEqual(honours.slice(0, 2), [11, 11]);
 });
 test('mahjong: game keeps its rules through select and next level', function () {
   var s = L.newGame('normal', null, Math.random, 'mahjong');
@@ -316,6 +359,35 @@ test('shadeOf: classic 1-5 outline, 6-9 solid; Gridiron odd/even; mahjong honour
   assert.strictEqual(L.shadeOf(7, 'mahjong'), 'solid'); assert.strictEqual(L.shadeOf(12, 'mahjong'), null);
   assert.ok(L.sameShade(2, 3, 'classic')); assert.ok(!L.sameShade(1, 9, 'classic'));
   assert.ok(!L.sameShade(15, 15, 'mahjong'));
+});
+test('a complement with a shared shade earns the style bonus and keeps that shade', function () {
+  var light = L.select(L.select(stateWith([{ v: 1, solid: false }, { v: 9, solid: false }, 2], 'easy'), 1).state, 2);
+  assert.strictEqual(light.event.mixed, false);
+  assert.strictEqual(light.event.styleBonus, 10);
+  assert.strictEqual(light.event.gain, 20);
+  assert.strictEqual(light.event.shade, 'outline');
+  assert.strictEqual(light.state.cells[0].solid, false);
+  var shaded = L.select(L.select(stateWith([{ v: 1, solid: true }, { v: 9, solid: true }, 2], 'easy'), 1).state, 2);
+  assert.strictEqual(shaded.event.shade, 'solid');
+  assert.strictEqual(shaded.event.gain, 20);
+  var hinted = L.hint(stateWith([{ v: 1, solid: false }, { v: 9, solid: false }, 2, 2], 'normal'));
+  assert.deepStrictEqual(hinted.event.ids, [1, 2]);
+});
+test('add copies the shade of leftover tiles', function () {
+  var n = L.addNumbers(stateWith([{ v: 1, solid: true }, { v: 9, solid: false }], 'easy')).state;
+  var added = n.cells.filter(function (c) { return c.id > 2; });
+  assert.strictEqual(added[0].v, 1);
+  assert.strictEqual(added[0].solid, true);
+  assert.strictEqual(added[1].v, 9);
+  assert.strictEqual(added[1].solid, false);
+});
+test('a generated level stores the shared shade on each cell', function () {
+  var dealt = L.nextLevel(stateWith([1, 1], 'easy', { status: 'clear', level: 1 }), scripted([0.01, 0])).state;
+  assert.strictEqual(dealt.cells[0].v, 1);
+  assert.strictEqual(dealt.cells[1].v, 9);
+  assert.strictEqual(dealt.cells[0].solid, false);
+  assert.strictEqual(dealt.cells[1].solid, false);
+  assert.ok(dealt.cells.every(function (c) { return typeof c.solid === 'boolean' && c.v >= 1 && c.v <= 9; }));
 });
 test('outline + solid pair still clears but costs half its worth', function () {
   var r = L.select(L.select(stateWith([3,7,1], 'easy', { score: 100 }), 1).state, 2);
