@@ -40,6 +40,10 @@
   var HONOUR_FIRST = 11, MAX_HONOURS = 7;
 
   var HISTORY_LIMIT = 200;
+  /** Positions canClear will explore before it gives up and returns null. */
+  var CLEAR_BUDGET = 20000;
+  /** While isBeatable is searching, finish must not run canClear again. */
+  var inBeatable = 0;
 
   /** Style bonus: base points added when both tiles of a pair are drawn the
       same way (two outlines, or two shaded/solid tiles). */
@@ -266,6 +270,109 @@
     return out;
   }
 
+  function copyCells(cells) {
+    return cells.map(function (c) { return { id: c.id, v: c.v, done: c.done }; });
+  }
+
+  function positionKey(cells) {
+    var parts = [];
+    for (var i = 0; i < cells.length; i++) {
+      if (!cells[i].done) parts.push(i + ':' + cells[i].v);
+    }
+    return parts.join(',');
+  }
+
+  function hasLive(cells) {
+    for (var i = 0; i < cells.length; i++) if (!cells[i].done) return true;
+    return false;
+  }
+
+  function mascotCounts(cells) {
+    var counts = Object.create(null);
+    for (var i = 0; i < cells.length; i++) {
+      if (cells[i].done) continue;
+      var m = mascotOf(cells[i].v);
+      counts[m] = (counts[m] || 0) + 1;
+    }
+    return counts;
+  }
+
+  function markDone(cells, a, b) {
+    return cells.map(function (c, i) {
+      return (i === a || i === b) ? { id: c.id, v: c.v, done: true } : c;
+    });
+  }
+
+  /** Legal pairs, row-clearing ones first, then a mascot that has only two left.
+      Scan order is kept inside a tier. */
+  function orderedPairs(cells, diag, rules) {
+    var pairs = allPairs(cells, diag, rules);
+    var rows = doneRows(cells).length;
+    var counts = rules === 'pairs' ? mascotCounts(cells) : null;
+    var ranked = pairs.map(function (p, i) {
+      var marked = markDone(cells, p[0], p[1]);
+      var tier = doneRows(marked).length > rows ? 2 : 0;
+      if (counts && counts[mascotOf(cells[p[0]].v)] === 2) tier += 1;
+      return { p: p, i: i, tier: tier };
+    });
+    ranked.sort(function (a, b) { return b.tier - a.tier || a.i - b.i; });
+    return ranked.map(function (r) { return r.p; });
+  }
+
+  /** Depth-first search over legal pairs, compacting after every move.
+      result is true (some line clears the board), false (every line sticks),
+      or null (gave up after `budget` positions). ids is a winning first pair. */
+  function clearingSearch(cells, diag, rules, budget) {
+    if (budget == null) budget = CLEAR_BUDGET;
+    var visited = 0;
+    var memo = Object.create(null);
+
+    function rec(cells) {
+      cells = compact(cells);
+      var key = positionKey(cells);
+      if (Object.prototype.hasOwnProperty.call(memo, key)) return memo[key];
+      if (!hasLive(cells)) { memo[key] = true; return true; }
+      if (visited >= budget) return null;
+      visited++;
+      var pairs = orderedPairs(cells, diag, rules);
+      var unknown = false;
+      for (var n = 0; n < pairs.length; n++) {
+        var result = rec(markDone(cells, pairs[n][0], pairs[n][1]));
+        if (result === true) { memo[key] = true; return true; }
+        if (result === null) unknown = true;
+      }
+      if (unknown) return null;
+      memo[key] = false;
+      return false;
+    }
+
+    var base = compact(copyCells(cells));
+    var key = positionKey(base);
+    if (!hasLive(base)) return { result: true, ids: null };
+    if (visited >= budget) return { result: null, ids: null };
+    visited++;
+    var pairs = orderedPairs(base, diag, rules);
+    var unknown = false;
+    for (var n = 0; n < pairs.length; n++) {
+      var pair = pairs[n];
+      var result = rec(markDone(base, pair[0], pair[1]));
+      if (result === true) {
+        memo[key] = true;
+        return { result: true, ids: [base[pair[0]].id, base[pair[1]].id] };
+      }
+      if (result === null) unknown = true;
+    }
+    if (unknown) return { result: null, ids: null };
+    memo[key] = false;
+    return { result: false, ids: null };
+  }
+
+  /** true if some sequence of legal pairs clears every cell, false if every
+      sequence gets stuck, null if the search stops after `budget` positions. */
+  function canClear(cells, diag, rules, budget) {
+    return clearingSearch(cells, diag, rules, budget).result;
+  }
+
   /** Fingerprint for memoizing beatability search. */
   function beatableKey(s) {
     var parts = [s.rules || 'classic', s.addsLeft];
@@ -277,8 +384,27 @@
   }
 
   /** True if the board can reach status 'clear' via legal matches and Add
-      (using remaining addsLeft). Does not use Hint or mismatches. */
+      (using remaining addsLeft). Does not use Hint or mismatches.
+      With no adds left, a dead board (every line sticks) is false even when
+      a pair is still legal. An unfinished search is not treated as dead. */
   function isBeatable(state) {
+    if (!state) return false;
+    if (state.status === 'clear' || remaining(state) === 0) return true;
+    if (state.status === 'lose') return false;
+    if (state.status !== 'playing') return false;
+    if ((state.addsLeft || 0) <= 0) {
+      var verdict = canClear(state.cells, LEVELS[state.diff].diag, state.rules);
+      return verdict !== false;
+    }
+    inBeatable++;
+    try {
+      return beatableNow(state);
+    } finally {
+      inBeatable--;
+    }
+  }
+
+  function beatableNow(state) {
     if (!state) return false;
     if (state.status === 'clear' || remaining(state) === 0) return true;
     if (state.status === 'lose') return false;
@@ -386,6 +512,7 @@
        addsLeft, hintsLeft, undosLeft,
        history: [snapshot],        // for Undo (this level only)
        status: 'playing' | 'clear' | 'lose',
+       reason: null | 'nopairs',  // set when status is 'lose'
        bonus, final,               // filled when status changes
        best: { easy, normal, hard },
        newBest: boolean
@@ -453,20 +580,35 @@
     return h.length > HISTORY_LIMIT ? h.slice(h.length - HISTORY_LIMIT) : h;
   }
 
-  /** Decide whether the level is cleared or lost. Mutates and returns n. */
+  function lose(n, reason) {
+    n.status = 'lose';
+    n.reason = reason;
+    n.bonus = 0;
+    n.final = n.score;
+  }
+
+  /** Decide whether the level is cleared or lost. Mutates and returns n.
+      A dead board that still has a legal pair stays in play; the title turns
+      red instead. canClear can keep the level going when the only remaining
+      pair appears after a finished row collapses. */
   function finish(n) {
+    var diag = LEVELS[n.diff].diag;
     if (n.total - n.cleared === 0) {
       n.status = 'clear';
+      n.reason = null;
       n.bonus = levelBonus(n);
       n.score += n.bonus;
       n.final = n.score;
-    } else if (n.addsLeft <= 0 && !findPair(n.cells, LEVELS[n.diff].diag, n.rules)) {
-      n.status = 'lose';
-      n.bonus = 0;
-      n.final = n.score;
-    } else {
+    } else if (n.addsLeft > 0 || findPair(n.cells, diag, n.rules)) {
       n.status = 'playing';
+      n.reason = null;
       return n;
+    } else if (!inBeatable && canClear(n.cells, diag, n.rules) === true) {
+      n.status = 'playing';
+      n.reason = null;
+      return n;
+    } else {
+      lose(n, 'nopairs');
     }
     var prev = n.best[n.diff] || 0;
     n.newBest = n.final > prev;
@@ -609,20 +751,30 @@
     n.undosLeft = s.undosLeft - 1;  // Infinity - 1 === Infinity
     n.history = h;
     n.selected = null;
-    n.status = 'playing'; n.bonus = 0; n.final = 0; n.newBest = false;
+    n.status = 'playing'; n.reason = null; n.bonus = 0; n.final = 0; n.newBest = false;
     return { state: n, event: { type: 'undo' } };
   }
 
-  /** Reveal one legal pair. Costs one hint (only if a pair exists). */
+  /** Reveal one legal pair. Costs one hint (only if a pair exists).
+      With no adds left, prefer a pair that still leaves the board clearable. */
   function hint(s) {
     if (s.status !== 'playing' || s.hintsLeft <= 0) return { state: s, event: null };
-    var p = findPair(s.cells, LEVELS[s.diff].diag, s.rules, true);
-    if (!p) return { state: s, event: { type: 'nohint' } };
+    var diag = LEVELS[s.diff].diag;
+    var ids = null;
+    if (s.addsLeft <= 0) {
+      var found = clearingSearch(s.cells, diag, s.rules);
+      if (found.result === true && found.ids) ids = found.ids;
+    }
+    if (!ids) {
+      var p = findPair(s.cells, diag, s.rules, true);
+      if (!p) return { state: s, event: { type: 'nohint' } };
+      ids = [s.cells[p[0]].id, s.cells[p[1]].id];
+    }
     var n = copy(s);
     n.hintsLeft = s.hintsLeft - 1;
     n.selected = null;
     n.combo = 0;
-    return { state: n, event: { type: 'hint', ids: [s.cells[p[0]].id, s.cells[p[1]].id] } };
+    return { state: n, event: { type: 'hint', ids: ids } };
   }
 
   /** After status 'clear': deal the next level. Score and moves carry over. */
@@ -659,7 +811,7 @@
     classicBoard: classicBoard, randomBoard: randomBoard, pairsBoard: pairsBoard, boardSize: boardSize, makeBoard: makeBoard,
     mascots: mascots, mascotOf: mascotOf, isSolid: isSolid,
     MAX_HONOURS: MAX_HONOURS, honoursInPlay: honoursInPlay, isHonour: isHonour, mahjongBoard: mahjongBoard,
-    addsFor: addsFor, pointMult: pointMult, matches: matches, canLink: canLink, findPair: findPair,
+    addsFor: addsFor, pointMult: pointMult, matches: matches, canLink: canLink, findPair: findPair, canClear: canClear,
     allPairs: allPairs, isBeatable: isBeatable,
     doneRows: doneRows, compact: compact, pairPoints: pairPoints, levelBonus: levelBonus,
     STYLE_BONUS: STYLE_BONUS, shadeOf: shadeOf, sameShade: sameShade, mixedShade: mixedShade, mismatchPenalty: mismatchPenalty,

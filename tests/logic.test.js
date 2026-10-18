@@ -202,6 +202,7 @@ test('no adds and no pairs left = game over', function () {
   var s = stateWith([1,1,2,3], 'normal', { addsLeft: 0 });
   var r = L.select(L.select(s, 1).state, 2);
   assert.strictEqual(r.state.status, 'lose');
+  assert.strictEqual(r.state.reason, 'nopairs');
   assert.strictEqual(r.state.final, 30);
 });
 test('next level deals a bigger board, keeps score, resets adds', function () {
@@ -436,6 +437,73 @@ test('the same puzzle code deals the same cells', function () {
   var tiles = L.dealPuzzle({ diff: 'easy', level: 1, rules: 'mahjong', seed: 9 });
   assert.strictEqual(L.isBeatable(pairs), true);
   assert.strictEqual(L.isBeatable(tiles), true);
+});
+
+/* ---------------- dead boards (pairs) ---------------- */
+test('pairs: one legal pair can still be a dead board', function () {
+  var stuck = board([1, 7, 3, 4, 1, 8, 1, 8, 1], [1, 2, 3]);
+  assert.deepStrictEqual(L.findPair(stuck, true, 'pairs'), [0, 4]);
+  assert.strictEqual(L.canClear(stuck, true, 'pairs'), false);
+
+  var pre = stateWith([1, 7, 3, 4, 1, 8, 1, 8, 1], 'normal', { rules: 'pairs', addsLeft: 0 });
+  pre.cells[1].done = true;
+  var r = L.select(L.select(pre, 3).state, 4);
+  assert.strictEqual(r.event.type, 'match');
+  assert.strictEqual(r.state.status, 'playing');
+  assert.ok(L.findPair(r.state.cells, true, 'pairs'));
+  assert.strictEqual(L.isBeatable(r.state), false);
+
+  var open = stateWith([1, 7, 3, 4, 1, 8, 1, 8, 1], 'normal', { rules: 'pairs', addsLeft: 1 });
+  open.cells[1].done = true;
+  assert.strictEqual(L.select(L.select(open, 3).state, 4).state.status, 'playing');
+});
+
+test('pairs: hint shows a pair that keeps the board clearable', function () {
+  var trap = board([1, 3, 1, 1, 1, 1, 3, 1, 3, 3]);
+  assert.strictEqual(L.canClear(trap, true, 'pairs'), true);
+  assert.deepStrictEqual(L.findPair(trap, true, 'pairs'), [1, 9]);
+  var s = stateWith([1, 3, 1, 1, 1, 1, 3, 1, 3, 3], 'normal', { rules: 'pairs', addsLeft: 0 });
+  // Indexes 8 and 9 clear the one-cell second row and still leave a win.
+  // findPair's first pair, indexes 1 and 9, does not.
+  assert.deepStrictEqual(L.hint(s).event.ids, [9, 10]);
+});
+
+test('pairs: clearing a row changes which diagonals link', function () {
+  var vals = [
+    1, 3, 9, 9, 9, 9, 9, 9, 9,
+    5, 5, 7, 7, 2, 2, 4, 4, 9,
+    9, 1, 3, 9, 9, 9, 9, 9, 9
+  ];
+  var doneIdx = [2, 3, 4, 5, 6, 7, 8, 17, 18, 21, 22, 23, 24, 25, 26];
+  assert.strictEqual(L.canClear(board(vals, doneIdx), true, 'pairs'), true);
+
+  var s = stateWith(vals, 'normal', { rules: 'pairs', addsLeft: 0, cleared: doneIdx.length });
+  doneIdx.forEach(function (i) { s.cells[i].done = true; });
+  function match(state, a, b) { return L.select(L.select(state, a).state, b).state; }
+  s = L.compactBoard(match(s, 10, 11));
+  s = L.compactBoard(match(s, 12, 13));
+  s = L.compactBoard(match(s, 14, 15));
+  s = match(s, 16, 17);
+  assert.strictEqual(s.status, 'playing');
+  var i1 = L.indexOfId(s.cells, 1), i2 = L.indexOfId(s.cells, 20);
+  assert.strictEqual(L.canLink(s.cells, i1, i2, true), false);
+  s = L.compactBoard(s);
+  i1 = L.indexOfId(s.cells, 1); i2 = L.indexOfId(s.cells, 20);
+  assert.strictEqual(L.canLink(s.cells, i1, i2, true), true);
+  s = L.compactBoard(match(s, 1, 20));
+  s = match(s, 2, 21);
+  assert.strictEqual(s.status, 'clear');
+});
+
+test('pairs: a large board past the budget stays in play', function () {
+  var vals = [];
+  for (var i = 0; i < 54; i++) vals.push(i % 2 ? 3 : 1);
+  assert.strictEqual(L.canClear(board(vals), true, 'pairs', 50), null);
+  var s = stateWith(vals, 'normal', { rules: 'pairs', addsLeft: 0 });
+  // Even indexes are longhorns. 0 and 10 are a diagonal pair.
+  var r = L.select(L.select(s, 1).state, 11);
+  assert.strictEqual(r.event.type, 'match');
+  assert.strictEqual(r.state.status, 'playing');
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
