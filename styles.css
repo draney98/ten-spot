@@ -30,12 +30,13 @@
   --bar: rgba(227, 233, 216, .95);
   --blend: multiply;    /* highlighter blends with the paper */
   /* coloured-pencil inks: h1 blue, h2 green, h3 orange, h4 red,
-     h5 purple, h6 teal, h7 ochre, h8 lamp black. Chosen to be far apart in hue and dark enough
+     h5 purple, h6 teal, h7 ochre, h8 lamp black, h9 garnet. Chosen to be far apart in hue and dark enough
      (light) / bright enough (dark) to read at a glance.
-     Classic: h1 = 1&9, h2 = 2&8, h3 = 3&7, h4 = 4&6, h5 = 5. Gridiron uses all eight. */
-  /* strong, well-separated pigments: blue, green, orange, red, purple, teal, ochre, near-black */
+     Classic: h1 = 1&9, h2 = 2&8, h3 = 3&7, h4 = 4&6, h5 = 5. Gridiron uses these, and h9 for the gamecock. */
+  /* strong, well-separated pigments: blue, green, orange, red, purple, teal, ochre, near-black, garnet */
   --h1i: #1747a6; --h2i: #1d7a2c; --h3i: #c25400; --h4i: #c4122f;
   --h5i: #7426b5; --h6i: #00737d; --h7i: #946200; --h8i: #1e2328;
+  --h9i: #8c1d2b;   /* garnet ("gamecock red"): Gridiron gamecock only */
   color-scheme: light;
 }
 :root.dark {
@@ -45,7 +46,7 @@
   --sel: #d9c75e; --pen: #8e3a34; --sel-ink: #1f2b25; --focus: #9dbce3; --binding: #0e1411;
   --overlay: rgba(31, 43, 37, .96); --bar: rgba(24, 33, 29, .95); --blend: normal;
   --h1i: #79adff; --h2i: #6fdc79; --h3i: #ff9a3d; --h4i: #ff6470;
-  --h5i: #c792ff; --h6i: #3fd6d0; --h7i: #ffd23f; --h8i: #f4f1e6;
+  --h5i: #c792ff; --h6i: #3fd6d0; --h7i: #ffd23f; --h8i: #f4f1e6; --h9i: #ec6b7a;
   color-scheme: dark;
 }
 
@@ -64,7 +65,7 @@ body {
 
 /* ---------- 3. LAYOUT (mobile first) ---------- */
 .layout {
-  width: 100%; max-width: 560px; margin: 0 auto;
+  width: 100%; max-width: 600px; margin: 0 auto;
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px;
   grid-template-areas: "head" "settings" "stats" "board" "note" "actions";
   /* the 1fr row (status line) soaks up spare height so the bottom bar
@@ -99,6 +100,8 @@ h1.is-stuck { color: var(--strike); }
 .set-title { margin: 0; font-size: 15px; font-weight: 700; }
 .set-help { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
 .how { margin: 0; font-size: 15px; line-height: 1.55; }
+.how.credits { font-size: 12px; margin-top: 6px; }
+.how.credits a { color: inherit; }
 .seg { display: flex; width: 100%; border: 1.5px solid var(--ink); border-radius: 6px; overflow: hidden; }
 .seg button {
   flex: 1 1 0; min-height: 44px; padding: 0 6px; border: 0; background: transparent;
@@ -125,7 +128,7 @@ h1.is-stuck { color: var(--strike); }
 /* ---------- 7. BOARD: a sheet torn from the pad ---------- */
 .sheet {
   position: relative; align-self: start; background: var(--paper); border-radius: 3px;
-  padding: 22px 10px 12px;
+  padding: 20px 6px 10px;
   /* two more sheets peeking out underneath */
   box-shadow: 0 3px 0 -1px var(--paper), 0 3px 0 0 var(--line), 0 6px 0 -1px var(--paper), 0 6px 0 0 var(--line);
 }
@@ -162,9 +165,8 @@ h1.is-stuck { color: var(--strike); }
 .c-tile.h0 { --tink: var(--ink); }
 .c-tile.h1 { --tink: var(--h1i); } .c-tile.h2 { --tink: var(--h2i); } .c-tile.h3 { --tink: var(--h3i); } .c-tile.h4 { --tink: var(--h4i); }
 .c-tile.h5 { --tink: var(--h5i); } .c-tile.h6 { --tink: var(--h6i); } .c-tile.h7 { --tink: var(--h7i); } .c-tile.h8 { --tink: var(--h8i); }
-/* Gridiron: details on SOLID mascots (football laces, feather spine) are re-drawn in the paper colour */
-.knock { stroke: var(--paper); }
-.pips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 6%; width: 80%; aspect-ratio: 1; }
+.c-tile.h9 { --tink: var(--h9i); }
+.pips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 5%; width: 90%; aspect-ratio: 1; }
 .pip { border-radius: 50%; background: transparent; }
 .pip.on { /* mahjong circle 1-5: a heavy ring with a dot in the middle */
   background: radial-gradient(circle, var(--tink, var(--ink)) 0 28%, transparent 31% 43%, var(--tink, var(--ink)) 46% 70%, transparent 73%);
@@ -174,20 +176,20 @@ h1.is-stuck { color: var(--strike); }
 }
 /* Numbers: 1-5 outlined box, 6-9 shaded box with the digit reversed out */
 .numbox {
-  display: flex; align-items: center; justify-content: center; width: 72%; height: 72%;
+  display: flex; align-items: center; justify-content: center; width: 82%; height: 82%;
   border: 2.5px solid var(--tink, var(--ink)); border-radius: 4px; color: var(--tink, var(--ink));
-  font-size: clamp(15px, 4.8vw, 24px); line-height: 1;
+  font-size: clamp(16px, 5.4vw, 27px); line-height: 1;
 }
 .numbox.solid { background: var(--tink, var(--ink)); color: var(--paper); }
-.honour { font-family: 'Noto Serif TC', 'Noto Serif CJK TC', 'Songti TC', 'PMingLiU', 'MingLiU', serif; font-weight: 700; font-size: clamp(16px, 5.2vw, 26px); line-height: 1; color: var(--tink, var(--ink)); }
-.glyph { width: 68%; height: 68%; color: var(--tink, var(--ink)); }
+.honour { font-family: 'Noto Serif TC', 'Noto Serif CJK TC', 'Songti TC', 'PMingLiU', 'MingLiU', serif; font-weight: 700; font-size: clamp(19px, 6.2vw, 31px); line-height: 1; color: var(--tink, var(--ink)); }
+.glyph { width: 78%; height: 78%; color: var(--tink, var(--ink)); }
+.glyph.mascot { width: 88%; height: 88%; }   /* Gridiron: no corner number, so the mascot can fill the cell */
 .corner { position: absolute; top: 3px; left: 4px; font-size: clamp(8px, 2.3vw, 12px); font-weight: 700; line-height: 1; color: var(--tink, var(--ink)); }
 /* states — ORDER MATTERS */
 .c-sel::before { /* yellow highlighter swipe behind the mark */
   content: ''; position: absolute; inset: 16% 5%; z-index: -1; background: var(--sel); mix-blend-mode: var(--blend);
   border-radius: 2px 5px 3px 6px; transform: rotate(-4deg);
 }
-.c-sel .knock { stroke: var(--sel); }
 .c-done { color: var(--done); cursor: default; }
 .c-done::after { transform: scaleX(1) rotate(-38deg); opacity: .4; }
 .c-done .pip.on, .c-done .pips.solid .pip.on { background: radial-gradient(circle, var(--done) 0 70%, transparent 73%); }
