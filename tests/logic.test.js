@@ -214,10 +214,10 @@ test('hard mode has no hints', function () {
   assert.strictEqual(L.hint(L.newGame('hard')).event, null);
 });
 test('clearing the last pair clears the level with a bonus', function () {
-  var s = stateWith([3,7], 'normal', { par: 2 });
+  var s = stateWith([3,7], 'normal', { par: 3 });
   var r = L.select(L.select(s, 1).state, 2);
   assert.strictEqual(r.state.status, 'clear');
-  // 0 adds used, 2 under par: 1.5 * (100 + 400) = 750. Pair is mixed, plus one row.
+  // 1 match used, par 3, 2 under par: 1.5 * (100 + 400) = 750. Pair is mixed, plus one row.
   assert.strictEqual(r.state.bonus, 750);
   assert.strictEqual(r.event.gain, 60);
   assert.strictEqual(r.state.score, 810);
@@ -486,13 +486,20 @@ test('parsePuzzle accepts only a full puzzle code', function () {
   assert.strictEqual(L.formatPuzzle({ diff: 'normal', level: 1, mode: 'icons', seed: 0x00a1b2c3 }), 'normal-1-icons-00a1b2c3');
 });
 
+test('a dealt board remembers its opening tiles', function () {
+  var s = L.newGame('normal');
+  assert.strictEqual(s.opening.length, s.cells.length);
+  assert.strictEqual(s.opening[0].v, s.cells[0].v);
+  assert.ok(!s.opening[0].id);
+});
+
 test('classic level 1 is the fixed board on every difficulty', function () {
   ['easy', 'normal', 'hard'].forEach(function (diff) {
     var s = L.dealPuzzle({ diff: diff, level: 1, rules: 'classic', seed: 5 });
     assert.deepStrictEqual(s.cells.map(function (c) { return c.v; }), L.classicBoard());
     assert.strictEqual(L.isBeatable(s), true);
     assert.strictEqual(s.seed, 5);
-    assert.strictEqual(s.par, 3);
+    assert.strictEqual(s.par, 29);
   });
 });
 
@@ -599,6 +606,13 @@ test('3 two crossed-out cells between a pair add the gap bonus', function () {
   assert.strictEqual(r.event.gaps, 2);
   assert.strictEqual(r.event.gain, 21);
 });
+test('a wrap stroke goes right, through the gutter, then right into the lower cell', function () {
+  var adjacent = L.wrapStroke({ x: 80, y: 10 }, { x: 20, y: 40 }, 0, 90, [10, 40]);
+  assert.strictEqual(adjacent, 'M 80 10 L 90 10 L 90 25 L 0 25 L 0 40 L 20 40');
+  var spanned = L.wrapStroke({ x: 80, y: 10 }, { x: 20, y: 70 }, 0, 90, [10, 40, 70]);
+  assert.strictEqual(spanned, 'M 80 10 L 90 10 L 90 25 L 0 25 L 0 40 L 90 40 L 90 55 L 0 55 L 0 70 L 20 70');
+});
+
 test('4 a wrap of two outlines scores 45', function () {
   var vals = [3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 3];
   var r = L.select(L.select(stateWith(vals, 'normal'), 9).state, 10);
@@ -668,13 +682,13 @@ test('10 two rows emptied at once pay 180', function () {
   assert.strictEqual(r.event.rowBonus, 180);
 });
 test('11 finishing under par pays the level bonus and the par bonus', function () {
-  var r = L.select(L.select(stateWith([1, 1], 'normal', { par: 2, addsLeft: 5 }), 1).state, 2);
+  var r = L.select(L.select(stateWith([1, 1], 'normal', { par: 3, addsLeft: 5 }), 1).state, 2);
   assert.strictEqual(r.state.status, 'clear');
-  assert.strictEqual(r.state.bonus, 750);
+  assert.strictEqual(r.state.bonus, 750); // 1 match, 2 under par: 1.5 * (100 + 400)
 });
-test('12 using more adds than par pays only the level part', function () {
-  var r = L.select(L.select(stateWith([1, 1], 'normal', { par: 2, addsLeft: 2 }), 1).state, 2);
-  assert.strictEqual(r.state.bonus, 150);
+test('12 using more matches than par pays only the level part', function () {
+  var r = L.select(L.select(stateWith([1, 1], 'normal', { par: 0, addsLeft: 2 }), 1).state, 2);
+  assert.strictEqual(r.state.bonus, 150); // 1 match, par 0: 1.5 * 100
 });
 test('13 a hint costs 38 points, a hint count, and one streak step', function () {
   var r = L.hint(stateWith([1, 1, 2], 'normal', { score: 100, streak: 2 }));
@@ -762,7 +776,16 @@ test('pointer pairs match the reading-order, column, and diagonal rules', functi
   }
 });
 
-test('the reference player matches a full recount, and classic level 1 needs 3 adds', function () {
+test('a timed-out par counts a full add of the board for every add allowed', function () {
+  var play = L.tidyPlay(L.classicBoard(), true, 'classic', 5, -1);
+  assert.strictEqual(play.timedOut, true);
+  assert.strictEqual(play.matches, 432); // 27 tiles doubled five times, then cleared
+});
+
+test('the reference player matches a full recount, and classic level 1 needs 3 adds and 29 matches', function () {
+  var classic = L.tidyPlay(L.classicBoard(), true, 'classic', 5, 1000);
+  assert.strictEqual(classic.adds, 3);
+  assert.strictEqual(classic.matches, 29);
   assert.strictEqual(L.tidyAdds(L.classicBoard(), true, 'classic', 5, 1000), 3);
   var board = [1, 9, 2, 8, 3, 5];
   assert.strictEqual(L.tidyAdds(board, true, 'classic', 5, 1000), slowAdds(board, true, 'classic', 5));

@@ -37,5 +37,21 @@ test('the title turns red only when the board is not beatable', function () {
   assert.ok(app.indexOf('isBeatable') !== -1);
 });
 
+test('under par is green and a dead board turns the tally red', function () {
+  assert.ok(css.indexOf('.subline.is-under') !== -1);
+  assert.ok(css.indexOf('.stat.is-stuck') !== -1);
+  assert.ok(css.indexOf('var(--h2i)') !== -1);
+  assert.ok(app.indexOf('is-under') !== -1);
+  assert.ok(app.indexOf('paintStanding') !== -1);
+});
+
+test('a wrap match follows the row and a short code can be entered', function () {
+  assert.ok(app.indexOf("ev.kind === 'wrap'") !== -1);
+  assert.ok(app.indexOf('wrapStroke') !== -1);
+  assert.ok(html.indexOf('placeholder="xy7-fg9"') !== -1);
+  assert.ok(app.indexOf('parseBoardCode') !== -1);
+  assert.ok(app.indexOf('saveBoard') !== -1);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

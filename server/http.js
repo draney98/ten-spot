@@ -2,7 +2,7 @@
 var http = require('http');
 var scores = require('./scores.js');
 
-var MAX_BODY = 1024;
+var MAX_BODY = 8192;
 
 function send(req, res, status, body, origin) {
   var headers = { 'content-type': 'application/json; charset=utf-8' };
@@ -46,6 +46,26 @@ function createScoresServer(opts) {
     if (req.method === 'GET' && url.pathname === '/health') return send(req, res, 200, { ok: true }, origin);
     if (req.method === 'POST' && url.pathname === '/v1/players') {
       return send(req, res, 201, scores.createPlayer(db), origin);
+    }
+    if (req.method === 'POST' && url.pathname === '/v1/boards') {
+      readBody(req).then(function (text) {
+        var body;
+        try { body = JSON.parse(text || '{}'); }
+        catch (e) { return send(req, res, 400, { error: 'invalid json' }, origin); }
+        var saved;
+        try { saved = scores.saveBoard(db, body); }
+        catch (e) { return send(req, res, 400, { error: e.message }, origin); }
+        return send(req, res, 201, saved, origin);
+      }).catch(function (e) {
+        if (!res.headersSent) send(req, res, e.status || 400, { error: e.message }, origin);
+      });
+      return;
+    }
+    var boardMatch = url.pathname.match(/^\/v1\/boards\/([^/]+)$/);
+    if (boardMatch && req.method === 'GET') {
+      var board = scores.getBoard(db, decodeURIComponent(boardMatch[1]));
+      if (!board) return send(req, res, 404, { error: 'unknown code' }, origin);
+      return send(req, res, 200, board, origin);
     }
     var match = url.pathname.match(/^\/v1\/players\/([^/]+)$/);
     if (!match) return send(req, res, 404, { error: 'not found' }, origin);

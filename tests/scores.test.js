@@ -75,5 +75,41 @@ test('a file database survives a second open', function () {
   fs.unlinkSync(file);
 });
 
+function sampleBoard(v, mode) {
+  return { diff: 'normal', level: 1, mode: mode || 'icons', seed: 5, cells: [{ v: v }, { v: 9, solid: false }] };
+}
+
+test('the same opening board keeps one code', function () {
+  var db = scores.openScores(':memory:');
+  var first = scores.saveBoard(db, sampleBoard(1), ['aaaaaa']);
+  assert.strictEqual(first.code, 'aaa-aaa');
+  var again = scores.saveBoard(db, sampleBoard(1), ['zzzzzz']);
+  assert.strictEqual(again.code, 'aaa-aaa');
+  assert.strictEqual(again.seed, 5);
+});
+
+test('a code that already exists is skipped', function () {
+  var db = scores.openScores(':memory:');
+  scores.saveBoard(db, sampleBoard(1), ['aaaaaa']);
+  var second = scores.saveBoard(db, sampleBoard(2), ['aaaaaa', 'xy7fg9']);
+  assert.strictEqual(second.code, 'xy7-fg9');
+  assert.notStrictEqual(second.code, 'aaa-aaa');
+});
+
+test('a board code is case insensitive', function () {
+  var db = scores.openScores(':memory:');
+  scores.saveBoard(db, sampleBoard(3), ['xy7fg9']);
+  var found = scores.getBoard(db, 'XY7-FG9');
+  assert.strictEqual(found.code, 'xy7-fg9');
+  assert.strictEqual(found.mode, 'icons');
+  assert.strictEqual(scores.getBoard(db, 'nope'), null);
+  assert.notStrictEqual(scores.saveBoard(db, sampleBoard(3, 'num'), ['bbbbbb']).code, 'xy7-fg9');
+});
+
+test('an invalid board is rejected', function () {
+  var db = scores.openScores(':memory:');
+  assert.throws(function () { scores.saveBoard(db, { diff: 'nope', level: 1, mode: 'num', seed: 1, cells: [{ v: 1 }] }); }, /invalid board/);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

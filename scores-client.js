@@ -62,6 +62,23 @@
     return send(base, 'POST', '/v1/players', {}, fetchFn);
   }
 
+  function parseBoardCode(input) {
+    if (typeof input !== 'string') return null;
+    var raw = input.toLowerCase().replace(/[\s-]/g, '');
+    if (!/^[0-9a-z]{6}$/.test(raw)) return null;
+    return raw.slice(0, 3) + '-' + raw.slice(3);
+  }
+
+  function saveBoard(base, board, fetchFn) {
+    return send(base, 'POST', '/v1/boards', board, fetchFn);
+  }
+
+  function getBoard(base, code, fetchFn) {
+    var id = parseBoardCode(code);
+    if (!id) return invalid();
+    return send(base, 'GET', '/v1/boards/' + id, null, fetchFn);
+  }
+
   function shouldSync(api, code) {
     return typeof api === 'string' && api.length > 0 && typeof code === 'string' && code.length > 0;
   }
@@ -72,6 +89,9 @@
     getPlayer: getPlayer,
     putBests: putBests,
     createPlayer: createPlayer,
+    parseBoardCode: parseBoardCode,
+    saveBoard: saveBoard,
+    getBoard: getBoard,
     shouldSync: shouldSync
   };
 });

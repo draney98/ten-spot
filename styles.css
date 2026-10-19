@@ -77,7 +77,8 @@ body {
 .a-head { display: flex; align-items: center; gap: 8px; }
 .title-wrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 h1 { margin: 0; font-size: 27px; line-height: 1.1; font-weight: 700; }
-h1.is-stuck { color: var(--strike); }
+h1.is-stuck, .subline.is-stuck { color: var(--strike); }
+h1.is-under, .subline.is-under { color: var(--h2i); }
 .subline { font-size: 14px; color: var(--muted); }
 .icon-btn {
   width: 44px; height: 44px; flex: 0 0 44px; padding: 0; border-radius: 6px;
@@ -113,6 +114,10 @@ h1.is-stuck { color: var(--strike); }
 .stat-pct { text-align: right; }
 .stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .stat-l { font-size: 13px; color: var(--muted); }
+.stat.is-stuck, .stat.is-stuck .stat-l, .stat.is-stuck .stat-big, .stat.is-stuck .stat-small { color: var(--strike); }
+.stat.is-under, .stat.is-under .stat-l, .stat.is-under .stat-big, .stat.is-under .stat-small { color: var(--h2i); }
+.stat.is-stuck .score-tag, .stat.is-under .score-tag { color: var(--gain); }
+.stat.is-stuck .score-tag.is-loss, .stat.is-under .score-tag.is-loss { color: var(--strike); }
 .stat-big { font-size: 32px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .stat-small { font-size: 24px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .score-tag { color: var(--gain); margin-left: 4px; }

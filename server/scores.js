@@ -34,6 +34,15 @@ function openScores(path) {
     'created_at TEXT NOT NULL,' +
     'updated_at TEXT NOT NULL)'
   );
+  db.exec(
+    'CREATE TABLE IF NOT EXISTS boards (' +
+    'code TEXT PRIMARY KEY,' +
+    'board_key TEXT NOT NULL UNIQUE,' +
+    'diff TEXT NOT NULL,' +
+    'level INTEGER NOT NULL,' +
+    'mode TEXT NOT NULL,' +
+    'seed INTEGER NOT NULL)'
+  );
   return db;
 }
 
@@ -71,11 +80,111 @@ function raiseBests(db, code, patch) {
   return getPlayer(db, raw);
 }
 
+var BOARD_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
+var BOARD_DIFFS = { easy: 1, normal: 1, hard: 1 };
+var BOARD_MODES = { num: 1, tiles: 1, icons: 1, teams: 1 };
+
+function normalizeBoardCode(input) {
+  if (typeof input !== 'string') return null;
+  var raw = input.toLowerCase().replace(/[\s-]/g, '');
+  if (!/^[0-9a-z]{6}$/.test(raw)) return null;
+  return raw;
+}
+
+function formatBoardCode(raw) {
+  return raw.slice(0, 3) + '-' + raw.slice(3);
+}
+
+function boardRow(record) {
+  if (!record) return null;
+  return {
+    code: formatBoardCode(record.code),
+    diff: record.diff,
+    level: record.level,
+    mode: record.mode,
+    seed: record.seed
+  };
+}
+
+function cellToken(cell) {
+  if (!cell || typeof cell !== 'object' || typeof cell.v !== 'number' || !Number.isInteger(cell.v)) return null;
+  if (cell.solid === true) return cell.v + 's';
+  if (cell.solid === false) return cell.v + 'o';
+  if (cell.solid != null) return null;
+  return String(cell.v);
+}
+
+function boardKey(body) {
+  var parts = [];
+  for (var i = 0; i < body.cells.length; i++) {
+    var token = cellToken(body.cells[i]);
+    if (token == null) return null;
+    parts.push(token);
+  }
+  return body.diff + '|' + body.level + '|' + body.mode + '|' + parts.join(',');
+}
+
+function isUnique(err) {
+  return !!(err && (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || /UNIQUE/i.test(err.message)));
+}
+
+function freshBoardCode(db) {
+  for (var n = 0; n < 8; n++) {
+    var bytes = crypto.randomBytes(6);
+    var raw = '';
+    for (var i = 0; i < 6; i++) raw += BOARD_ALPHABET[bytes[i] % BOARD_ALPHABET.length];
+    if (!db.prepare('SELECT code FROM boards WHERE code = ?').get(raw)) return raw;
+  }
+  return null;
+}
+
+function getBoard(db, code) {
+  var raw = normalizeBoardCode(code);
+  if (!raw) return null;
+  return boardRow(db.prepare('SELECT code, diff, level, mode, seed FROM boards WHERE code = ?').get(raw));
+}
+
+/** Store a dealt board. The same opening cells, difficulty, level, and mode
+    keep one code. `codes`, when passed, is the list to try (tests). */
+function saveBoard(db, body, codes) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('invalid board');
+  if (!BOARD_DIFFS[body.diff] || !BOARD_MODES[body.mode]) throw new Error('invalid board');
+  if (typeof body.level !== 'number' || !Number.isInteger(body.level) || body.level < 1 || body.level > 99) throw new Error('invalid board');
+  if (typeof body.seed !== 'number' || !Number.isInteger(body.seed) || body.seed < 0 || body.seed > 0xffffffff) throw new Error('invalid board');
+  if (!Array.isArray(body.cells) || body.cells.length < 1 || body.cells.length > 400) throw new Error('invalid board');
+  var key = boardKey(body);
+  if (!key) throw new Error('invalid board');
+  var existing = db.prepare('SELECT code, diff, level, mode, seed FROM boards WHERE board_key = ?').get(key);
+  if (existing) return boardRow(existing);
+  var attempt = 0;
+  while (attempt < 8) {
+    var raw = codes ? codes[attempt] : freshBoardCode(db);
+    attempt++;
+    if (!raw || !normalizeBoardCode(raw)) throw new Error('invalid board');
+    raw = normalizeBoardCode(raw);
+    if (db.prepare('SELECT code FROM boards WHERE code = ?').get(raw)) continue;
+    try {
+      db.prepare('INSERT INTO boards (code, board_key, diff, level, mode, seed) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(raw, key, body.diff, body.level, body.mode, body.seed);
+      return getBoard(db, raw);
+    } catch (err) {
+      if (!isUnique(err)) throw err;
+      var won = db.prepare('SELECT code, diff, level, mode, seed FROM boards WHERE board_key = ?').get(key);
+      if (won) return boardRow(won);
+    }
+  }
+  throw new Error('invalid board');
+}
+
 module.exports = {
   openScores: openScores,
   createPlayer: createPlayer,
   getPlayer: getPlayer,
   raiseBests: raiseBests,
   normalizeCode: normalizeCode,
-  formatCode: formatCode
+  formatCode: formatCode,
+  normalizeBoardCode: normalizeBoardCode,
+  formatBoardCode: formatBoardCode,
+  getBoard: getBoard,
+  saveBoard: saveBoard
 };

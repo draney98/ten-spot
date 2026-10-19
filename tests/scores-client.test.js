@@ -62,6 +62,37 @@ test('putBests reports unreachable instead of throwing', function () {
   });
 });
 
+test('parseBoardCode accepts six letters or digits around a dash', function () {
+  assert.strictEqual(client.parseBoardCode('XY7-fg9'), 'xy7-fg9');
+  assert.strictEqual(client.parseBoardCode('xy7fg9'), 'xy7-fg9');
+  assert.strictEqual(client.parseBoardCode('xy7-fg'), null);
+  assert.strictEqual(client.parseBoardCode('normal-1-icons-00a1b2c3'), null);
+});
+
+test('saveBoard posts the opening board and getBoard reads a short code', function () {
+  var board = { diff: 'normal', level: 1, mode: 'icons', seed: 5, cells: [{ v: 1 }] };
+  return client.saveBoard('https://scores.example', board, function (url, opts) {
+    assert.strictEqual(url, 'https://scores.example/v1/boards');
+    assert.strictEqual(opts.method, 'POST');
+    assert.strictEqual(JSON.parse(opts.body).seed, 5);
+    return Promise.resolve({
+      ok: true, status: 201,
+      json: function () { return Promise.resolve({ code: 'xy7-fg9', diff: 'normal', level: 1, mode: 'icons', seed: 5 }); }
+    });
+  }).then(function (res) {
+    assert.strictEqual(res.body.code, 'xy7-fg9');
+    return client.getBoard('https://scores.example', 'XY7-FG9', function (url) {
+      assert.strictEqual(url, 'https://scores.example/v1/boards/xy7-fg9');
+      return Promise.resolve({
+        ok: true, status: 200,
+        json: function () { return Promise.resolve({ code: 'xy7-fg9', seed: 5 }); }
+      });
+    });
+  }).then(function (res) {
+    assert.strictEqual(res.body.seed, 5);
+  });
+});
+
 test('createPlayer posts and returns the server body', function () {
   return client.createPlayer('https://scores.example', function (url, opts) {
     assert.strictEqual(url, 'https://scores.example/v1/players');

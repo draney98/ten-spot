@@ -55,7 +55,7 @@
     streakMax: 2,      // ...up to x2
     row: 30,           // row bonus = 30 x (rows emptied by this pair)^2
     levelPerLevel: 100,// level bonus = 100 x level ...
-    parAdd: 200,       // ... + 200 for each add under par
+    parAdd: 200,       // ... + 200 for each match under par
     hintCost: 25,      // points, x mult
     undoCost: 5        // points, x mult
   };
@@ -650,16 +650,21 @@
     return { gain: pair + rowBonus, pair: pair, rowBonus: rowBonus, kind: li.kind, gaps: li.gaps, same: same, streakMult: streakMult(streak) };
   }
 
+  /** Matches the player has made. Two cleared tiles are one match. */
+  function matchesMade(s) {
+    return Math.floor((s.cleared || 0) / 2);
+  }
+
   /** Bonus for clearing a level. Unused hints no longer pay. */
   function levelBonus(s) {
-    var used = addsFor(s.diff, s.level) - s.addsLeft;
+    var used = matchesMade(s);
     var underPar = Math.max(0, (s.par || 0) - used);
     return Math.round(pointMult(s.diff, s.level) * (SCORE.levelPerLevel * s.level + SCORE.parAdd * underPar));
   }
 
   function bonusParts(s) {
     var mult = pointMult(s.diff, s.level);
-    var used = addsFor(s.diff, s.level) - s.addsLeft;
+    var used = matchesMade(s);
     var under = Math.max(0, (s.par || 0) - used);
     return {
       levelPoints: Math.round(mult * SCORE.levelPerLevel * s.level),
@@ -670,8 +675,16 @@
     };
   }
 
-  /** Wall-clock cap for one reference play-out. Past this, par is the level's adds. */
+  /** Wall-clock cap for one reference play-out. Past this, par is a generous match count. */
   var PAR_BUDGET_MS = 50;
+
+  /** Matches it would take to add the whole board once per allowed add, then clear it.
+      Higher than a careful game, so a timed-out par is never unfair. */
+  function generousMatches(tileCount, cap) {
+    var tiles = tileCount;
+    for (var i = 0; i < cap; i++) tiles *= 2;
+    return Math.ceil(tiles / 2);
+  }
 
   function countLive(cells) {
     var n = 0;
@@ -806,7 +819,8 @@
 
   /** Reference player: the pair that leaves the most legal pairs, else Add.
       Same board, same cap, same answer. Stops once adds reach `cap`.
-      `{ adds, cleared, timedOut }`. On a time budget, adds is `cap` and timedOut is set. */
+      `{ adds, matches, cleared, timedOut }`. A match is one cleared pair; an add is not.
+      On a time budget, matches is the generous count and timedOut is set. */
   function tidyPlay(values, diag, rules, cap, budgetMs) {
     if (budgetMs == null) budgetMs = PAR_BUDGET_MS;
     var deadline = Date.now() + budgetMs;
@@ -814,26 +828,35 @@
       return { id: i + 1, v: (v && typeof v === 'object') ? v.v : v, done: false };
     });
     var board = linkBoard(cells, diag, rules);
-    var adds = 0, guard = 0;
+    var adds = 0, matches = 0, guard = 0;
+    function unfinished(timedOut) {
+      return {
+        adds: cap,
+        matches: timedOut ? generousMatches(values.length, cap) : matches,
+        cleared: false,
+        timedOut: !!timedOut
+      };
+    }
     while (board.live() && guard++ < 400) {
-      if (Date.now() > deadline) return { adds: cap, cleared: false, timedOut: true };
+      if (Date.now() > deadline) return unfinished(true);
       var pairs = board.pairs();
       if (!pairs.length) {
-        if (adds >= cap) return { adds: cap, cleared: false, timedOut: false };
+        if (adds >= cap) return unfinished(false);
         board = board.added();
         adds++;
         continue;
       }
       var best = pairs[0], bestN = -1;
       for (var q = 0; q < pairs.length; q++) {
-        if ((q & 31) === 0 && Date.now() > deadline) return { adds: cap, cleared: false, timedOut: true };
+        if ((q & 31) === 0 && Date.now() > deadline) return unfinished(true);
         var n = board.options(pairs[q][0], pairs[q][1]);
         if (n > bestN) { bestN = n; best = pairs[q]; }
       }
       board = board.play(best[0], best[1]);
+      matches++;
     }
-    if (board.live()) return { adds: cap, cleared: false, timedOut: false };
-    return { adds: adds, cleared: true, timedOut: false };
+    if (board.live()) return unfinished(false);
+    return { adds: adds, matches: matches, cleared: true, timedOut: false };
   }
 
   function tidyAdds(values, diag, rules, cap, budgetMs) {
@@ -851,7 +874,7 @@
        nextId: number,             // next cell id to hand out
        selected: null | cellId,
        moves, score, streak,
-       par,                        // adds the reference player used on this board, capped at this level's adds
+       par,                        // matches the reference player made on this board
        penalties,                  // total points lost to mismatches this game (Undo never gives them back)
        cleared, total,             // numbers cleared / numbers dealt this level
        addsLeft, hintsLeft, undosLeft,
@@ -875,9 +898,9 @@
     var rulesName = (rules === 'pairs' || rules === 'mahjong') ? rules : 'classic';
     var vals = makeBoard(level, rng, rules);
     var addsThisLevel = addsFor(diff, level);
-    // Classic level 1 is one fixed board. The reference player always uses 3 adds.
+    // Classic level 1 is one fixed board. The reference player uses 3 adds and 29 matches.
     var play = (level <= 1 && rulesName === 'classic')
-      ? { adds: 3, cleared: true, timedOut: false }
+      ? { adds: 3, matches: 29, cleared: true, timedOut: false }
       : tidyPlay(vals, L.diag, rulesName, addsThisLevel);
     return {
       level: level,
@@ -891,7 +914,7 @@
       nextId: vals.length + 1,
       selected: null,
       streak: 0,
-      par: play.timedOut ? addsThisLevel : Math.min(addsThisLevel, play.adds),
+      par: play.matches,
       refClear: play.cleared || play.timedOut,
       cleared: 0,
       total: vals.length,
@@ -902,7 +925,13 @@
       status: 'playing',
       bonus: 0,
       final: 0,
-      newBest: false
+      newBest: false,
+      opening: vals.map(function (tile) {
+        var v = (tile && typeof tile === 'object') ? tile.v : tile;
+        var tile0 = { v: v };
+        if (tile && typeof tile === 'object' && typeof tile.solid === 'boolean') tile0.solid = tile.solid;
+        return tile0;
+      })
     };
   }
 
@@ -1166,6 +1195,22 @@
     for (var i = 0; i < cells.length; i++) if (cells[i].id === id) return i;
     return -1;
   }
+  /** SVG path for a wrap match: right to the row end, through the gutter to the
+      next row's left edge, and right again. `rowYs` are row centers from the
+      upper cell to the lower cell. Other pair kinds stay a straight line. */
+  function wrapStroke(from, to, left, right, rowYs) {
+    var ys = rowYs && rowYs.length > 1 ? rowYs : [from.y, to.y];
+    var n = function (x) { return Math.round(x * 10) / 10; };
+    var d = ['M', n(from.x), n(from.y), 'L', n(right), n(ys[0])];
+    for (var i = 1; i < ys.length; i++) {
+      var mid = (ys[i - 1] + ys[i]) / 2;
+      d.push('L', n(right), n(mid), 'L', n(left), n(mid), 'L', n(left), n(ys[i]));
+      if (i < ys.length - 1) d.push('L', n(right), n(ys[i]));
+    }
+    d.push('L', n(to.x), n(to.y));
+    return d.join(' ');
+  }
+
   function remaining(s) { return s.total - s.cleared; }
   function canUndo(s) { return s.history.length > 0 && s.undosLeft > 0 && s.status !== 'clear'; }
   function canHint(s) { return s.status === 'playing' && s.hintsLeft > 0 && remaining(s) > 0; }
@@ -1179,12 +1224,12 @@
     addsFor: addsFor, pointMult: pointMult, matches: matches, canLink: canLink, findPair: findPair, canClear: canClear,
     allPairs: allPairs, isBeatable: isBeatable,
     doneRows: doneRows, compact: compact, levelBonus: levelBonus, bonusParts: bonusParts,
-    SCORE: SCORE, linkInfo: linkInfo, pairScore: pairScore, streakMult: streakMult, tidyAdds: tidyAdds,
+    SCORE: SCORE, linkInfo: linkInfo, pairScore: pairScore, streakMult: streakMult, tidyAdds: tidyAdds, tidyPlay: tidyPlay,
     shadeOf: shadeOf, sameShade: sameShade, mixedShade: mixedShade,
     newGame: newGame, dealPuzzle: dealPuzzle, select: select, addNumbers: addNumbers, undo: undo, hint: hint,
     nextLevel: nextLevel, compactBoard: compactBoard,
     mulberry32: mulberry32, nextSeed: nextSeed, randomSeed: randomSeed, seekSeed: seekSeed,
     parsePuzzle: parsePuzzle, formatPuzzle: formatPuzzle,
-    indexOfId: indexOfId, remaining: remaining, canUndo: canUndo, canHint: canHint, canAdd: canAdd
+    indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd
   };
 });

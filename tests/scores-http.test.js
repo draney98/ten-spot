@@ -91,10 +91,43 @@ listen(server).then(function (port) {
       test('PUT invalid code is 400', function () {
         assert.strictEqual(res.status, 400);
       });
-      return call(port, 'PUT', '/v1/players/2345-6789-abcd-efgh', 'x'.repeat(1025), 'https://ten-spot.example');
+      return call(port, 'POST', '/v1/boards', {
+        diff: 'easy', level: 2, mode: 'num', seed: 9, cells: [{ v: 1, solid: true }, { v: 9, solid: true }]
+      }, 'https://ten-spot.example');
     })
     .then(function (res) {
-      test('a body over 1024 bytes is 413', function () {
+      test('POST stores a board and returns a short code', function () {
+        assert.strictEqual(res.status, 201);
+        assert.match(res.json.code, /^[0-9a-z]{3}-[0-9a-z]{3}$/);
+        assert.strictEqual(res.json.seed, 9);
+      });
+      var code = res.json.code;
+      return call(port, 'POST', '/v1/boards', {
+        diff: 'easy', level: 2, mode: 'num', seed: 9, cells: [{ v: 1, solid: true }, { v: 9, solid: true }]
+      }, 'https://ten-spot.example').then(function (again) {
+        return call(port, 'GET', '/v1/boards/' + code.toUpperCase(), null, 'https://ten-spot.example').then(function (got) {
+          return { again: again, got: got, code: code };
+        });
+      });
+    })
+    .then(function (ctx) {
+      test('the same board returns the same code, in any case', function () {
+        assert.strictEqual(ctx.again.status, 201);
+        assert.strictEqual(ctx.again.json.code, ctx.code);
+        assert.strictEqual(ctx.got.status, 200);
+        assert.strictEqual(ctx.got.json.code, ctx.code);
+        assert.strictEqual(ctx.got.json.mode, 'num');
+      });
+      return call(port, 'GET', '/v1/boards/nope', null, 'https://ten-spot.example');
+    })
+    .then(function (res) {
+      test('an unknown board code is 404', function () {
+        assert.strictEqual(res.status, 404);
+      });
+      return call(port, 'PUT', '/v1/players/2345-6789-abcd-efgh', 'x'.repeat(8193), 'https://ten-spot.example');
+    })
+    .then(function (res) {
+      test('a body over 8192 bytes is 413', function () {
         assert.strictEqual(res.status, 413);
       });
     });

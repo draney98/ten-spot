@@ -69,6 +69,31 @@
       else { ui.scoreError = scoreError(res); render(); }
     });
   }
+  var boardTok = 0;
+  function openingCells(s) {
+    var src = s.opening || s.cells;
+    return src.map(function (c) {
+      var tile = { v: c.v };
+      if (typeof c.solid === 'boolean') tile.solid = c.solid;
+      return tile;
+    });
+  }
+  function publishBoard() {
+    var token = ++boardTok;
+    ui.boardCode = '';
+    if (!S || !SCORES_API || state.seed == null) return;
+    S.saveBoard(SCORES_API, {
+      diff: state.diff,
+      level: state.level,
+      mode: ui.mode,
+      seed: state.seed >>> 0,
+      cells: openingCells(state)
+    }, fetch).then(function (res) {
+      if (token !== boardTok || !res.ok || !res.body || !res.body.code) return;
+      ui.boardCode = res.body.code;
+      render();
+    });
+  }
   function pullBests() {
     var code = store.get(KEY_PLAYER);
     if (!S || !S.shouldSync(SCORES_API, code)) return;
@@ -102,7 +127,8 @@
     streakMult: 0, // multiplier that goes with a positive score tag
     note: '',      // status line text ('' = default text)
     scoreError: '',
-    puzzleError: ''
+    puzzleError: '',
+    boardCode: ''  // short code from the server; empty until that answer arrives
   };
 
   /* ---------- 3. TIMERS ----------
@@ -317,6 +343,25 @@
     var a = nodes.get(ev.ids[0]), b = nodes.get(ev.ids[1]);
     if (!a || !b) return;
     var A = centre(a), B = centre(b);
+    var upper = A.y <= B.y ? { p: A, el: a } : { p: B, el: b };
+    var lower = A.y <= B.y ? { p: B, el: b } : { p: A, el: a };
+    var stroke = 'M ' + A.x + ' ' + A.y + ' L ' + B.x + ' ' + B.y;
+    if (ev.kind === 'wrap') {
+      var gridBox = $('grid').getBoundingClientRect();
+      var kids = $('grid').children;
+      var rowOf = function (el) {
+        for (var i = 0; i < kids.length; i++) if (kids[i] === el) return Math.floor(i / L.COLS);
+        return 0;
+      };
+      var r0 = rowOf(upper.el), r1 = rowOf(lower.el);
+      var rowYs = [];
+      for (var r = r0; r <= r1; r++) {
+        var cell = kids[r * L.COLS] || upper.el;
+        var rect = cell.getBoundingClientRect();
+        rowYs.push(rect.top + rect.height / 2 - box.top);
+      }
+      stroke = L.wrapStroke(upper.p, lower.p, gridBox.left - box.left, gridBox.right - box.left, rowYs);
+    }
     var g = document.createElement('div');
     // Score-up clears use blue FX; score-down clears keep the red/pink "pen" look.
     g.className = 'fx-group fx-gain';
@@ -331,8 +376,8 @@
     });
     // 2) pencil line over a highlighter stroke (pathLength=1 lets the dash animation work at any length)
     html += '<svg class="zap-svg" width="' + box.width + '" height="' + box.height + '">' +
-      '<line class="zap zap-wide" x1="' + A.x + '" y1="' + A.y + '" x2="' + B.x + '" y2="' + B.y + '" pathLength="1" stroke-width="12"/>' +
-      '<line class="zap" x1="' + A.x + '" y1="' + A.y + '" x2="' + B.x + '" y2="' + B.y + '" pathLength="1" stroke-width="2.5"/>' +
+      '<path class="zap zap-wide" d="' + stroke + '" pathLength="1" stroke-width="12"/>' +
+      '<path class="zap" d="' + stroke + '" pathLength="1" stroke-width="2.5"/>' +
       '</svg>';
     // 3) rings + 4) ten pencil flecks per cell
     [A, B].forEach(function (p, n) {
@@ -402,10 +447,18 @@
       $(id).classList.toggle('is-off', off);
     });
 
-    // header
+    // header and tally: green while under par, red when the board cannot be finished
     $('subline').textContent = 'Level ' + s.level + ' on ' + D.label + ', points ×' + mult;
-    $('title').classList.toggle('is-stuck', !L.isBeatable(s));
-    $('puzzleCode').textContent = L.formatPuzzle({ diff: s.diff, level: s.level, mode: ui.mode, seed: s.seed });
+    var dead = !L.isBeatable(s);
+    var under = !dead && Math.floor(s.cleared / 2) < (s.par || 0);
+    function paintStanding(el) {
+      el.classList.toggle('is-stuck', dead);
+      el.classList.toggle('is-under', under);
+    }
+    paintStanding($('title'));
+    paintStanding($('subline'));
+    document.querySelectorAll('.stat').forEach(paintStanding);
+    $('puzzleCode').textContent = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, mode: ui.mode, seed: s.seed });
     $('puzzleError').textContent = ui.puzzleError || '';
 
     // scoreboard
@@ -437,7 +490,7 @@
     $('btnUndo').setAttribute('aria-label', 'Undo, ' + lim(s.undosLeft) + ' left');
     $('btnHint').setAttribute('aria-label', 'Hint, ' + lim(s.hintsLeft) + ' left');
     $('addMain').textContent = 'Add ' + NOUN[ui.mode];
-    $('addSub').textContent = s.addsLeft + ' of ' + L.addsFor(s.diff, s.level) + ' left · par ' + (s.par || 0);
+    $('addSub').textContent = s.addsLeft + ' of ' + L.addsFor(s.diff, s.level) + ' left · par ' + (s.par || 0) + ' matches';
 
     renderOverlay();
   }
@@ -597,7 +650,7 @@
     if (p.under > 0) {
       return 'Level bonus ' + fmt(p.levelPoints) + ', plus ' + fmt(p.parPoints) + ' for finishing ' + p.under + ' under par.' + score;
     }
-    return 'Level bonus ' + fmt(p.levelPoints) + '. Par was ' + p.par + ' adds; you used ' + p.used + '.' + score;
+    return 'Level bonus ' + fmt(p.levelPoints) + '. Par was ' + p.par + ' matches; you used ' + p.used + '.' + score;
   }
   function levelNote() {
     var extra = state.rules === 'pairs' ? ' tiles, ' + L.mascots(state.level) + ' mascots, '
@@ -649,6 +702,7 @@
     }
     ui.note = levelNote();
     scheduleUpcoming();
+    publishBoard();
     render();
   }
 
@@ -656,6 +710,7 @@
     resetAll();
     state = L.dealPuzzle({ diff: diff || state.diff, level: 1, rules: rulesFor(ui.mode), best: state.best, seed: L.randomSeed() });
     scheduleUpcoming();
+    publishBoard();
     render();
   }
 
@@ -666,7 +721,7 @@
   function setMode(mode) {
     if (mode === ui.mode) return;
     if (rulesFor(mode) === rulesFor(ui.mode)) {
-      ui.mode = mode; store.set(KEY_MODE, mode); render();
+      ui.mode = mode; store.set(KEY_MODE, mode); publishBoard(); render();
       return;
     }
     confirmReset('Switch to ' + MODE_NAME[mode] + '?',
@@ -707,15 +762,23 @@
     resetAll();
     state = L.dealPuzzle({ diff: spec.diff, level: spec.level, rules: rulesFor(spec.mode), best: best, seed: spec.seed });
     scheduleUpcoming();
+    publishBoard();
     render();
   }
   $('puzzleForm').addEventListener('submit', function (e) {
     e.preventDefault();
-    var spec = L.parsePuzzle($('puzzleInput').value);
-    if (!spec) { ui.puzzleError = 'That puzzle code is not valid.'; render(); return; }
+    var typed = $('puzzleInput').value;
+    var spec = L.parsePuzzle(typed);
+    var short = S && S.parseBoardCode(typed);
+    if (!spec && !short) { ui.puzzleError = 'That puzzle code is not valid.'; render(); return; }
     confirmReset('Play this puzzle?', 'This starts that puzzle over from its first deal.', 'Play this puzzle', function () {
       $('puzzleInput').value = '';
-      startPuzzle(spec);
+      if (spec) { startPuzzle(spec); return; }
+      if (!SCORES_API) { ui.puzzleError = "Couldn't reach the score server."; render(); return; }
+      S.getBoard(SCORES_API, short, fetch).then(function (res) {
+        if (!res.ok || !res.body) { ui.puzzleError = scoreError(res); render(); return; }
+        startPuzzle(res.body);
+      });
     });
   });
   $('btnScoreCreate').addEventListener('click', function () {
@@ -777,6 +840,7 @@
   });
 
   scheduleUpcoming();
+  publishBoard();
   render();
   pullBests();
 
@@ -796,16 +860,22 @@
       });
       s.nextId = values.length + 1;
       s.total = values.length;
+      s.opening = s.cells.map(function (c) {
+        var tile = { v: c.v };
+        if (typeof c.solid === 'boolean') tile.solid = c.solid;
+        return tile;
+      });
       for (var k in (extra || {})) s[k] = extra[k];
       s.seed = s.seed || 0;
       state = s;
       scheduleUpcoming();
+      publishBoard();
       render();
     },
     setTheme: setTheme,
     setMode: function (mode) { // test helper: switch style with no confirmation
       ui.mode = mode; store.set(KEY_MODE, mode);
-      if (rulesFor(mode) !== state.rules) newGame(); else render();
+      if (rulesFor(mode) !== state.rules) newGame(); else { publishBoard(); render(); }
     },
     openSettings: function (open) { ui.settingsOpen = open; render(); },
     beatable: function () { return L.isBeatable(state); }
