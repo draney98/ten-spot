@@ -139,25 +139,25 @@ test('point multiplier', function () {
 });
 
 /* ---------------- actions ---------------- */
-test('first match on classic board (1 over 1) scores 30 on Normal (15 + style bonus 15)', function () {
+test('first match on classic board (1 over 1) scores 30 on Normal', function () {
   var s = L.newGame('normal');
   s = L.select(s, 1).state;               // id 1 = top-left "1"
-  var r = L.select(s, 10);                // id 10 = first cell of row 2, also "1"
+  var r = L.select(s, 10);                // id 10 = the "1" directly below it (column)
   assert.strictEqual(r.event.type, 'match');
-  assert.strictEqual(r.event.gain, 30);        // (10 + 10 style bonus) x 1.5
-  assert.strictEqual(r.event.styleBonus, 15);
+  assert.strictEqual(r.event.kind, 'col');
+  assert.strictEqual(r.event.gain, 30);        // 10 x 2 same shade x 1.5
   assert.strictEqual(r.event.shade, 'outline');
   assert.strictEqual(r.state.score, 30);
   assert.strictEqual(r.state.cleared, 2);
   assert.strictEqual(r.state.moves, 1);
 });
-test('combo adds +2 per pair, resets on a miss', function () {
+test('streak grows by a tenth and a mismatch resets it', function () {
   var s = stateWith([1,1,2,2,3,3,4,6,4,4], 'easy');
-  s = L.select(L.select(s, 1).state, 2).state; assert.strictEqual(s.score, 20);   // 10 + style 10
-  s = L.select(L.select(s, 3).state, 4).state; assert.strictEqual(s.score, 42);   // + 10 + 2 combo + 10 style
-  var r = L.select(L.select(s, 5).state, 8);   // 3 and 4: not a match
+  s = L.select(L.select(s, 1).state, 2).state; assert.strictEqual(s.score, 20);   // 10 x 2
+  s = L.select(L.select(s, 3).state, 4).state; assert.strictEqual(s.score, 42);   // + 20 x 1.1
+  var r = L.select(L.select(s, 5).state, 8);   // 3 and 6: not a match
   assert.strictEqual(r.event.type, 'bad'); assert.strictEqual(r.event.reason, 'value');
-  assert.strictEqual(r.state.combo, 0);
+  assert.strictEqual(r.state.streak, 0);
   assert.strictEqual(r.state.selected, 8);
 });
 test('path failure reports reason "path"', function () {
@@ -181,7 +181,8 @@ test('clearing a full row awards +50 x mult and reports the row', function () {
   [[1,2],[3,4],[5,6],[7,8]].forEach(function (p) { s = L.select(L.select(s, p[0]).state, p[1]).state; });
   var r = L.select(L.select(s, 9).state, 10); // 5 and 5 (idx 8 and 9: wrap)
   assert.deepStrictEqual(r.event.rowsCleared, [0]);
-  assert.strictEqual(r.event.gain, Math.round((10 + 8 + 10 + 50) * 1)); // combo 5 => +8, 5+5 both outline => +10
+  assert.strictEqual(r.event.rowBonus, 30);
+  assert.strictEqual(r.event.gain, 72); // wrap same-shade x1.4, plus the row
 });
 test('add numbers appends copies of active values and spends an add', function () {
   var s = stateWith([1,2,3], 'normal');
@@ -213,18 +214,15 @@ test('hard mode has no hints', function () {
   assert.strictEqual(L.hint(L.newGame('hard')).event, null);
 });
 test('clearing the last pair clears the level with a bonus', function () {
-  var s = stateWith([3,7], 'normal');
+  var s = stateWith([3,7], 'normal', { par: 2 });
   var r = L.select(L.select(s, 1).state, 2);
   assert.strictEqual(r.state.status, 'clear');
-  // bonus = round(1.5 * (100*5 adds + 25*3 hints + 200*level 1)) = round(1162.5) = 1163
-  assert.strictEqual(r.state.bonus, 1163);
-  // 3 + 7 is a MIXED pair (outline + solid) that also empties row 0:
-  // row bonus 50 * 1.5 = 75, minus half of the pair's worth round(15 / 2) = 8  ->  67
-  assert.strictEqual(r.event.mixed, true);
-  assert.strictEqual(r.event.gain, 67);
-  assert.strictEqual(r.state.score, 67 + 1163);
+  // 0 adds used, 2 under par: 1.5 * (100 + 400) = 750. Pair is mixed, plus one row.
+  assert.strictEqual(r.state.bonus, 750);
+  assert.strictEqual(r.event.gain, 60);
+  assert.strictEqual(r.state.score, 810);
   assert.ok(r.state.newBest);
-  assert.strictEqual(r.state.best.normal, 1230);
+  assert.strictEqual(r.state.best.normal, 810);
 });
 test('no adds and no pairs left = game over', function () {
   var s = stateWith([1,1,2,3], 'normal', { addsLeft: 0 });
@@ -256,7 +254,8 @@ test('Hard allows diagonal pairs (top-left 1 with the diagonal 1)', function () 
   var s = L.newGame('hard');
   var r = L.select(L.select(s, 1).state, 11);  // idx 0 and idx 10
   assert.strictEqual(r.event.type, 'match');
-  assert.strictEqual(r.event.gain, 50);        // (10 + 10 style) x 2.5
+  assert.strictEqual(r.event.kind, 'diag');
+  assert.strictEqual(r.event.gain, 75);        // (10 + 5) x 2 x 2.5
 });
 
 /* ---------------- Gridiron ('pairs' rules) ---------------- */
@@ -362,8 +361,7 @@ test('shadeOf: classic 1-5 outline, 6-9 solid; Gridiron odd/even; mahjong honour
 });
 test('a complement with a shared shade earns the style bonus and keeps that shade', function () {
   var light = L.select(L.select(stateWith([{ v: 1, solid: false }, { v: 9, solid: false }, 2], 'easy'), 1).state, 2);
-  assert.strictEqual(light.event.mixed, false);
-  assert.strictEqual(light.event.styleBonus, 10);
+  assert.strictEqual(light.event.same, true);
   assert.strictEqual(light.event.gain, 20);
   assert.strictEqual(light.event.shade, 'outline');
   assert.strictEqual(light.state.cells[0].solid, false);
@@ -389,19 +387,19 @@ test('a generated level stores the shared shade on each cell', function () {
   assert.strictEqual(dealt.cells[1].solid, false);
   assert.ok(dealt.cells.every(function (c) { return typeof c.solid === 'boolean' && c.v >= 1 && c.v <= 9; }));
 });
-test('outline + solid pair still clears but costs half its worth', function () {
+test('an outline and a shaded tile score normal points', function () {
   var r = L.select(L.select(stateWith([3,7,1], 'easy', { score: 100 }), 1).state, 2);
   assert.strictEqual(r.event.type, 'match'); assert.strictEqual(r.state.cleared, 2);
-  assert.strictEqual(r.event.mixed, true); assert.strictEqual(r.event.styleBonus, 0);
-  assert.strictEqual(r.event.gain, -5); assert.strictEqual(r.event.penalty, 5);   // round(10 / 2)
-  assert.strictEqual(r.state.score, 95);
-  assert.strictEqual(r.state.combo, 1);                     // it still counts toward the combo
+  assert.strictEqual(r.event.same, false);
+  assert.strictEqual(r.event.gain, 10);
+  assert.strictEqual(r.state.score, 110);
+  assert.strictEqual(r.state.streak, 1);
 });
-test('mixed pair at score 0 costs nothing (never below 0); undo refunds a mixed clear', function () {
-  var r = L.select(L.select(stateWith([3,7,1], 'easy'), 1).state, 2);
-  assert.strictEqual(r.state.score, 0); assert.strictEqual(r.event.gain, 0); assert.strictEqual(r.event.penalty, 0);
+test('undo charges its cost and never goes below 0', function () {
   var s = L.select(L.select(stateWith([3,7,1], 'easy', { score: 100 }), 1).state, 2).state;
-  assert.strictEqual(L.undo(s).state.score, 100);
+  assert.strictEqual(L.undo(s).state.score, 95);   // back to 100, then undo costs 5
+  var broke = L.select(L.select(stateWith([3,7,1], 'easy'), 1).state, 2).state;
+  assert.strictEqual(L.undo(broke).state.score, 0);
 });
 test('hint prefers a pair with no mixed penalty', function () {
   var s = stateWith([1,9,2,2], 'normal');     // 1+9 is legal but mixed; 2+2 is same-shade
@@ -417,7 +415,7 @@ test('Gridiron: two solids earn the style bonus, outline + solid is a mixed pair
   var two = L.select(L.select(stateWith([2,2,5], 'easy', { rules: 'pairs' }), 1).state, 2);
   assert.strictEqual(two.event.gain, 20); assert.strictEqual(two.event.shade, 'solid');
   var mix = L.select(L.select(stateWith([1,2,5], 'easy', { rules: 'pairs', score: 100 }), 1).state, 2);
-  assert.strictEqual(mix.event.gain, -5); assert.strictEqual(mix.event.mixed, true);
+  assert.strictEqual(mix.event.gain, 10); assert.strictEqual(mix.event.same, false);
 });
 test('mismatch subtracts half of what the pair would have scored', function () {
   // 2 and 3: both outlines, combo would be 1 -> (10 + 10) x 1.5 = 30 -> penalty 15
@@ -494,6 +492,7 @@ test('classic level 1 is the fixed board on every difficulty', function () {
     assert.deepStrictEqual(s.cells.map(function (c) { return c.v; }), L.classicBoard());
     assert.strictEqual(L.isBeatable(s), true);
     assert.strictEqual(s.seed, 5);
+    assert.strictEqual(s.par, 3);
   });
 });
 
@@ -576,6 +575,229 @@ test('pairs: a large board past the budget stays in play', function () {
   var r = L.select(L.select(s, 1).state, 11);
   assert.strictEqual(r.event.type, 'match');
   assert.strictEqual(r.state.status, 'playing');
+});
+
+/* ---------------- distance, streak, and the new level bonus ---------------- */
+function near(m, want) { assert.ok(Math.abs(m - want) < 1e-9, m + ' !== ' + want); }
+
+test('1 neighbours that share a shade score 30', function () {
+  var r = L.select(L.select(stateWith([1, 1, 2], 'normal'), 1).state, 2);
+  assert.strictEqual(r.event.gain, 30);
+  assert.strictEqual(r.event.same, true);
+  assert.strictEqual(r.state.streak, 1);
+});
+test('2 a mixed neighbour pair scores 15 and the score goes up', function () {
+  var r = L.select(L.select(stateWith([1, 9, 2], 'normal', { score: 10 }), 1).state, 2);
+  assert.strictEqual(r.event.gain, 15);
+  assert.strictEqual(r.event.same, false);
+  assert.strictEqual(r.state.score, 25);
+});
+test('3 two crossed-out cells between a pair add the gap bonus', function () {
+  var s = stateWith([3, 8, 8, 7, 2], 'normal');
+  s.cells[1].done = true; s.cells[2].done = true;
+  var r = L.select(L.select(s, 1).state, 4);
+  assert.strictEqual(r.event.gaps, 2);
+  assert.strictEqual(r.event.gain, 21);
+});
+test('4 a wrap of two outlines scores 45', function () {
+  var vals = [3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 3];
+  var r = L.select(L.select(stateWith(vals, 'normal'), 9).state, 10);
+  assert.strictEqual(r.event.kind, 'wrap');
+  assert.strictEqual(r.event.gain, 45);
+});
+test('5 a blocked reading order that is diagonal scores 45', function () {
+  var vals = [1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3];
+  var r = L.select(L.select(stateWith(vals, 'normal'), 1).state, 11);
+  assert.strictEqual(r.event.kind, 'diag');
+  assert.strictEqual(r.event.gaps, 0);
+  assert.strictEqual(r.event.gain, 45);
+});
+test('6 a column with one crossed-out cell between scores 36', function () {
+  var vals = [];
+  for (var i = 0; i < 20; i++) vals.push(3);
+  vals[0] = 4; vals[18] = 4;
+  var s = stateWith(vals, 'normal');
+  s.cells[9].done = true;
+  var r = L.select(L.select(s, 1).state, 19);
+  assert.strictEqual(r.event.kind, 'col');
+  assert.strictEqual(r.event.gaps, 1);
+  assert.strictEqual(r.event.gain, 36);
+});
+test('7 the streak multiplier reaches 1.2 on the third pair and stops at 2', function () {
+  var vals = [];
+  for (var row = 0; row < 3; row++) {
+    for (var c = 0; c < 8; c++) vals.push(1);
+    vals.push(5);
+  }
+  var s = stateWith(vals, 'normal');
+  var pairs = [[1, 2], [3, 4], [5, 6], [7, 8], [10, 11], [12, 13], [14, 15], [16, 17], [19, 20], [21, 22], [23, 24], [25, 26]];
+  var third, eleventh, twelfth;
+  pairs.forEach(function (p, n) {
+    var r = L.select(L.select(s, p[0]).state, p[1]);
+    s = r.state;
+    if (n === 2) third = r.event;
+    if (n === 10) eleventh = r.event;
+    if (n === 11) twelfth = r.event;
+  });
+  near(third.streakMult, 1.2);
+  assert.strictEqual(third.gain, 36);
+  near(eleventh.streakMult, 2);
+  near(twelfth.streakMult, 2);
+  assert.strictEqual(eleventh.gain, 60);
+  assert.strictEqual(twelfth.gain, 60);
+});
+test('8 Add knocks the streak back one step', function () {
+  var s = stateWith([1, 2], 'normal', { streak: 3 });
+  assert.strictEqual(L.addNumbers(s).state.streak, 2);
+});
+test('9 a mismatch costs half of the new pair score and breaks the streak', function () {
+  var r = L.select(L.select(stateWith([2, 3, 1], 'normal', { score: 100, streak: 2 }), 1).state, 2);
+  assert.strictEqual(r.event.penalty, 18);
+  assert.strictEqual(r.state.score, 82);
+  assert.strictEqual(r.state.streak, 0);
+});
+test('10 two rows emptied at once pay 180', function () {
+  var vals = [];
+  for (var i = 0; i < 18; i++) vals.push(i === 0 || i === 9 ? 1 : 8);
+  var done = [];
+  for (var k = 0; k < 18; k++) if (k !== 0 && k !== 9) done.push(k);
+  var s = stateWith(vals, 'normal');
+  done.forEach(function (i) { s.cells[i].done = true; });
+  var r = L.select(L.select(s, 1).state, 10);
+  assert.strictEqual(r.event.rowsCleared.length, 2);
+  assert.strictEqual(r.event.rowBonus, 180);
+});
+test('11 finishing under par pays the level bonus and the par bonus', function () {
+  var r = L.select(L.select(stateWith([1, 1], 'normal', { par: 2, addsLeft: 5 }), 1).state, 2);
+  assert.strictEqual(r.state.status, 'clear');
+  assert.strictEqual(r.state.bonus, 750);
+});
+test('12 using more adds than par pays only the level part', function () {
+  var r = L.select(L.select(stateWith([1, 1], 'normal', { par: 2, addsLeft: 2 }), 1).state, 2);
+  assert.strictEqual(r.state.bonus, 150);
+});
+test('13 a hint costs 38 points, a hint count, and one streak step', function () {
+  var r = L.hint(stateWith([1, 1, 2], 'normal', { score: 100, streak: 2 }));
+  assert.strictEqual(r.event.cost, 38);
+  assert.strictEqual(r.state.score, 62);
+  assert.strictEqual(r.state.hintsLeft, 2);
+  assert.strictEqual(r.state.streak, 1);
+});
+test('14 undo restores the pair then charges 8, and never goes below 0', function () {
+  var cleared = L.select(L.select(stateWith([1, 1, 2], 'normal', { score: 100 }), 1).state, 2).state;
+  assert.strictEqual(cleared.score, 130);
+  var back = L.undo(cleared);
+  assert.strictEqual(back.event.cost, 8);
+  assert.strictEqual(back.state.score, 92);
+  var empty = L.select(L.select(stateWith([1, 1, 2], 'normal'), 1).state, 2).state;
+  assert.strictEqual(L.undo(empty).state.score, 0);
+});
+test('15 mismatch and hint costs do not come back on undo', function () {
+  var s = L.select(L.select(stateWith([1, 1, 2, 2, 4, 3], 'normal', { score: 100 }), 1).state, 2).state;
+  var missed = L.select(L.select(s, 5).state, 6);
+  assert.strictEqual(missed.event.penalty, 17);
+  s = missed.state;
+  var hinted = L.hint(s);
+  assert.strictEqual(hinted.event.cost, 38);
+  s = hinted.state;
+  var back = L.undo(s);
+  assert.strictEqual(back.state.score, 37);
+  assert.strictEqual(back.event.cost, 8);
+});
+test('16 tidyAdds is the same number twice on one board', function () {
+  var board = [1, 9, 2, 8, 3, 5];
+  assert.strictEqual(L.tidyAdds(board, true, 'classic', 5), L.tidyAdds(board, true, 'classic', 5));
+});
+function brutePairs(cells, diag, rules) {
+  var out = [];
+  for (var i = 0; i < cells.length; i++) {
+    if (cells[i].done) continue;
+    for (var j = i + 1; j < cells.length; j++) {
+      if (cells[j].done) continue;
+      if (L.matches(cells[i].v, cells[j].v, rules) && L.canLink(cells, i, j, diag)) out.push([i, j]);
+    }
+  }
+  return out;
+}
+function slowAdds(values, diag, rules, cap) {
+  var cells = values.map(function (v, i) {
+    return { id: i + 1, v: v, done: false };
+  });
+  var adds = 0, guard = 0;
+  while (cells.some(function (c) { return !c.done; }) && guard++ < 400) {
+    var pairs = L.allPairs(cells, diag, rules);
+    if (!pairs.length) {
+      if (adds >= cap) return cap;
+      var live = cells.filter(function (c) { return !c.done; });
+      cells = L.compact(cells.concat(live.map(function (c) { return { id: 0, v: c.v, done: false }; })));
+      adds++;
+      continue;
+    }
+    var best = pairs[0], bestN = -1;
+    for (var q = 0; q < pairs.length; q++) {
+      var p = pairs[q];
+      var after = L.compact(cells.map(function (c, k) {
+        return (k === p[0] || k === p[1]) ? { id: c.id, v: c.v, done: true } : c;
+      }));
+      var n = L.allPairs(after, diag, rules).length;
+      if (n > bestN) { bestN = n; best = p; }
+    }
+    cells = L.compact(cells.map(function (c, k) {
+      return (k === best[0] || k === best[1]) ? { id: c.id, v: c.v, done: true } : c;
+    }));
+  }
+  return adds;
+}
+
+test('pointer pairs match the reading-order, column, and diagonal rules', function () {
+  var rules = ['classic', 'pairs', 'mahjong'];
+  for (var n = 0; n < 40; n++) {
+    var rulesName = rules[n % 3];
+    var vals = L.makeBoard(1 + (n % 6), L.mulberry32(1000 + n), rulesName);
+    var cells = vals.map(function (tile, i) {
+      return { id: i + 1, v: (tile && typeof tile === 'object') ? tile.v : tile, done: (n + i) % 7 === 0 };
+    });
+    assert.deepStrictEqual(L.allPairs(cells, true, rulesName), brutePairs(cells, true, rulesName));
+    assert.deepStrictEqual(L.allPairs(cells, false, rulesName), brutePairs(cells, false, rulesName));
+  }
+});
+
+test('the reference player matches a full recount, and classic level 1 needs 3 adds', function () {
+  assert.strictEqual(L.tidyAdds(L.classicBoard(), true, 'classic', 5, 1000), 3);
+  var board = [1, 9, 2, 8, 3, 5];
+  assert.strictEqual(L.tidyAdds(board, true, 'classic', 5, 1000), slowAdds(board, true, 'classic', 5));
+  for (var s = 1; s <= 6; s++) {
+    var vals = L.makeBoard(2, L.mulberry32(s), 'classic').map(function (tile) {
+      return (tile && typeof tile === 'object') ? tile.v : tile;
+    });
+    assert.strictEqual(L.tidyAdds(vals, true, 'classic', 5, 1000), slowAdds(vals, true, 'classic', 5));
+  }
+});
+
+test('seeded reference plays finish under the time budget', function () {
+  var rules = ['classic', 'pairs', 'mahjong'];
+  var levels = [1, 2, 4, 6];
+  var slow = 0, total = 0;
+  rules.forEach(function (rulesName) {
+    levels.forEach(function (level) {
+      for (var s = 1; s <= 8; s++) {
+        var vals = L.makeBoard(level, L.mulberry32(s), rulesName);
+        var cap = L.addsFor('normal', level);
+        var t0 = Date.now();
+        var adds = L.tidyAdds(vals, true, rulesName, cap);
+        if (Date.now() - t0 > 50) slow++;
+        total++;
+        assert.ok(adds >= 0 && adds <= cap);
+      }
+    });
+  });
+  assert.ok(slow / total <= 0.01, slow + ' of ' + total + ' boards took longer than 50ms');
+});
+
+test('17 mahjong honours do not double', function () {
+  var r = L.select(L.select(stateWith([15, 15, 11], 'normal', { rules: 'mahjong' }), 1).state, 2);
+  assert.strictEqual(r.event.same, false);
+  assert.strictEqual(r.event.gain, 15);
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

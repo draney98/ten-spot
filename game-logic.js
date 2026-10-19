@@ -45,9 +45,20 @@
   /** While isBeatable is searching, finish must not run canClear again. */
   var inBeatable = 0;
 
-  /** Style bonus: base points added when both tiles of a pair are drawn the
-      same way (two outlines, or two shaded/solid tiles). */
-  var STYLE_BONUS = 10;
+  var SCORE = {
+    base: 10,          // every pair
+    perGap: 2,         // per crossed-out cell between the two tiles
+    diagonal: 5,       // extra for a diagonal pair
+    wrap: 5,           // extra for a pair joined across the end of a row
+    sameStyle: 2,      // two outlines, or two shaded: points x2
+    streakStep: 0.1,   // streak multiplier grows 0.1 per pair in a row
+    streakMax: 2,      // ...up to x2
+    row: 30,           // row bonus = 30 x (rows emptied by this pair)^2
+    levelPerLevel: 100,// level bonus = 100 x level ...
+    parAdd: 200,       // ... + 200 for each add under par
+    hintCost: 25,      // points, x mult
+    undoCost: 5        // points, x mult
+  };
 
   /* ------------------------------------------------------------------
      BOARDS
@@ -253,18 +264,94 @@
     return false;
   }
 
+  /** Nearest live cell in each direction. A live tile can pair only with these:
+      0 right and 1 left in reading order, 2 down and 3 up the column,
+      4 down-right, 5 up-left, 6 down-left, 7 up-right.
+      Forward directions (0, 2, 4, 6) are enough to list each pair once. */
+  var LINK_FWD = [0, 2, 4, 6];
+  var LINK_OPP = [1, 0, 3, 2, 5, 4, 7, 6];
+
+  function buildNext(cells, diag) {
+    var n = cells.length;
+    var next = new Array(8);
+    for (var d = 0; d < 8; d++) {
+      next[d] = new Array(n);
+      for (var i = 0; i < n; i++) next[d][i] = -1;
+    }
+    var prev = -1;
+    for (var i = 0; i < n; i++) {
+      if (cells[i].done) continue;
+      if (prev >= 0) { next[0][prev] = i; next[1][i] = prev; }
+      prev = i;
+    }
+    var colPrev = new Array(COLS);
+    for (var c = 0; c < COLS; c++) colPrev[c] = -1;
+    for (var i = 0; i < n; i++) {
+      if (cells[i].done) continue;
+      var col = i % COLS;
+      var up = colPrev[col];
+      if (up >= 0) { next[2][up] = i; next[3][i] = up; }
+      colPrev[col] = i;
+    }
+    if (diag) {
+      var downRight = Object.create(null);
+      var downLeft = Object.create(null);
+      for (var i = 0; i < n; i++) {
+        if (cells[i].done) continue;
+        var r = Math.floor(i / COLS), cc = i % COLS;
+        var keyR = cc - r;
+        var predR = downRight[keyR];
+        if (predR !== undefined) { next[4][predR] = i; next[5][i] = predR; }
+        downRight[keyR] = i;
+        var keyL = cc + r;
+        var predL = downLeft[keyL];
+        if (predL !== undefined) { next[6][predL] = i; next[7][i] = predL; }
+        downLeft[keyL] = i;
+      }
+    }
+    return next;
+  }
+
+  /** Sorted partner indexes with a higher index than i. At most one per forward direction. */
+  function partnerIndexes(next, i) {
+    var js = [];
+    for (var f = 0; f < LINK_FWD.length; f++) {
+      var j = next[LINK_FWD[f]][i];
+      if (j <= i) continue;
+      var seen = false;
+      for (var u = 0; u < js.length; u++) if (js[u] === j) seen = true;
+      if (!seen) js.push(j);
+    }
+    js.sort(function (a, b) { return a - b; });
+    return js;
+  }
+
+  function listPairs(cells, next, rules) {
+    var out = [];
+    for (var i = 0; i < cells.length; i++) {
+      if (cells[i].done) continue;
+      var js = partnerIndexes(next, i);
+      for (var t = 0; t < js.length; t++) {
+        var j = js[t];
+        if (matches(cells[i].v, cells[j].v, rules)) out.push([i, j]);
+      }
+    }
+    return out;
+  }
+
   /** First legal pair [i, j] (indexes, i < j) or null.
       preferSame: return a pair with no mixed-shade penalty if there is one. */
   function findPair(cells, diag, rules, preferSame) {
     var first = null;
+    var next = buildNext(cells, diag);
     for (var i = 0; i < cells.length; i++) {
       if (cells[i].done) continue;
-      for (var j = i + 1; j < cells.length; j++) {
-        if (cells[j].done) continue;
-        if (matches(cells[i].v, cells[j].v, rules) && canLink(cells, i, j, diag)) {
-          if (!preferSame || !tilesMixed(cells[i], cells[j], rules)) return [i, j];
-          if (!first) first = [i, j];
-        }
+      var js = partnerIndexes(next, i);
+      for (var t = 0; t < js.length; t++) {
+        var j = js[t];
+        if (!matches(cells[i].v, cells[j].v, rules)) continue;
+        if (!preferSame || !tilesMixed(cells[i], cells[j], rules)) return [i, j];
+        if (!first) first = [i, j];
       }
     }
     return first;
@@ -272,15 +359,7 @@
 
   /** Every legal pair [i, j] (indexes, i < j). Order matters for solvability. */
   function allPairs(cells, diag, rules) {
-    var out = [];
-    for (var i = 0; i < cells.length; i++) {
-      if (cells[i].done) continue;
-      for (var j = i + 1; j < cells.length; j++) {
-        if (cells[j].done) continue;
-        if (matches(cells[i].v, cells[j].v, rules) && canLink(cells, i, j, diag)) out.push([i, j]);
-      }
-    }
-    return out;
+    return listPairs(cells, buildNext(cells, diag), rules);
   }
 
   function copyCell(c, done) {
@@ -406,21 +485,29 @@
       (using remaining addsLeft). Does not use Hint or mismatches.
       With no adds left, a dead board (every line sticks) is false even when
       a pair is still legal. An unfinished search is not treated as dead. */
+  var beatCacheKey = '';
+  var beatCacheVal = false;
   function isBeatable(state) {
     if (!state) return false;
     if (state.status === 'clear' || remaining(state) === 0) return true;
     if (state.status === 'lose') return false;
     if (state.status !== 'playing') return false;
+    var key = beatableKey(state) + '|' + state.diff + '|' + (state.level || 0);
+    if (key === beatCacheKey) return beatCacheVal;
+    var val;
     if ((state.addsLeft || 0) <= 0) {
-      var verdict = canClear(state.cells, LEVELS[state.diff].diag, state.rules);
-      return verdict !== false;
+      val = canClear(state.cells, LEVELS[state.diff].diag, state.rules) !== false;
+    } else {
+      inBeatable++;
+      try {
+        val = beatableNow(state);
+      } finally {
+        inBeatable--;
+      }
     }
-    inBeatable++;
-    try {
-      return beatableNow(state);
-    } finally {
-      inBeatable--;
-    }
+    beatCacheKey = key;
+    beatCacheVal = val;
+    return val;
   }
 
   function beatableNow(state) {
@@ -430,9 +517,17 @@
     if (state.status !== 'playing') return false;
 
     var seen = Object.create(null);
+    var steps = 0;
+    var aborted = false;
+    var deadline = Date.now() + 40;
     function search(s) {
       if (s.status === 'clear' || remaining(s) === 0) return true;
       if (s.status !== 'playing') return false;
+      if (aborted) return null;
+      if (++steps > 30000 || ((steps & 127) === 0 && Date.now() > deadline)) {
+        aborted = true;
+        return null;
+      }
       var key = beatableKey(s);
       if (seen[key]) return false;
       seen[key] = true;
@@ -449,13 +544,20 @@
         if (search(next)) return true;
       }
 
+      var unknown = false;
       if (canAdd(s)) {
         var added = addNumbers(s);
-        if (added.event && search(added.state)) return true;
+        if (added.event) {
+          var addedResult = search(added.state);
+          if (addedResult === true) return true;
+          if (addedResult === null) unknown = true;
+        }
       }
+      if (unknown || aborted) return null;
       return false;
     }
-    return search(state);
+    var found = search(state);
+    return found !== false;
   }
 
   /** Row numbers whose cells are ALL done. */
@@ -516,22 +618,226 @@
     return a !== null && b !== null && a !== b;
   }
 
-  /** Points for one cleared pair. combo is 1 for the first pair in a streak.
-      sameStyle adds STYLE_BONUS base points (before the multiplier). */
-  function pairPoints(combo, rowsCleared, mult, sameStyle) {
-    return Math.round((10 + Math.min((combo - 1) * 2, 20) + (sameStyle ? STYLE_BONUS : 0) + 50 * rowsCleared) * mult);
+  /** a, b = indexes in state.cells (either order). The pair is already known to be legal. */
+  function linkInfo(cells, a, b) {
+    if (a > b) { var t = a; a = b; b = t; }
+    var clear = true;
+    for (var k = a + 1; k < b; k++) if (!cells[k].done) { clear = false; break; }
+    var ra = Math.floor(a / COLS), rb = Math.floor(b / COLS);
+    // 1. reading order wins if it is clear (same row = 'row', different rows = 'wrap')
+    if (clear) return { kind: ra === rb ? 'row' : 'wrap', gaps: b - a - 1 };
+    // 2. otherwise column, 3. otherwise diagonal
+    var dr = rb - ra, dc = (b % COLS) - (a % COLS);
+    return { kind: dc === 0 ? 'col' : 'diag', gaps: dr - 1 };
   }
 
-  /** Points taken away for a mismatch (two tiles that don't match): half of what
-      the pair would have scored as a real match (no row bonus), rounded. */
-  function mismatchPenalty(s, x, y) {
-    return Math.round(pairPoints(s.combo + 1, 0, pointMult(s.diff, s.level), tilesSame(x, y, s.rules)) / 2);
+  function streakMult(streak) {                 // streak = 1 for the first pair in a run
+    return Math.min(SCORE.streakMax, 1 + SCORE.streakStep * (streak - 1));
+  }
+  /** Points for clearing cells a and b. Call BEFORE marking them done.
+      rows = how many rows this pair empties (the existing rowsCleared.length).
+      Same shade uses the tile's drawn shade, so a light 1 and a light 9 double. */
+  function pairScore(state, a, b, streak, rows) {
+    var cells = state.cells, mult = pointMult(state.diff, state.level);
+    var li = linkInfo(cells, a, b);
+    var raw = SCORE.base + SCORE.perGap * li.gaps
+            + (li.kind === 'diag' ? SCORE.diagonal : 0)
+            + (li.kind === 'wrap' ? SCORE.wrap : 0);
+    var same = tilesSame(cells[a], cells[b], state.rules);
+    if (same) raw *= SCORE.sameStyle;
+    var pair = Math.round(raw * streakMult(streak) * mult);
+    var rowBonus = Math.round(SCORE.row * rows * rows * mult);
+    return { gain: pair + rowBonus, pair: pair, rowBonus: rowBonus, kind: li.kind, gaps: li.gaps, same: same, streakMult: streakMult(streak) };
   }
 
-  /** Bonus for clearing a level. */
+  /** Bonus for clearing a level. Unused hints no longer pay. */
   function levelBonus(s) {
-    var spareHints = isFinite(s.hintsLeft) ? 25 * s.hintsLeft : 0;
-    return Math.round(pointMult(s.diff, s.level) * (100 * s.addsLeft + spareHints + 200 * s.level));
+    var used = addsFor(s.diff, s.level) - s.addsLeft;
+    var underPar = Math.max(0, (s.par || 0) - used);
+    return Math.round(pointMult(s.diff, s.level) * (SCORE.levelPerLevel * s.level + SCORE.parAdd * underPar));
+  }
+
+  function bonusParts(s) {
+    var mult = pointMult(s.diff, s.level);
+    var used = addsFor(s.diff, s.level) - s.addsLeft;
+    var under = Math.max(0, (s.par || 0) - used);
+    return {
+      levelPoints: Math.round(mult * SCORE.levelPerLevel * s.level),
+      parPoints: Math.round(mult * SCORE.parAdd * under),
+      under: under,
+      used: used,
+      par: s.par || 0
+    };
+  }
+
+  /** Wall-clock cap for one reference play-out. Past this, par is the level's adds. */
+  var PAR_BUDGET_MS = 50;
+
+  function countLive(cells) {
+    var n = 0;
+    for (var i = 0; i < cells.length; i++) if (!cells[i].done) n++;
+    return n;
+  }
+
+  function rowLiveCounts(cells) {
+    var rows = Math.ceil(cells.length / COLS) || 0;
+    var counts = new Array(rows);
+    for (var r = 0; r < rows; r++) counts[r] = 0;
+    for (var i = 0; i < cells.length; i++) {
+      if (!cells[i].done) counts[Math.floor(i / COLS)]++;
+    }
+    return counts;
+  }
+
+  /** Pointer board for the reference player. Clearing a tile only retargets its neighbours. */
+  function linkBoard(cells, diag, rules) {
+    var next = buildNext(cells, diag);
+    var rowLive = rowLiveCounts(cells);
+    var count = listPairs(cells, next, rules).length;
+    var live = countLive(cells);
+
+    function incident(x, neigh) {
+      var c = 0;
+      for (var d = 0; d < 8; d++) {
+        var y = neigh[d];
+        if (y < 0) continue;
+        var dup = false;
+        for (var e = 0; e < d; e++) if (neigh[e] === y) dup = true;
+        if (!dup && matches(cells[x].v, cells[y].v, rules)) c++;
+      }
+      return c;
+    }
+
+    function completesRow(i, j) {
+      var ri = Math.floor(i / COLS), rj = Math.floor(j / COLS);
+      if (ri === rj) return rowLive[ri] <= 2;
+      return rowLive[ri] <= 1 || rowLive[rj] <= 1;
+    }
+
+    function drop(x, log) {
+      var neigh = new Array(8);
+      for (var d = 0; d < 8; d++) neigh[d] = next[d][x];
+      count -= incident(x, neigh);
+      log.push(['done', x]);
+      cells[x].done = true;
+      var row = Math.floor(x / COLS);
+      rowLive[row]--;
+      log.push(['row', row]);
+      live--;
+      for (var f = 0; f < LINK_FWD.length; f++) {
+        var d = LINK_FWD[f];
+        var opp = LINK_OPP[d];
+        var nxt = neigh[d];
+        var pred = neigh[opp];
+        if (pred >= 0) {
+          log.push(['ptr', d, pred, next[d][pred]]);
+          next[d][pred] = nxt;
+        }
+        if (nxt >= 0) {
+          log.push(['ptr', opp, nxt, next[opp][nxt]]);
+          next[opp][nxt] = pred;
+        }
+        if (pred >= 0 && nxt >= 0 && matches(cells[pred].v, cells[nxt].v, rules)) {
+          var dup = false;
+          for (var e = 0; e < 8; e++) {
+            if (e !== d && next[e][pred] === nxt) { dup = true; break; }
+          }
+          if (!dup) count++;
+        }
+      }
+    }
+
+    function undo(log) {
+      for (var i = log.length - 1; i >= 0; i--) {
+        var op = log[i];
+        if (op[0] === 'ptr') next[op[1]][op[2]] = op[3];
+        else if (op[0] === 'done') { cells[op[1]].done = false; live++; }
+        else if (op[0] === 'row') rowLive[op[1]]++;
+      }
+    }
+
+    function options(i, j) {
+      if (completesRow(i, j)) {
+        var marked = cells.map(function (c, k) {
+          return (k === i || k === j) ? { id: c.id, v: c.v, done: true } : c;
+        });
+        var after = compact(marked);
+        return listPairs(after, buildNext(after, diag), rules).length;
+      }
+      var saved = count;
+      var log = [];
+      drop(i, log);
+      drop(j, log);
+      var n = count;
+      undo(log);
+      count = saved;
+      return n;
+    }
+
+    function play(i, j) {
+      if (completesRow(i, j)) {
+        var marked = cells.map(function (c, k) {
+          return (k === i || k === j) ? { id: c.id, v: c.v, done: true } : c;
+        });
+        return linkBoard(compact(marked), diag, rules);
+      }
+      drop(i, []);
+      drop(j, []);
+      return api;
+    }
+
+    function added() {
+      var extra = [];
+      for (var i = 0; i < cells.length; i++) {
+        if (!cells[i].done) extra.push({ id: 0, v: cells[i].v, done: false });
+      }
+      return linkBoard(compact(cells.concat(extra)), diag, rules);
+    }
+
+    var api = {
+      live: function () { return live > 0; },
+      pairs: function () { return listPairs(cells, next, rules); },
+      options: options,
+      play: play,
+      added: added
+    };
+    return api;
+  }
+
+  /** Reference player: the pair that leaves the most legal pairs, else Add.
+      Same board, same cap, same answer. Stops once adds reach `cap`.
+      `{ adds, cleared, timedOut }`. On a time budget, adds is `cap` and timedOut is set. */
+  function tidyPlay(values, diag, rules, cap, budgetMs) {
+    if (budgetMs == null) budgetMs = PAR_BUDGET_MS;
+    var deadline = Date.now() + budgetMs;
+    var cells = values.map(function (v, i) {
+      return { id: i + 1, v: (v && typeof v === 'object') ? v.v : v, done: false };
+    });
+    var board = linkBoard(cells, diag, rules);
+    var adds = 0, guard = 0;
+    while (board.live() && guard++ < 400) {
+      if (Date.now() > deadline) return { adds: cap, cleared: false, timedOut: true };
+      var pairs = board.pairs();
+      if (!pairs.length) {
+        if (adds >= cap) return { adds: cap, cleared: false, timedOut: false };
+        board = board.added();
+        adds++;
+        continue;
+      }
+      var best = pairs[0], bestN = -1;
+      for (var q = 0; q < pairs.length; q++) {
+        if ((q & 31) === 0 && Date.now() > deadline) return { adds: cap, cleared: false, timedOut: true };
+        var n = board.options(pairs[q][0], pairs[q][1]);
+        if (n > bestN) { bestN = n; best = pairs[q]; }
+      }
+      board = board.play(best[0], best[1]);
+    }
+    if (board.live()) return { adds: cap, cleared: false, timedOut: false };
+    return { adds: adds, cleared: true, timedOut: false };
+  }
+
+  function tidyAdds(values, diag, rules, cap, budgetMs) {
+    return tidyPlay(values, diag, rules, cap, budgetMs).adds;
   }
 
   /* ------------------------------------------------------------------
@@ -544,7 +850,8 @@
        cells: [{ id, v, done }],   // flat list, 9 per row
        nextId: number,             // next cell id to hand out
        selected: null | cellId,
-       moves, score, combo,
+       moves, score, streak,
+       par,                        // adds the reference player used on this board, capped at this level's adds
        penalties,                  // total points lost to mismatches this game (Undo never gives them back)
        cleared, total,             // numbers cleared / numbers dealt this level
        addsLeft, hintsLeft, undosLeft,
@@ -565,10 +872,16 @@
 
   function levelFields(diff, level, rng, rules) {
     var L = LEVELS[diff];
+    var rulesName = (rules === 'pairs' || rules === 'mahjong') ? rules : 'classic';
     var vals = makeBoard(level, rng, rules);
+    var addsThisLevel = addsFor(diff, level);
+    // Classic level 1 is one fixed board. The reference player always uses 3 adds.
+    var play = (level <= 1 && rulesName === 'classic')
+      ? { adds: 3, cleared: true, timedOut: false }
+      : tidyPlay(vals, L.diag, rulesName, addsThisLevel);
     return {
       level: level,
-      rules: (rules === 'pairs' || rules === 'mahjong') ? rules : 'classic',
+      rules: rulesName,
       cells: vals.map(function (tile, i) {
         var v = (tile && typeof tile === 'object') ? tile.v : tile;
         var cell = { id: i + 1, v: v, done: false };
@@ -577,7 +890,9 @@
       }),
       nextId: vals.length + 1,
       selected: null,
-      combo: 0,
+      streak: 0,
+      par: play.timedOut ? addsThisLevel : Math.min(addsThisLevel, play.adds),
+      refClear: play.cleared || play.timedOut,
       cleared: 0,
       total: vals.length,
       addsLeft: addsFor(diff, level),
@@ -612,13 +927,13 @@
       s.penalties = spec.penalties || 0;
       s.best = spec.best ? copy(spec.best) : { easy: 0, normal: 0, hard: 0 };
       return s;
-    }, isBeatable);
+    }, function (s) { return s.refClear; });
   }
 
   function snapshot(s) {
     var h = s.history.concat([{
       cells: s.cells, nextId: s.nextId, moves: s.moves, cleared: s.cleared, total: s.total,
-      score: s.score, combo: s.combo, addsLeft: s.addsLeft, penalties: s.penalties || 0
+      score: s.score, streak: s.streak, addsLeft: s.addsLeft, penalties: s.penalties || 0
     }]);
     return h.length > HISTORY_LIMIT ? h.slice(h.length - HISTORY_LIMIT) : h;
   }
@@ -690,10 +1005,14 @@
 
     n = copy(s);
     n.selected = id;   // selection moves to the newly tapped cell
-    n.combo = 0;       // a miss breaks the streak
-    // A mismatch (values don't match) costs half the points the pair would have earned.
-    // A matching pair that just isn't reachable costs nothing. Score never goes below 0.
-    var penalty = okValue ? 0 : Math.min(s.score, mismatchPenalty(s, s.cells[a], s.cells[b]));
+    // A mismatch costs half of what the pair would have scored. A matching pair
+    // that is not reachable costs nothing and does not break the streak.
+    var penalty = 0;
+    if (!okValue) {
+      var would = pairScore(s, a, b, (s.streak || 0) + 1, 0).pair;
+      penalty = Math.min(s.score, Math.round(would / 2));
+      n.streak = 0;
+    }
     n.score = s.score - penalty;
     n.penalties = (s.penalties || 0) + penalty;
     return { state: n, event: { type: 'bad', id: id, reason: okValue ? 'path' : 'value', penalty: penalty } };
@@ -706,17 +1025,8 @@
     });
     var had = doneRows(before);
     var rowsCleared = doneRows(cells).filter(function (r) { return had.indexOf(r) < 0; });
-    var combo = s.combo + 1;
-    var mult = pointMult(s.diff, s.level);
-    var sameStyle = tilesSame(before[a], before[b], s.rules);
-    var mixed = tilesMixed(before[a], before[b], s.rules);
-    var rowBonus = Math.round(50 * rowsCleared.length * mult);
-    // A mixed pair (outline + solid) still clears, but instead of points it costs half
-    // of what the pair is worth (any row bonus is still paid). The score never goes below 0.
-    var penalty = mixed ? Math.round(pairPoints(combo, 0, mult, false) / 2) : 0;
-    var gain = mixed ? rowBonus - penalty : pairPoints(combo, rowsCleared.length, mult, sameStyle);
-    gain = Math.max(gain, -s.score) || 0;      // `|| 0` turns -0 into 0
-    if (mixed) penalty = rowBonus - gain;      // what was actually taken
+    var streak = (s.streak || 0) + 1;
+    var scored = pairScore(s, a, b, streak, rowsCleared.length);
 
     var n = copy(s);
     n.history = snapshot(s);
@@ -724,8 +1034,8 @@
     n.selected = null;
     n.moves = s.moves + 1;
     n.cleared = s.cleared + 2;
-    n.combo = combo;
-    n.score = s.score + gain;
+    n.streak = streak;
+    n.score = s.score + scored.gain;
     finish(n);
 
     return {
@@ -734,14 +1044,16 @@
         type: 'match',
         ids: [before[a].id, before[b].id],
         indexes: [a, b],
-        gain: gain,
-        combo: combo,
+        gain: scored.gain,
+        pair: scored.pair,
+        streak: streak,
+        streakMult: scored.streakMult,
         rowsCleared: rowsCleared,
-        rowBonus: rowBonus,
-        mixed: mixed,
-        penalty: penalty,
-        styleBonus: sameStyle ? Math.round(STYLE_BONUS * mult) : 0,
-        shade: sameStyle ? shadeOfTile(before[a], s.rules) : null,
+        rowBonus: scored.rowBonus,
+        kind: scored.kind,
+        gaps: scored.gaps,
+        same: scored.same,
+        shade: scored.same ? shadeOfTile(before[a], s.rules) : null,
         status: n.status,
         newBest: n.newBest
       }
@@ -769,7 +1081,7 @@
     n.moves = s.moves + 1;
     n.total = s.total + added.length;
     n.addsLeft = s.addsLeft - 1;
-    n.combo = 0;
+    n.streak = Math.max(0, (s.streak || 0) - 1);
     finish(n);
     return {
       state: n,
@@ -792,14 +1104,17 @@
     var n = copy(s);
     n.cells = last.cells; n.nextId = last.nextId; n.moves = last.moves;
     n.cleared = last.cleared; n.total = last.total;
-    // Undo gives back the move's points but NOT mismatch penalties paid since then.
+    // Undo gives back the move's points but NOT mismatch, hint, or undo costs paid since then.
     n.score = Math.max(0, last.score - ((s.penalties || 0) - (last.penalties || 0)));
-    n.combo = last.combo; n.addsLeft = last.addsLeft;
+    n.streak = last.streak || 0; n.addsLeft = last.addsLeft;
     n.undosLeft = s.undosLeft - 1;  // Infinity - 1 === Infinity
     n.history = h;
     n.selected = null;
     n.status = 'playing'; n.reason = null; n.bonus = 0; n.final = 0; n.newBest = false;
-    return { state: n, event: { type: 'undo' } };
+    var cost = Math.min(n.score, Math.round(SCORE.undoCost * pointMult(n.diff, n.level)));
+    n.score -= cost;
+    n.penalties = (n.penalties || 0) + cost;
+    return { state: n, event: { type: 'undo', cost: cost } };
   }
 
   /** Reveal one legal pair. Costs one hint (only if a pair exists).
@@ -818,10 +1133,13 @@
       ids = [s.cells[p[0]].id, s.cells[p[1]].id];
     }
     var n = copy(s);
+    var cost = Math.min(s.score, Math.round(SCORE.hintCost * pointMult(s.diff, s.level)));
     n.hintsLeft = s.hintsLeft - 1;
     n.selected = null;
-    n.combo = 0;
-    return { state: n, event: { type: 'hint', ids: ids } };
+    n.streak = Math.max(0, (s.streak || 0) - 1);
+    n.score = s.score - cost;
+    n.penalties = (s.penalties || 0) + cost;
+    return { state: n, event: { type: 'hint', ids: ids, cost: cost } };
   }
 
   /** After status 'clear': deal the next level. Score and moves carry over. */
@@ -860,8 +1178,9 @@
     MAX_HONOURS: MAX_HONOURS, honoursInPlay: honoursInPlay, isHonour: isHonour, mahjongBoard: mahjongBoard,
     addsFor: addsFor, pointMult: pointMult, matches: matches, canLink: canLink, findPair: findPair, canClear: canClear,
     allPairs: allPairs, isBeatable: isBeatable,
-    doneRows: doneRows, compact: compact, pairPoints: pairPoints, levelBonus: levelBonus,
-    STYLE_BONUS: STYLE_BONUS, shadeOf: shadeOf, sameShade: sameShade, mixedShade: mixedShade, mismatchPenalty: mismatchPenalty,
+    doneRows: doneRows, compact: compact, levelBonus: levelBonus, bonusParts: bonusParts,
+    SCORE: SCORE, linkInfo: linkInfo, pairScore: pairScore, streakMult: streakMult, tidyAdds: tidyAdds,
+    shadeOf: shadeOf, sameShade: sameShade, mixedShade: mixedShade,
     newGame: newGame, dealPuzzle: dealPuzzle, select: select, addNumbers: addNumbers, undo: undo, hint: hint,
     nextLevel: nextLevel, compactBoard: compactBoard,
     mulberry32: mulberry32, nextSeed: nextSeed, randomSeed: randomSeed, seekSeed: seekSeed,

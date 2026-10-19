@@ -21,7 +21,6 @@
   --strike: #b23a2e;    /* red pencil: strikes, score losses, bad pick */
   --gain: #1747a6;      /* blue pencil: score gains / positive clear FX */
   --gain-hi: #9ec0f0;   /* blue highlighter under a scoring clear */
-  --pen: #f6a9a1;       /* pink highlighter: marks a score-losing clear */
   --focus: #27466f;     /* keyboard focus ring */
   --binding: #30503d;   /* the gummed strip at the top of the sheet */
   --overlay: rgba(242, 246, 234, .96);
@@ -41,7 +40,7 @@
   --bg: #18211d; --paper: #1f2b25; --grid: #2d3c34; --line: #3b4b42;
   --ink: #f6f3ea; --muted: #d5ddd0; --done: #34443b; --strike: #e3877a;
   --gain: #79adff; --gain-hi: #2a4a7a;
-  --pen: #8e3a34; --focus: #9dbce3; --binding: #0e1411;
+  --focus: #9dbce3; --binding: #0e1411;
   --overlay: rgba(31, 43, 37, .96); --bar: rgba(24, 33, 29, .95); --blend: normal;
   --h1i: #79adff; --h2i: #6fdc79; --h3i: #ff9a3d; --h4i: #ff6470;
   --h5i: #c792ff; --h6i: #3fd6d0; --h7i: #ffd23f; --h8i: #f4f1e6; --h9i: #ec6b7a;
@@ -195,7 +194,6 @@ h1.is-stuck { color: var(--strike); }
 .c-done .numbox.solid { background: var(--done); color: var(--paper); }
 .c-done .glyph, .c-done .corner, .c-done .honour { color: var(--done); }
 .c-flash { animation: nmPop .55s ease both; z-index: 2; }
-.c-flash-pen { animation-name: nmPopPen; }   /* score-losing clear: pink highlighter */
 .c-bad { animation: nmShake .32s ease both; color: var(--strike); }
 .c.c-bad { --tink: var(--strike); }
 .c-hint::before { /* a quick pencil circle around the cell */
@@ -229,7 +227,7 @@ h1.is-stuck { color: var(--strike); }
 .ring { position: absolute; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; border: 2px solid var(--ink); opacity: 0; animation: nmRing .5s ease-out .04s forwards; }
 .zap-svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .zap { fill: none; stroke: var(--ink); stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: nmZap .55s ease-out forwards; }
-.zap-wide { stroke: var(--gain-hi); mix-blend-mode: var(--blend); }   /* default underline; overridden by fx-gain / fx-pen */
+.zap-wide { stroke: var(--gain-hi); mix-blend-mode: var(--blend); }
 .floatpt {
   position: absolute; font-weight: 700; font-size: 22px; line-height: 1; color: var(--gain); white-space: nowrap;
   opacity: 0; animation: nmFloat .85s ease-out .1s forwards;
@@ -240,13 +238,6 @@ h1.is-stuck { color: var(--strike); }
 .fx-gain .ring { border-color: var(--gain); }
 .fx-gain .floatpt { color: var(--gain); }
 .fx-gain .sweep { background: var(--gain-hi); }
-/* score-losing clear (gain < 0): red pencil over a pink highlighter */
-.fx-pen .zap { stroke: var(--strike); }
-.fx-pen .zap-wide { stroke: var(--pen); }
-.fx-pen .ring { border-color: var(--strike); }
-.fx-pen .spark { background: var(--strike); }
-.fx-pen .floatpt { background: var(--pen); color: var(--strike); padding: 1px 5px; border-radius: 2px 5px 3px 6px; }
-.fx-pen .sweep { background: var(--pen); }
 .sweep { position: absolute; left: -4px; right: -4px; border-radius: 3px; background: var(--gain-hi); mix-blend-mode: var(--blend); transform-origin: left center; opacity: 0; animation: nmSweep .7s ease-out .15s forwards; }
 
 /* while Settings or a confirmation is open, the board and its controls are switched off (and inert) */
@@ -306,7 +297,6 @@ h1.is-stuck { color: var(--strike); }
 .seg button:focus-visible { outline: 2.5px solid var(--focus); outline-offset: -4px; }
 
 /* ---------- 10. KEYFRAMES ---------- */
-@keyframes nmPopPen { 0% { background: var(--pen); } 35% { background: var(--pen); transform: scale(1.08); } 100% { background: transparent; transform: scale(1); } }
 @keyframes nmPop { 0% { background: var(--gain-hi); } 35% { background: var(--gain-hi); transform: scale(1.14); } 100% { background: transparent; transform: scale(1); } }
 @keyframes nmShake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
 @keyframes nmPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }

@@ -22,7 +22,7 @@
     get: function (k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } },
     set: function (k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
   };
-  var KEY_BEST = 'numbermatch.best.';   // + easy|normal|hard
+  var KEY_BEST = 'numbermatch.best2.';   // + easy|normal|hard. Old bests are not copied over.
   var KEY_THEME = 'numbermatch.theme';  // 'light'|'dark'
   var KEY_MODE = 'numbermatch.mode';    // 'num'|'tiles'|'icons'|'teams'
   var KEY_PLAYER = 'numbermatch.player';
@@ -95,11 +95,11 @@
     settingsOpen: false,
     confirm: null, // the open confirmation dialog: { yes: function } or null
     flash: [],     // cell ids playing the match "pop"
-    flashPen: false, // true while that pop is for a score-losing clear
     bad: [],       // cell ids playing the "shake"
     hint: [],      // cell ids circled as a hint
     born: [],      // cell ids just added (fade-in)
     gain: 0,       // last points earned, shown in the score tag
+    streakMult: 0, // multiplier that goes with a positive score tag
     note: '',      // status line text ('' = default text)
     scoreError: '',
     puzzleError: ''
@@ -113,7 +113,7 @@
   function resetAll() {
     timers.forEach(clearTimeout); timers = []; tok++;
     $('fx').innerHTML = '';
-    ui.flash = []; ui.bad = []; ui.hint = []; ui.born = []; ui.gain = 0; ui.note = '';
+    ui.flash = []; ui.bad = []; ui.hint = []; ui.born = []; ui.gain = 0; ui.streakMult = 0; ui.note = '';
     resetBoardNodes();
   }
 
@@ -264,7 +264,7 @@
     cls += ' c-tile h' + family(c.v);
     if (c.done) cls += ' c-done';
     if (c.id === state.selected) cls += ' c-sel';
-    if (ui.flash.indexOf(c.id) >= 0) cls += ui.flashPen ? ' c-flash c-flash-pen' : ' c-flash';
+    if (ui.flash.indexOf(c.id) >= 0) cls += ' c-flash';
     if (ui.hint.indexOf(c.id) >= 0) cls += ' c-hint';
     if (ui.bad.indexOf(c.id) >= 0) cls += ' c-bad';
     if (ui.born.indexOf(c.id) >= 0) cls += ' c-born';
@@ -319,7 +319,7 @@
     var A = centre(a), B = centre(b);
     var g = document.createElement('div');
     // Score-up clears use blue FX; score-down clears keep the red/pink "pen" look.
-    g.className = 'fx-group' + (ev.gain < 0 ? ' fx-pen' : ' fx-gain');
+    g.className = 'fx-group fx-gain';
     var html = '';
 
     // 1) row sweeps (behind everything else)
@@ -412,7 +412,10 @@
     $('score').textContent = fmt(s.score);
     $('best').textContent = fmt(s.best[s.diff] || 0);
     var gainTxt = ui.gain ? (ui.gain > 0 ? '+' : '−') + fmt(Math.abs(ui.gain)) : '';
-    var tag = gainTxt + (s.combo > 1 ? (gainTxt ? ', ' : '') + 'combo ×' + s.combo : '');
+    var tag = gainTxt;
+    if (ui.gain > 0 && s.streak >= 2 && ui.streakMult) {
+      tag += ', streak ×' + (Math.round(ui.streakMult * 10) / 10).toFixed(1);
+    }
     $('scoreTag').textContent = tag;
     $('scoreTag').hidden = !tag;
     $('scoreTag').classList.toggle('is-loss', ui.gain < 0);
@@ -434,7 +437,7 @@
     $('btnUndo').setAttribute('aria-label', 'Undo, ' + lim(s.undosLeft) + ' left');
     $('btnHint').setAttribute('aria-label', 'Hint, ' + lim(s.hintsLeft) + ' left');
     $('addMain').textContent = 'Add ' + NOUN[ui.mode];
-    $('addSub').textContent = s.addsLeft + ' of ' + L.addsFor(s.diff, s.level) + ' left this level';
+    $('addSub').textContent = s.addsLeft + ' of ' + L.addsFor(s.diff, s.level) + ' left · par ' + (s.par || 0);
 
     renderOverlay();
   }
@@ -448,9 +451,7 @@
     $('endKicker').textContent = clear ? 'Level ' + s.level + ' cleared' : 'Out of moves on level ' + s.level;
     $('endTitle').textContent = clear ? 'Board clear!' : 'Game over';
     $('endNumber').textContent = clear ? '+' + fmt(s.bonus) : fmt(s.final);
-    $('endDetail').textContent = clear
-      ? 'Bonus for unused adds and hints, plus a level bonus. Score ' + fmt(s.score) + '.'
-      : 'No adds left and no pairs to clear. You reached level ' + s.level + '.';
+    $('endDetail').textContent = clear ? clearDetail(s) : 'No adds left and no pairs to clear. You reached level ' + s.level + '.';
     $('endBest').textContent = s.newBest ? 'New best score!'
       : (clear ? 'Next: level ' + (s.level + 1) + ' with ' + plural(nextAdds, 'add', 'adds') : 'Best: ' + fmt(s.best[s.diff] || 0));
     $('btnEndPrimary').textContent = clear ? 'Next level' : 'Play again';
@@ -504,8 +505,9 @@
       ui.note = ev.reason === 'value' ? BAD_VALUE[ui.mode] : 'Not reachable: only crossed-out cells can sit between a pair.';
       if (ev.penalty) {
         var penTok = ++gainTok;
-        ui.note += ' −' + plural(ev.penalty, 'point.', 'points.');
+        ui.note += ' −' + ev.penalty + ' points.';
         ui.gain = -ev.penalty;
+        ui.streakMult = 0;
         later(function () { if (gainTok === penTok) { ui.gain = 0; render(); } }, 1400);
       }
       later(function () { ui.bad = []; render(); }, 360);
@@ -513,15 +515,10 @@
       var myTok = ++tok;
       spawnFx(ev);                 // measure BEFORE anything moves
       ui.flash = ev.ids.slice();
-      ui.flashPen = ev.gain < 0;   // pink pop only when the clear costs points
       ui.hint = [];
       ui.gain = ev.gain;
-      ui.note = ev.mixed
-        ? (ev.rowsCleared.length ? 'Row cleared! +' + ev.rowBonus + ', but outline + shaded ' + (ev.penalty ? '−' + plural(ev.penalty, 'point.', 'points.') : 'scores nothing.')
-                                 : 'Outline + shaded: cleared, but ' + (ev.penalty ? '−' + plural(ev.penalty, 'point.', 'points.') : 'no points.'))
-        : ev.rowsCleared.length ? 'Row cleared! +' + ev.rowBonus
-        : ev.styleBonus ? (ev.shade === 'solid' ? 'Both shaded' : 'Both outlines') + ': style bonus +' + ev.styleBonus + '.'
-        : (ev.combo > 2 ? ev.combo + ' in a row!' : '');
+      ui.streakMult = ev.streakMult;
+      ui.note = matchNote(ev);
       later(function () { ui.flash = []; render(); }, 620);
       // collapse finished rows — but NOT when the level just ended (keep the crossed-out board under the card)
       later(function () { if (tok === myTok && state.status === 'playing') { state = L.compactBoard(state); render(); } }, 900);
@@ -551,7 +548,13 @@
     timers.forEach(clearTimeout); timers = []; tok++;
     $('fx').innerHTML = '';
     state = r.state;
-    ui.flash = []; ui.bad = []; ui.hint = []; ui.born = []; ui.gain = 0; ui.note = '';
+    ui.flash = []; ui.bad = []; ui.hint = []; ui.born = []; ui.streakMult = 0;
+    ui.gain = r.event.cost ? -r.event.cost : 0;
+    ui.note = r.event.cost > 0 ? 'Undone (−' + r.event.cost + ' points).' : 'Undone.';
+    if (ui.gain) {
+      var undoTok = ++gainTok;
+      later(function () { if (gainTok === undoTok) { ui.gain = 0; render(); } }, 1400);
+    }
     render();
   }
 
@@ -562,32 +565,97 @@
     if (r.event.type === 'nohint') {
       ui.note = state.addsLeft > 0 ? 'No pairs left. Try Add ' + NOUN[ui.mode] + '.' : 'No pairs left.';
     } else {
-      ui.hint = r.event.ids; ui.note = '';
+      ui.hint = r.event.ids;
+      ui.streakMult = 0;
+      ui.note = r.event.cost > 0
+        ? 'Select two ' + PICK_NOUN[ui.mode] + ' to clear them. (−' + r.event.cost + ' points)'
+        : '';
+      if (r.event.cost) {
+        var hintTok = ++gainTok;
+        ui.gain = -r.event.cost;
+        later(function () { if (gainTok === hintTok) { ui.gain = 0; render(); } }, 1400);
+      }
       later(function () { ui.hint = []; render(); }, 2200);
     }
     render();
   }
 
+  function matchNote(ev) {
+    var rows = ev.rowsCleared.length;
+    if (rows >= 2) return rows + ' rows at once! +' + ev.rowBonus;
+    if (rows === 1) return 'Row cleared! +' + ev.rowBonus;
+    var shown = Math.round(ev.streakMult * 10) / 10;
+    if (shown === 2) return 'Streak ×2!';
+    if (shown === 1.5) return 'Streak ×1.5!';
+    if (ev.same) return (ev.shade === 'solid' ? 'Both shaded' : 'Both outlines') + ': double points.';
+    if (ev.gaps >= 3) return 'Long pair: +' + ev.gain + '.';
+    return '';
+  }
+  function clearDetail(s) {
+    var p = L.bonusParts(s);
+    var score = ' Score ' + fmt(s.score) + '.';
+    if (p.under > 0) {
+      return 'Level bonus ' + fmt(p.levelPoints) + ', plus ' + fmt(p.parPoints) + ' for finishing ' + p.under + ' under par.' + score;
+    }
+    return 'Level bonus ' + fmt(p.levelPoints) + '. Par was ' + p.par + ' adds; you used ' + p.used + '.' + score;
+  }
   function levelNote() {
     var extra = state.rules === 'pairs' ? ' tiles, ' + L.mascots(state.level) + ' mascots, '
       : (state.rules === 'mahjong' ? ' tiles, ' + L.honoursInPlay(state.level) + ' kinds of winds and dragons, ' : ' numbers, ');
     return 'Level ' + state.level + ': ' + state.total + extra + plural(state.addsLeft, 'add.', 'adds.');
   }
 
+  // The next board is random, so deal it during this level. Par is ready when Next level is pressed.
+  var upcoming = null;
+  var prepareTimer = 0;
+  function scheduleUpcoming() {
+    clearTimeout(prepareTimer);
+    var spec = {
+      diff: state.diff,
+      level: state.level + 1,
+      rules: state.rules,
+      best: state.best,
+      seed: L.randomSeed()
+    };
+    var key = spec.diff + '|' + spec.rules + '|' + spec.level;
+    upcoming = { key: key };
+    prepareTimer = setTimeout(function () {
+      if (!upcoming || upcoming.key !== key) return;
+      try {
+        var board = L.dealPuzzle(spec);
+        if (upcoming && upcoming.key === key) upcoming.state = board;
+      } catch (e) {
+        if (upcoming && upcoming.key === key) upcoming = null;
+      }
+    }, 0);
+  }
+
   function onNextLevel() {
     var carried = { score: state.score, moves: state.moves, penalties: state.penalties || 0, best: state.best, diff: state.diff, rules: state.rules, level: state.level + 1 };
+    var key = carried.diff + '|' + carried.rules + '|' + carried.level;
+    var prepared = upcoming && upcoming.key === key && upcoming.state;
     resetAll();
-    state = L.dealPuzzle({
-      diff: carried.diff, level: carried.level, rules: carried.rules, best: carried.best,
-      seed: L.randomSeed(), score: carried.score, moves: carried.moves, penalties: carried.penalties
-    });
+    if (prepared) {
+      state = prepared;
+      state.score = carried.score;
+      state.moves = carried.moves;
+      state.penalties = carried.penalties;
+      state.best = carried.best;
+    } else {
+      state = L.dealPuzzle({
+        diff: carried.diff, level: carried.level, rules: carried.rules, best: carried.best,
+        seed: L.randomSeed(), score: carried.score, moves: carried.moves, penalties: carried.penalties
+      });
+    }
     ui.note = levelNote();
+    scheduleUpcoming();
     render();
   }
 
   function newGame(diff) {
     resetAll();
     state = L.dealPuzzle({ diff: diff || state.diff, level: 1, rules: rulesFor(ui.mode), best: state.best, seed: L.randomSeed() });
+    scheduleUpcoming();
     render();
   }
 
@@ -638,6 +706,7 @@
     ui.puzzleError = '';
     resetAll();
     state = L.dealPuzzle({ diff: spec.diff, level: spec.level, rules: rulesFor(spec.mode), best: best, seed: spec.seed });
+    scheduleUpcoming();
     render();
   }
   $('puzzleForm').addEventListener('submit', function (e) {
@@ -707,6 +776,7 @@
     }
   });
 
+  scheduleUpcoming();
   render();
   pullBests();
 
@@ -729,6 +799,7 @@
       for (var k in (extra || {})) s[k] = extra[k];
       s.seed = s.seed || 0;
       state = s;
+      scheduleUpcoming();
       render();
     },
     setTheme: setTheme,
