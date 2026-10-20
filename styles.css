@@ -206,6 +206,10 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
   border-radius: 46% 54% 50% 48%; transform: rotate(8deg); animation: nmPulse 1s ease-in-out infinite;
 }
 .c-born { animation: nmBorn .4s ease both; }
+.c-pack-ghost {
+  position: absolute; z-index: 3; pointer-events: none; aspect-ratio: auto;
+  animation: nmPackOut .32s ease both;
+}
 
 /* end-of-level card */
 .overlay {
@@ -266,10 +270,11 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
   position: sticky; bottom: 0; z-index: 5; margin: 0 -16px;
   padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
   background: var(--bar); border-top: 1.5px solid var(--line);
-  display: flex; gap: 8px; align-items: stretch;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 72px)) minmax(120px, 1fr);
+  gap: 8px; align-items: stretch;
 }
 .tool {
-  flex: 0 0 72px; min-height: 56px; padding: 0; border-radius: 6px;
+  min-width: 0; min-height: 56px; padding: 0; border-radius: 6px;
   border: 1.5px solid var(--line); background: transparent; color: var(--ink);
   font-family: inherit; font-size: 13px; font-weight: 700;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer;
@@ -292,10 +297,11 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
   background: transparent; color: var(--ink); font: inherit; padding: 0 12px;
 }
 .score-sync-row input:focus-visible { outline: 2.5px solid var(--focus); outline-offset: 2px; }
-.btn-add { flex: 1 1 auto; min-height: 56px; justify-content: flex-start; padding: 0 16px; }
-.btn-add-text { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.15; }
-.btn-add-main { font-size: 16px; font-weight: 700; }
-.btn-add-sub { font-size: 12.5px; font-weight: 400; opacity: .85; }
+.btn-add { min-width: 0; min-height: 56px; justify-content: flex-start; padding: 0 12px; overflow: hidden; }
+.btn-add svg { width: 16px; height: 16px; flex: none; }
+.btn-add-text { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.15; min-width: 0; }
+.btn-add-main { font-size: 14px; font-weight: 700; }
+.btn-add-sub { font-size: 11px; font-weight: 400; opacity: .85; white-space: nowrap; }
 
 /* focus rings for every control */
 .icon-btn:focus-visible, .tool:focus-visible, .btn:focus-visible, .c:focus-visible { outline: 2.5px solid var(--focus); outline-offset: 2px; }
@@ -306,6 +312,7 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
 @keyframes nmShake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
 @keyframes nmPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 @keyframes nmBorn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes nmPackOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(.7); } }
 @keyframes nmWin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes nmDrop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @keyframes nmRing { 0% { opacity: .8; transform: scale(.4); } 100% { opacity: 0; transform: scale(1.6); } }
@@ -345,6 +352,7 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
 /* ---------- 12. REDUCED MOTION ---------- */
 @media (prefers-reduced-motion: reduce) {
   .c, .c::after { transition: none; }
-  .c-flash, .c-bad, .c-hint::before, .c-born, .a-set.open, .overlay { animation: none; }
+  .c-flash, .c-bad, .c-hint::before, .c-born, .c-pack-ghost, .a-set.open, .overlay { animation: none; }
+  .c-pack-ghost { display: none; }
   .fx { display: none; }
 }

@@ -52,12 +52,12 @@ test('dealt number pairs are complements that share one shade', function () {
     outline.push(low, 0);
     shaded.push(low, 0.5);
   });
-  var light = L.randomBoard(2, scripted(outline));
+  var light = L.randomBoard(2, scripted(outline), 'hard');
   [1, 9, 2, 8, 3, 7, 4, 6, 5, 5].forEach(function (v, i) {
     assert.strictEqual(light[i].v, v);
     assert.strictEqual(light[i].solid, false);
   });
-  var dark = L.randomBoard(2, scripted(shaded));
+  var dark = L.randomBoard(2, scripted(shaded), 'hard');
   assert.strictEqual(dark[0].v, 1);
   assert.strictEqual(dark[1].v, 9);
   assert.strictEqual(dark[0].solid, true);
@@ -269,6 +269,10 @@ test('pairs: same mascot matches (outline+solid or identical), different mascot 
 test('pairs: mascots per level are 5, 6, 7, then 8 forever', function () {
   assert.deepStrictEqual([1,2,3,4,5,12].map(L.mascots), [5,6,7,8,8,8]);
 });
+test('easy starts with 4 mascots and adds one every 2 levels; hard starts at 6', function () {
+  assert.deepStrictEqual([1,2,3,5,9].map(function (level) { return L.mascots(level, 'easy'); }), [4,4,5,6,8]);
+  assert.deepStrictEqual([1,2,3].map(function (level) { return L.mascots(level, 'hard'); }), [6,7,8]);
+});
 test('pairs: board sizes are 28, 36, 44, 54 and use only the allowed mascots', function () {
   [[1,28,5],[2,36,6],[3,44,7],[4,54,8]].forEach(function (t) {
     var b = L.pairsBoard(t[0], Math.random);
@@ -314,6 +318,20 @@ test('mahjong: circle tiles match like classic, honours only identical', functio
 });
 test('mahjong: honour kinds per level are 2, 3, 4 ... up to 7', function () {
   assert.deepStrictEqual([1,2,3,4,5,6,7,9].map(L.honoursInPlay), [2,3,4,5,6,7,7,7]);
+});
+test('easy starts with 1 honour and adds one every 2 levels; hard starts at 4', function () {
+  assert.deepStrictEqual([1,2,3,5,13].map(function (level) { return L.honoursInPlay(level, 'easy'); }), [1,1,2,3,7]);
+  assert.deepStrictEqual([1,2,3,4].map(function (level) { return L.honoursInPlay(level, 'hard'); }), [4,5,6,7]);
+});
+test('easy numbers wait until level 2, then start with 3 families', function () {
+  var b = L.randomBoard(2, Math.random, 'easy');
+  b.forEach(function (t) {
+    var v = tileV(t);
+    assert.ok(v <= 3 || v >= 7, 'value ' + v);
+  });
+  assert.strictEqual(L.kindCount('normal', 2, 'classic'), 4);
+  assert.strictEqual(L.kindCount('hard', 2, 'classic'), 5);
+  assert.strictEqual(L.kindCount('easy', 4, 'classic'), 4);
 });
 test('mahjong: board sizes 28, 36, 44, 54, honours limited to those in play, dealt in pairs', function () {
   [[1,28,2],[2,36,3],[3,44,4],[4,54,5]].forEach(function (t) {
@@ -821,6 +839,35 @@ test('17 mahjong honours do not double', function () {
   var r = L.select(L.select(stateWith([15, 15, 11], 'normal', { rules: 'mahjong' }), 1).state, 2);
   assert.strictEqual(r.event.same, false);
   assert.strictEqual(r.event.gain, 15);
+});
+
+test('par is stored and shown as a whole number', function () {
+  var s = stateWith([1, 9], 'normal', { par: 22.6, cleared: 2, level: 2, score: 360 });
+  var p = L.bonusParts(s);
+  assert.strictEqual(p.par, 23);
+  assert.strictEqual(p.used, 1);
+  assert.strictEqual(p.under, 22);
+});
+
+test('compact drops cleared tiles, spends one, and undo puts the gaps back', function () {
+  var s = stateWith([1, 2, 3, 4, 5], 'normal', { compactsLeft: 1, score: 40 });
+  s.cells[1].done = true;
+  s.cells[3].done = true;
+  var packed = L.packBoard(s);
+  assert.deepStrictEqual(packed.state.cells.map(function (c) { return c.v; }), [1, 3, 5]);
+  assert.strictEqual(packed.state.compactsLeft, 0);
+  assert.strictEqual(L.packBoard(packed.state).event, null);
+  var back = L.undo(packed.state);
+  assert.strictEqual(back.state.cells.length, 5);
+  assert.strictEqual(back.state.cells[1].done, true);
+  assert.strictEqual(back.state.compactsLeft, 1);
+  assert.ok(back.event.cost > 0);
+});
+
+test('a level starts with the difficulty compact limit', function () {
+  assert.strictEqual(L.newGame('easy', null, L.mulberry32(1)).compactsLeft, Infinity);
+  assert.strictEqual(L.newGame('normal', null, L.mulberry32(1)).compactsLeft, 3);
+  assert.strictEqual(L.newGame('hard', null, L.mulberry32(1)).compactsLeft, 1);
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

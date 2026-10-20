@@ -303,7 +303,71 @@
      the board flicker. Only create, remove or move what changed. */
   var nodes = new Map(); // cell id -> <button>
 
-  function resetBoardNodes() { nodes.clear(); $('grid').innerHTML = ''; }
+  function resetBoardNodes() { clearPackMotion(); nodes.clear(); $('grid').innerHTML = ''; }
+
+  function motionOk() {
+    return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function clearPackMotion() {
+    nodes.forEach(function (el) {
+      el.style.transition = '';
+      el.style.transform = '';
+      el.style.zIndex = '';
+    });
+    document.querySelectorAll('.c-pack-ghost').forEach(function (el) { el.remove(); });
+  }
+
+  /** Cleared tiles fade where they stood. Live tiles slide from their old cells into the packed board. */
+  function playPack(from, ghosts) {
+    if (!motionOk()) return;
+    var host = $('boardInner');
+    ghosts.forEach(function (g) {
+      var ghost = document.createElement('div');
+      ghost.className = g.cls + ' c-pack-ghost';
+      ghost.innerHTML = g.html;
+      ghost.setAttribute('aria-hidden', 'true');
+      ghost.style.left = g.x + 'px';
+      ghost.style.top = g.y + 'px';
+      ghost.style.width = g.w + 'px';
+      ghost.style.height = g.h + 'px';
+      host.appendChild(ghost);
+      ghost.addEventListener('animationend', function () { ghost.remove(); });
+    });
+    var moves = [];
+    var myTok = tok;
+    state.cells.forEach(function (c) {
+      var start = from[c.id];
+      var el = nodes.get(c.id);
+      if (!start || !el) return;
+      var box = el.getBoundingClientRect();
+      var dx = start.x - box.left;
+      var dy = start.y - box.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+      el.style.transition = 'none';
+      el.style.zIndex = '2';
+      el.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      moves.push(el);
+    });
+    if (!moves.length) return;
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (tok !== myTok) return;
+        moves.forEach(function (el) {
+          el.style.transition = 'transform .34s ease';
+          el.style.transform = '';
+        });
+      });
+    });
+    later(function () {
+      if (tok !== myTok) return;
+      moves.forEach(function (el) {
+        el.style.transition = '';
+        el.style.transform = '';
+        el.style.zIndex = '';
+      });
+    }, 420);
+  }
 
   function syncBoard() {
     var grid = $('grid');
@@ -406,7 +470,9 @@
       D.adds + ' adds per level, dropping to ' + D.minAdds,
       isFinite(D.hints) ? (D.hints ? D.hints + ' hints' : 'no hints') : 'unlimited hints',
       isFinite(D.undos) ? plural(D.undos, 'undo', 'undos') : 'unlimited undo',
-      '×' + D.mult + ' points, +20% each level'
+      isFinite(D.compacts) ? plural(D.compacts, 'pack', 'packs') : 'unlimited packs',
+      '×' + D.mult + ' points, +20% each level',
+      'more tile kinds sooner on harder games'
     ].join(', ') + '. Changing difficulty starts a new game.';
   }
 
@@ -450,7 +516,7 @@
     // header and tally: green while under par, red when the board cannot be finished
     $('subline').textContent = 'Level ' + s.level + ' on ' + D.label + ', points ×' + mult;
     var dead = !L.isBeatable(s);
-    var under = !dead && Math.floor(s.cleared / 2) < (s.par || 0);
+    var under = !dead && Math.floor(s.cleared / 2) < Math.round(s.par || 0);
     function paintStanding(el) {
       el.classList.toggle('is-stuck', dead);
       el.classList.toggle('is-under', under);
@@ -484,13 +550,16 @@
     // bottom bar
     $('btnUndo').disabled = !L.canUndo(s);
     $('btnHint').disabled = !L.canHint(s);
+    $('btnCompact').disabled = !L.canCompact(s);
     $('btnAdd').disabled = !L.canAdd(s);
     $('undoCount').textContent = lim(s.undosLeft) + ' left';
     $('hintCount').textContent = lim(s.hintsLeft) + ' left';
+    $('compactCount').textContent = lim(s.compactsLeft) + ' left';
     $('btnUndo').setAttribute('aria-label', 'Undo, ' + lim(s.undosLeft) + ' left');
     $('btnHint').setAttribute('aria-label', 'Hint, ' + lim(s.hintsLeft) + ' left');
+    $('btnCompact').setAttribute('aria-label', 'Pack, ' + lim(s.compactsLeft) + ' left');
     $('addMain').textContent = 'Add ' + NOUN[ui.mode];
-    $('addSub').textContent = s.addsLeft + ' of ' + L.addsFor(s.diff, s.level) + ' left · par ' + (s.par || 0) + ' matches';
+    $('addSub').textContent = s.addsLeft + ' of ' + L.addsFor(s.diff, s.level) + ' left';
 
     renderOverlay();
   }
@@ -519,7 +588,8 @@
     var D = L.LEVELS[state.diff];
     return state.status === 'playing' &&
       (state.moves > 0 || state.level > 1 || state.score > 0 || (state.penalties || 0) > 0 ||
-       (isFinite(D.hints) && state.hintsLeft < D.hints));
+       (isFinite(D.hints) && state.hintsLeft < D.hints) ||
+       (isFinite(D.compacts) && state.compactsLeft < D.compacts));
   }
   function progressLine() {
     return 'You’re on level ' + state.level + ' with ' + plural(state.score, 'point', 'points') + '.';
@@ -582,6 +652,37 @@
     render();
   }
 
+  function onPack() {
+    var r = L.packBoard(state);
+    if (!r.event) return;
+    var from = {};
+    var ghosts = [];
+    if (motionOk()) {
+      var host = $('boardInner').getBoundingClientRect();
+      state.cells.forEach(function (c) {
+        var el = nodes.get(c.id);
+        if (!el) return;
+        var box = el.getBoundingClientRect();
+        if (c.done) {
+          ghosts.push({
+            html: el.innerHTML, cls: el.className,
+            x: box.left - host.left, y: box.top - host.top, w: box.width, h: box.height
+          });
+        } else {
+          from[c.id] = { x: box.left, y: box.top };
+        }
+      });
+    }
+    tok++;
+    state = r.state;
+    ui.hint = []; ui.born = []; ui.gain = 0;
+    var left = r.event.compactsLeft;
+    ui.note = 'Tiles slid together. ' +
+      (left ? (isFinite(left) ? plural(left, 'pack', 'packs') + ' left this level.' : 'Packs are unlimited.') : 'That was your last pack for this level.');
+    render();
+    playPack(from, ghosts);
+  }
+
   function onAdd() {
     var r = L.addNumbers(state);
     if (!r.event) return;
@@ -599,6 +700,7 @@
     var r = L.undo(state);
     if (!r.event) return;
     timers.forEach(clearTimeout); timers = []; tok++;
+    clearPackMotion();
     $('fx').innerHTML = '';
     state = r.state;
     ui.flash = []; ui.bad = []; ui.hint = []; ui.born = []; ui.streakMult = 0;
@@ -646,15 +748,16 @@
   }
   function clearDetail(s) {
     var p = L.bonusParts(s);
+    var head = 'You made ' + p.used + ' matches. Par was ' + p.par + '. ';
     var score = ' Score ' + fmt(s.score) + '.';
     if (p.under > 0) {
-      return 'Level bonus ' + fmt(p.levelPoints) + ', plus ' + fmt(p.parPoints) + ' for finishing ' + p.under + ' under par.' + score;
+      return head + 'Level bonus ' + fmt(p.levelPoints) + ', plus ' + fmt(p.parPoints) + ' for finishing ' + p.under + ' under par.' + score;
     }
-    return 'Level bonus ' + fmt(p.levelPoints) + '. Par was ' + p.par + ' matches; you used ' + p.used + '.' + score;
+    return head + 'Level bonus ' + fmt(p.levelPoints) + '.' + score;
   }
   function levelNote() {
-    var extra = state.rules === 'pairs' ? ' tiles, ' + L.mascots(state.level) + ' mascots, '
-      : (state.rules === 'mahjong' ? ' tiles, ' + L.honoursInPlay(state.level) + ' kinds of winds and dragons, ' : ' numbers, ');
+    var extra = state.rules === 'pairs' ? ' tiles, ' + L.mascots(state.level, state.diff) + ' mascots, '
+      : (state.rules === 'mahjong' ? ' tiles, ' + L.honoursInPlay(state.level, state.diff) + ' kinds of winds and dragons, ' : ' numbers, ');
     return 'Level ' + state.level + ': ' + state.total + extra + plural(state.addsLeft, 'add.', 'adds.');
   }
 
@@ -748,6 +851,7 @@
     if (btn) onCell(Number(btn.dataset.id));
   });
   $('btnAdd').addEventListener('click', onAdd);
+  $('btnCompact').addEventListener('click', onPack);
   $('btnUndo').addEventListener('click', onUndo);
   $('btnHint').addEventListener('click', onHint);
   $('btnNew').addEventListener('click', askNewGame);

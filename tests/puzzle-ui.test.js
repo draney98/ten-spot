@@ -53,5 +53,16 @@ test('a wrap match follows the row and a short code can be entered', function ()
   assert.ok(app.indexOf('saveBoard') !== -1);
 });
 
+test('the clear card names the matches and a whole-number par, and Pack sits beside Add', function () {
+  assert.ok(app.indexOf('You made ') !== -1);
+  assert.ok(app.indexOf(' matches. Par was ') !== -1);
+  assert.ok(html.indexOf('id="btnCompact"') !== -1);
+  assert.ok(html.indexOf('>Pack<') !== -1);
+  assert.ok(html.indexOf('id="btnAdd"') > html.indexOf('id="btnCompact"'));
+  assert.ok(app.indexOf('packBoard') !== -1);
+  assert.ok(app.indexOf('playPack') !== -1);
+  assert.ok(css.indexOf('nmPackOut') !== -1);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

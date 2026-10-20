@@ -20,9 +20,12 @@
 
   /** Difficulty settings. Infinity means "unlimited". */
   var LEVELS = {
-    easy:   { label: 'Easy',   adds: 8, minAdds: 4, hints: Infinity, undos: Infinity, diag: true,  mult: 1   },
-    normal: { label: 'Normal', adds: 5, minAdds: 2, hints: 3,        undos: 5,        diag: true,  mult: 1.5 },
-    hard:   { label: 'Hard',   adds: 3, minAdds: 1, hints: 0,        undos: 1,        diag: true,  mult: 2.5 }
+    easy:   { label: 'Easy',   adds: 8, minAdds: 4, hints: Infinity, undos: Infinity, compacts: Infinity, diag: true,  mult: 1,
+              kinds: { classic: { start: 3, every: 2 }, pairs: { start: 4, every: 2 }, mahjong: { start: 1, every: 2 } } },
+    normal: { label: 'Normal', adds: 5, minAdds: 2, hints: 3,        undos: 5,        compacts: 3,        diag: true,  mult: 1.5,
+              kinds: { classic: { start: 4, every: 1 }, pairs: { start: 5, every: 1 }, mahjong: { start: 2, every: 1 } } },
+    hard:   { label: 'Hard',   adds: 3, minAdds: 1, hints: 0,        undos: 1,        compacts: 1,        diag: true,  mult: 2.5,
+              kinds: { classic: { start: 5, every: 1 }, pairs: { start: 6, every: 1 }, mahjong: { start: 4, every: 1 } } }
   };
   // `diag` is kept as a switch so a future mode can turn diagonals off. Every difficulty allows them today.
 
@@ -86,17 +89,17 @@
     return 54;
   }
 
-  /** Gridiron: mascots in play on a level — 5 on level 1, one more per level, up to 8. */
-  function mascots(level) {
-    return Math.min(MAX_MASCOTS, 4 + level);
+  /** Gridiron: mascots in play. Normal starts at 5 and adds one each level, up to 8. */
+  function mascots(level, diff) {
+    return kindCount(diff, level, 'pairs');
   }
   function mascotOf(v) { return Math.ceil(v / 2); }   // 1..8
   function isSolid(v) { return v % 2 === 0; }
 
   /** Gridiron board: pick a mascot, then prefer one version (3/8 both outline,
       3/8 both solid, 1/4 one of each). Shuffle. */
-  function pairsBoard(level, rng) {
-    var size = boardSize(level, 'pairs'), fams = mascots(level), vals = [];
+  function pairsBoard(level, rng, diff) {
+    var size = boardSize(level, 'pairs'), fams = mascots(level, diff), vals = [];
     for (var i = 0; i < size / 2; i++) {
       var f = 1 + Math.floor(rng() * fams);
       var roll = rng();
@@ -108,24 +111,25 @@
     return shuffle(vals, rng);
   }
 
-  /** Mahjong: honour kinds in play — 2 on level 1, one more per level, up to 7. */
-  function honoursInPlay(level) {
-    return Math.min(MAX_HONOURS, level + 1);
+  /** Mahjong: honour kinds in play. Normal starts at 2 and adds one each level, up to 7. */
+  function honoursInPlay(level, diff) {
+    return kindCount(diff, level, 'mahjong');
   }
   function isHonour(v) { return v >= HONOUR_FIRST; }
 
   /** A circle pair is always a complement (1 with 9, 2 with 8, 3 with 7,
       4 with 6, or 5 with 5) and both tiles share one shade. */
-  function circlePair(rng) {
-    var low = 1 + Math.floor(rng() * 5);
+  function circlePair(rng, kinds) {
+    var n = kinds || 5;
+    var low = 1 + Math.floor(rng() * n);
     var solid = rng() >= 0.5;
     return [{ v: low, solid: solid }, { v: 10 - low, solid: solid }];
   }
 
   /** Mahjong board: about a third of the pairs are identical honour tiles,
       the rest are circle complements that share one shade. Shuffled. */
-  function mahjongBoard(level, rng) {
-    var size = boardSize(level, 'mahjong'), kinds = honoursInPlay(level), vals = [];
+  function mahjongBoard(level, rng, diff) {
+    var size = boardSize(level, 'mahjong'), kinds = honoursInPlay(level, diff), vals = [];
     for (var i = 0; i < size / 2; i++) {
       if (rng() < 0.35) {
         var h = HONOUR_FIRST + Math.floor(rng() * kinds);
@@ -190,21 +194,33 @@
 
   /** Levels 2+: complements that share one shade (1 with 9, never 1 with 1),
       then shuffled (Fisher–Yates). 5 pairs with itself. */
-  function randomBoard(level, rng) {
+  function randomBoard(level, rng, diff) {
     var size = boardSize(level);
+    var kinds = kindCount(diff, level, 'classic');
     var vals = [];
     for (var i = 0; i < size / 2; i++) {
-      var pair = circlePair(rng);
+      var pair = circlePair(rng, kinds);
       vals.push(pair[0], pair[1]);
     }
     return shuffle(vals, rng);
   }
 
-  function makeBoard(level, rng, rules) {
+  /** How many tile kinds a difficulty uses on a level. Numbers start the
+      schedule at level 2, because level 1 is the fixed classic board. */
+  function kindCount(diff, level, rules) {
+    var name = (rules === 'pairs' || rules === 'mahjong') ? rules : 'classic';
+    var table = (LEVELS[diff] && LEVELS[diff].kinds) || LEVELS.normal.kinds;
+    var spec = table[name];
+    var steps = name === 'classic' ? Math.max(0, level - 2) : Math.max(0, level - 1);
+    var max = name === 'pairs' ? MAX_MASCOTS : (name === 'mahjong' ? MAX_HONOURS : 5);
+    return Math.min(max, spec.start + Math.floor(steps / spec.every));
+  }
+
+  function makeBoard(level, rng, rules, diff) {
     rng = rng || Math.random;
-    if (rules === 'pairs') return pairsBoard(level, rng);
-    if (rules === 'mahjong') return mahjongBoard(level, rng);
-    return level <= 1 ? classicBoard() : randomBoard(level, rng);
+    if (rules === 'pairs') return pairsBoard(level, rng, diff);
+    if (rules === 'mahjong') return mahjongBoard(level, rng, diff);
+    return level <= 1 ? classicBoard() : randomBoard(level, rng, diff);
   }
 
   /* ------------------------------------------------------------------
@@ -658,20 +674,21 @@
   /** Bonus for clearing a level. Unused hints no longer pay. */
   function levelBonus(s) {
     var used = matchesMade(s);
-    var underPar = Math.max(0, (s.par || 0) - used);
+    var underPar = Math.max(0, Math.round(s.par || 0) - used);
     return Math.round(pointMult(s.diff, s.level) * (SCORE.levelPerLevel * s.level + SCORE.parAdd * underPar));
   }
 
   function bonusParts(s) {
     var mult = pointMult(s.diff, s.level);
     var used = matchesMade(s);
-    var under = Math.max(0, (s.par || 0) - used);
+    var par = Math.round(s.par || 0);
+    var under = Math.max(0, par - used);
     return {
       levelPoints: Math.round(mult * SCORE.levelPerLevel * s.level),
       parPoints: Math.round(mult * SCORE.parAdd * under),
       under: under,
       used: used,
-      par: s.par || 0
+      par: par
     };
   }
 
@@ -877,7 +894,7 @@
        par,                        // matches the reference player made on this board
        penalties,                  // total points lost to mismatches this game (Undo never gives them back)
        cleared, total,             // numbers cleared / numbers dealt this level
-       addsLeft, hintsLeft, undosLeft,
+       addsLeft, hintsLeft, undosLeft, compactsLeft,
        history: [snapshot],        // for Undo (this level only)
        status: 'playing' | 'clear' | 'lose',
        reason: null | 'nopairs',  // set when status is 'lose'
@@ -896,7 +913,7 @@
   function levelFields(diff, level, rng, rules) {
     var L = LEVELS[diff];
     var rulesName = (rules === 'pairs' || rules === 'mahjong') ? rules : 'classic';
-    var vals = makeBoard(level, rng, rules);
+    var vals = makeBoard(level, rng, rules, diff);
     var addsThisLevel = addsFor(diff, level);
     // Classic level 1 is one fixed board. The reference player uses 3 adds and 29 matches.
     var play = (level <= 1 && rulesName === 'classic')
@@ -914,13 +931,14 @@
       nextId: vals.length + 1,
       selected: null,
       streak: 0,
-      par: play.matches,
+      par: Math.round(play.matches),
       refClear: play.cleared || play.timedOut,
       cleared: 0,
       total: vals.length,
       addsLeft: addsFor(diff, level),
       hintsLeft: L.hints,
       undosLeft: L.undos,
+      compactsLeft: L.compacts,
       history: [],
       status: 'playing',
       bonus: 0,
@@ -962,7 +980,8 @@
   function snapshot(s) {
     var h = s.history.concat([{
       cells: s.cells, nextId: s.nextId, moves: s.moves, cleared: s.cleared, total: s.total,
-      score: s.score, streak: s.streak, addsLeft: s.addsLeft, penalties: s.penalties || 0
+      score: s.score, streak: s.streak, addsLeft: s.addsLeft, penalties: s.penalties || 0,
+      compactsLeft: s.compactsLeft
     }]);
     return h.length > HISTORY_LIMIT ? h.slice(h.length - HISTORY_LIMIT) : h;
   }
@@ -1089,6 +1108,25 @@
     };
   }
 
+  /** Drop every cleared tile and slide the live tiles together, still 9 across. */
+  function packBoard(s) {
+    if (!canCompact(s)) return { state: s, event: null };
+    var live = [];
+    for (var i = 0; i < s.cells.length; i++) if (!s.cells[i].done) live.push(s.cells[i]);
+    var n = copy(s);
+    n.history = snapshot(s);
+    n.cells = live;
+    n.selected = null;
+    n.compactsLeft = s.compactsLeft - 1;   // Infinity - 1 === Infinity
+    return { state: n, event: { type: 'compact', compactsLeft: n.compactsLeft } };
+  }
+
+  function canCompact(s) {
+    if (s.status !== 'playing' || !(s.compactsLeft > 0)) return false;
+    for (var i = 0; i < s.cells.length; i++) if (s.cells[i].done) return true;
+    return false;
+  }
+
   /** Copy every not-done value, in order, onto the end of the board. */
   function addNumbers(s) {
     if (s.status !== 'playing' || s.addsLeft <= 0) return { state: s, event: null };
@@ -1136,6 +1174,7 @@
     // Undo gives back the move's points but NOT mismatch, hint, or undo costs paid since then.
     n.score = Math.max(0, last.score - ((s.penalties || 0) - (last.penalties || 0)));
     n.streak = last.streak || 0; n.addsLeft = last.addsLeft;
+    if (last.compactsLeft != null) n.compactsLeft = last.compactsLeft;
     n.undosLeft = s.undosLeft - 1;  // Infinity - 1 === Infinity
     n.history = h;
     n.selected = null;
@@ -1226,10 +1265,11 @@
     doneRows: doneRows, compact: compact, levelBonus: levelBonus, bonusParts: bonusParts,
     SCORE: SCORE, linkInfo: linkInfo, pairScore: pairScore, streakMult: streakMult, tidyAdds: tidyAdds, tidyPlay: tidyPlay,
     shadeOf: shadeOf, sameShade: sameShade, mixedShade: mixedShade,
-    newGame: newGame, dealPuzzle: dealPuzzle, select: select, addNumbers: addNumbers, undo: undo, hint: hint,
+    newGame: newGame, dealPuzzle: dealPuzzle, select: select, addNumbers: addNumbers, packBoard: packBoard, undo: undo, hint: hint,
     nextLevel: nextLevel, compactBoard: compactBoard,
     mulberry32: mulberry32, nextSeed: nextSeed, randomSeed: randomSeed, seekSeed: seekSeed,
     parsePuzzle: parsePuzzle, formatPuzzle: formatPuzzle,
-    indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd
+    indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd, canCompact: canCompact,
+    kindCount: kindCount
   };
 });
