@@ -34,6 +34,7 @@
   --h1i: #1747a6; --h2i: #1d7a2c; --h3i: #c25400; --h4i: #c4122f;
   --h5i: #7426b5; --h6i: #00737d; --h7i: #946200; --h8i: #1e2328;
   --h9i: #8c1d2b;   /* garnet ("gamecock red"): Gridiron gamecock only */
+  --pack-hi: #f6c49a;   /* orange highlighter under the pack laser */
   color-scheme: light;
 }
 :root.dark {
@@ -43,6 +44,7 @@
   --focus: #9dbce3; --binding: #0e1411;
   --overlay: rgba(31, 43, 37, .96); --bar: rgba(24, 33, 29, .95); --blend: normal;
   --h1i: #79adff; --h2i: #6fdc79; --h3i: #ff9a3d; --h4i: #ff6470;
+  --pack-hi: #a85a1a;
   --h5i: #c792ff; --h6i: #3fd6d0; --h7i: #ffd23f; --h8i: #f4f1e6; --h9i: #ec6b7a;
   color-scheme: dark;
 }
@@ -110,9 +112,10 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
 
 /* ---------- 6. SCOREBOARD (a tally line) ---------- */
 .a-stats { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; border-bottom: 1.5px solid var(--ink); }
-.stat-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 14px; align-items: start; }
-.stat-pct { text-align: right; }
+.stat-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; align-items: start; }
+.stat-pct { justify-self: end; text-align: right; }
 .stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.stat-best { justify-self: center; align-items: center; text-align: center; }
 .stat-l { font-size: 13px; color: var(--muted); }
 .stat.is-stuck, .stat.is-stuck .stat-l, .stat.is-stuck .stat-big, .stat.is-stuck .stat-small { color: var(--strike); }
 .stat.is-under, .stat.is-under .stat-l, .stat.is-under .stat-big, .stat.is-under .stat-small { color: var(--h2i); }
@@ -210,6 +213,8 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
   position: absolute; z-index: 3; pointer-events: none; aspect-ratio: auto;
   animation: nmPackOut .32s ease both;
 }
+.c-pack-hold { pointer-events: none; cursor: default; }
+.c-pack-hold:hover { background: transparent; }
 
 /* end-of-level card */
 .overlay {
@@ -247,6 +252,8 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
 .fx-gain .ring { border-color: var(--gain); }
 .fx-gain .floatpt { color: var(--gain); }
 .fx-gain .sweep { background: var(--gain-hi); }
+.c-pack-laser .zap { stroke: var(--h3i); }
+.c-pack-laser .zap-wide { stroke: var(--pack-hi); }
 .sweep { position: absolute; left: -4px; right: -4px; border-radius: 3px; background: var(--gain-hi); mix-blend-mode: var(--blend); transform-origin: left center; opacity: 0; animation: nmSweep .7s ease-out .15s forwards; }
 
 /* while Settings or a confirmation is open, the board and its controls are switched off (and inert) */
@@ -297,10 +304,13 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
   background: transparent; color: var(--ink); font: inherit; padding: 0 12px;
 }
 .score-sync-row input:focus-visible { outline: 2.5px solid var(--focus); outline-offset: 2px; }
-.btn-add { min-width: 0; min-height: 56px; justify-content: flex-start; padding: 0 12px; overflow: hidden; }
-.btn-add svg { width: 16px; height: 16px; flex: none; }
-.btn-add-text { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.15; min-width: 0; }
-.btn-add-main { font-size: 14px; font-weight: 700; }
+.btn-add {
+  min-width: 0; min-height: 56px; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 4px 8px; overflow: hidden;
+}
+.btn-add svg { width: 20px; height: 20px; flex: none; }
+.btn-add-text { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1px; line-height: 1.15; min-width: 0; }
+.btn-add-main { font-size: 13px; font-weight: 700; }
 .btn-add-sub { font-size: 11px; font-weight: 400; opacity: .85; white-space: nowrap; }
 
 /* focus rings for every control */

@@ -61,7 +61,13 @@ test('the clear card names the matches and a whole-number par, and Pack sits bes
   assert.ok(html.indexOf('id="btnAdd"') > html.indexOf('id="btnCompact"'));
   assert.ok(app.indexOf('packBoard') !== -1);
   assert.ok(app.indexOf('playPack') !== -1);
+  assert.ok(app.indexOf('spawnPackLaser') !== -1);
+  assert.ok(app.indexOf('c-pack-hold') !== -1);
+  assert.ok(app.indexOf('wrapStroke') !== -1);
   assert.ok(css.indexOf('nmPackOut') !== -1);
+  assert.ok(css.indexOf('.c-pack-laser .zap { stroke: var(--h3i);') !== -1);
+  assert.ok(css.indexOf('minmax(0, 1fr) auto minmax(0, 1fr)') !== -1);
+  assert.ok(css.indexOf('.stat-best { justify-self: center;') !== -1);
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');

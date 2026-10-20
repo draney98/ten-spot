@@ -311,62 +311,183 @@
 
   function clearPackMotion() {
     nodes.forEach(function (el) {
+      el.getAnimations().forEach(function (a) { if (!a.animationName) a.cancel(); });
       el.style.transition = '';
       el.style.transform = '';
       el.style.zIndex = '';
     });
-    document.querySelectorAll('.c-pack-ghost').forEach(function (el) { el.remove(); });
+    document.querySelectorAll('.c-pack-ghost, .c-pack-laser, .c-pack-hold').forEach(function (el) { el.remove(); });
   }
 
-  /** Cleared tiles fade where they stood. Live tiles slide from their old cells into the packed board. */
-  function playPack(from, ghosts) {
+  function holdPackRows(oldCount) {
+    var grid = $('grid');
+    var oldRows = Math.ceil(oldCount / 9);
+    var live = state.cells.length;
+    if (oldRows <= Math.ceil(live / 9)) return;
+    var need = oldRows * 9 - live;
+    for (var i = 0; i < need; i++) {
+      var hold = document.createElement('div');
+      hold.className = 'c c-pack-hold';
+      hold.setAttribute('aria-hidden', 'true');
+      grid.appendChild(hold);
+    }
+  }
+
+  /** Wide orange highlighter plus a thin orange beam, drawn while that tile slides. */
+  function spawnPackLaser(stroke, delayMs, durationMs) {
+    var fx = $('fx');
+    var box = fx.getBoundingClientRect();
+    var g = document.createElement('div');
+    g.className = 'fx-group c-pack-laser';
+    var timing = 'animation-delay:' + delayMs + 'ms;animation-duration:' + durationMs + 'ms';
+    g.innerHTML = '<svg class="zap-svg" width="' + box.width + '" height="' + box.height + '">' +
+      '<path class="zap zap-wide" d="' + stroke + '" pathLength="1" stroke-width="12" style="' + timing + '"/>' +
+      '<path class="zap" d="' + stroke + '" pathLength="1" stroke-width="2.5" style="' + timing + '"/>' +
+      '</svg>';
+    fx.appendChild(g);
+    later(function () { g.remove(); }, delayMs + durationMs + 40);
+  }
+
+  /** Each live tile slides one cell left into a blank, then the next tile follows.
+      A laser traces that tile's path. The old last row stays until the move ends. */
+  function playPack(from, oldCount) {
     if (!motionOk()) return;
-    var host = $('boardInner');
-    ghosts.forEach(function (g) {
-      var ghost = document.createElement('div');
-      ghost.className = g.cls + ' c-pack-ghost';
-      ghost.innerHTML = g.html;
-      ghost.setAttribute('aria-hidden', 'true');
-      ghost.style.left = g.x + 'px';
-      ghost.style.top = g.y + 'px';
-      ghost.style.width = g.w + 'px';
-      ghost.style.height = g.h + 'px';
-      host.appendChild(ghost);
-      ghost.addEventListener('animationend', function () { ghost.remove(); });
-    });
-    var moves = [];
     var myTok = tok;
+    var sample = state.cells.length ? nodes.get(state.cells[0].id) : null;
+    if (!sample) return;
+    var cellW = sample.getBoundingClientRect().width;
+    var cellH = sample.getBoundingClientRect().height;
+    var finals = {};
+    state.cells.forEach(function (c, index) { finals[c.id] = index; });
+    var visual = {};
+    var occupied = {};
     state.cells.forEach(function (c) {
       var start = from[c.id];
-      var el = nodes.get(c.id);
-      if (!start || !el) return;
-      var box = el.getBoundingClientRect();
-      var dx = start.x - box.left;
-      var dy = start.y - box.top;
-      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
-      el.style.transition = 'none';
-      el.style.zIndex = '2';
-      el.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
-      moves.push(el);
+      if (!start) return;
+      visual[c.id] = start.index;
+      occupied[start.index] = c.id;
     });
-    if (!moves.length) return;
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        if (tok !== myTok) return;
-        moves.forEach(function (el) {
-          el.style.transition = 'transform .34s ease';
-          el.style.transform = '';
-        });
+    var steps = [];
+    var limit = 0;
+    for (var id0 in visual) limit += visual[id0] - finals[id0];
+    for (var guard = 0; guard < limit; guard++) {
+      var mover = null;
+      var moverAt = 0;
+      for (var id in visual) {
+        var at = visual[id];
+        if (at <= finals[id] || occupied[at - 1]) continue;
+        if (mover === null || at < moverAt) { mover = id; moverAt = at; }
+      }
+      if (mover === null) break;
+      delete occupied[moverAt];
+      visual[mover] = moverAt - 1;
+      occupied[moverAt - 1] = mover;
+      steps.push({ id: mover, index: moverAt - 1 });
+    }
+    if (!steps.length) return;
+    holdPackRows(oldCount);
+    var gridBox = $('grid').getBoundingClientRect();
+    var fxBox = $('fx').getBoundingClientRect();
+    var row0 = sample.getBoundingClientRect();
+    var rowY0 = row0.top + row0.height / 2 - fxBox.top;
+    function centerOf(el) {
+      var r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2 - fxBox.left, y: r.top + r.height / 2 - fxBox.top };
+    }
+    function shift(index, finalIndex) {
+      var dx = ((index % 9) - (finalIndex % 9)) * cellW;
+      var dy = (Math.floor(index / 9) - Math.floor(finalIndex / 9)) * cellH;
+      return 'translate(' + dx + 'px,' + dy + 'px)';
+    }
+    var tracks = {};
+    var tileOrder = [];
+    steps.forEach(function (step) {
+      if (!tracks[step.id]) {
+        tracks[step.id] = [];
+        tileOrder.push(step.id);
+      }
+      tracks[step.id].push(step.index);
+    });
+    /* This click only. The first tile and its laser always take PACK_MS.
+       Each later tile is faster, but only half as quickly as a 0.7 step
+       (the same speedup takes twice as many tiles). Once the next tile
+       would pass twenty times the opening speed, the rest are not animated:
+       they stay where they were until the last slide ends, then appear in place.
+       The next click starts over. */
+    var PACK_MS = 360;
+    var fastest = PACK_MS / 20;
+    var tileDur = {};
+    var tileStart = {};
+    var clock = 0;
+    tileOrder.forEach(function (id, i) {
+      var raw = PACK_MS * Math.pow(0.7, i / 2);
+      if (raw <= fastest) return;
+      tileDur[id] = Math.round(raw);
+      tileStart[id] = clock;
+      clock += tileDur[id];
+    });
+    var releaseAt = clock;
+    var tail = [];
+    Object.keys(tracks).forEach(function (id) {
+      var el = nodes.get(Number(id));
+      var start = from[id];
+      if (!el || !start) return;
+      var endIndex = finals[id];
+      if (tileDur[id] == null) {
+        el.style.zIndex = '3';
+        el.style.transform = shift(start.index, endIndex);
+        tail.push(el);
+        return;
+      }
+      var fromRow = Math.floor(start.index / 9);
+      var toRow = Math.floor(endIndex / 9);
+      var endPt = centerOf(el);
+      var startPt = {
+        x: endPt.x + ((start.index % 9) - (endIndex % 9)) * cellW,
+        y: endPt.y + (fromRow - toRow) * cellH
+      };
+      var stroke;
+      if (fromRow === toRow) {
+        stroke = 'M ' + startPt.x + ' ' + startPt.y + ' L ' + endPt.x + ' ' + endPt.y;
+      } else {
+        var upper = toRow < fromRow ? endPt : startPt;
+        var lower = toRow < fromRow ? startPt : endPt;
+        var topRow = Math.min(fromRow, toRow);
+        var botRow = Math.max(fromRow, toRow);
+        var rowYs = [];
+        for (var r = topRow; r <= botRow; r++) rowYs.push(rowY0 + r * cellH);
+        stroke = L.wrapStroke(upper, lower, gridBox.left - fxBox.left, gridBox.right - fxBox.left, rowYs);
+      }
+      var durationMs = tileDur[id];
+      spawnPackLaser(stroke, tileStart[id], durationMs);
+      var nSteps = tracks[id].length;
+      var cursor = start.index;
+      var frames = [{ transform: shift(cursor, endIndex), offset: 0 }];
+      tracks[id].forEach(function (next, i) {
+        // A wrap is one index, but a straight slide would cut across the row.
+        // Run out to the right edge, then up into the row above.
+        if (cursor % 9 === 0 && Math.floor(next / 9) < Math.floor(cursor / 9)) {
+          frames.push({ transform: shift(Math.floor(cursor / 9) * 9 + 8, endIndex), offset: (i + 0.5) / nSteps });
+        }
+        cursor = next;
+        frames.push({ transform: shift(cursor, endIndex), offset: (i + 1) / nSteps });
       });
+      el.style.zIndex = '3';
+      var anim = el.animate(frames, { delay: tileStart[id], duration: durationMs, easing: 'linear', fill: 'both' });
+      anim.onfinish = function () {
+        anim.cancel();
+        if (tok !== myTok) return;
+        el.style.zIndex = '';
+      };
     });
     later(function () {
       if (tok !== myTok) return;
-      moves.forEach(function (el) {
-        el.style.transition = '';
+      tail.forEach(function (el) {
         el.style.transform = '';
         el.style.zIndex = '';
       });
-    }, 420);
+      document.querySelectorAll('.c-pack-hold').forEach(function (el) { el.remove(); });
+    }, releaseAt);
   }
 
   function syncBoard() {
@@ -558,7 +679,7 @@
     $('btnUndo').setAttribute('aria-label', 'Undo, ' + lim(s.undosLeft) + ' left');
     $('btnHint').setAttribute('aria-label', 'Hint, ' + lim(s.hintsLeft) + ' left');
     $('btnCompact').setAttribute('aria-label', 'Pack, ' + lim(s.compactsLeft) + ' left');
-    $('addMain').textContent = 'Add ' + NOUN[ui.mode];
+    $('addMain').textContent = 'Add';
     $('addSub').textContent = s.addsLeft + ' of ' + L.addsFor(s.diff, s.level) + ' left';
 
     renderOverlay();
@@ -635,6 +756,7 @@
       }
       later(function () { ui.bad = []; render(); }, 360);
     } else if (ev.type === 'match') {
+      clearPackMotion();
       var myTok = ++tok;
       spawnFx(ev);                 // measure BEFORE anything moves
       ui.flash = ev.ids.slice();
@@ -653,24 +775,14 @@
   }
 
   function onPack() {
+    clearPackMotion();
     var r = L.packBoard(state);
     if (!r.event) return;
+    var oldCount = state.cells.length;
     var from = {};
-    var ghosts = [];
     if (motionOk()) {
-      var host = $('boardInner').getBoundingClientRect();
-      state.cells.forEach(function (c) {
-        var el = nodes.get(c.id);
-        if (!el) return;
-        var box = el.getBoundingClientRect();
-        if (c.done) {
-          ghosts.push({
-            html: el.innerHTML, cls: el.className,
-            x: box.left - host.left, y: box.top - host.top, w: box.width, h: box.height
-          });
-        } else {
-          from[c.id] = { x: box.left, y: box.top };
-        }
+      state.cells.forEach(function (c, index) {
+        if (!c.done) from[c.id] = { index: index };
       });
     }
     tok++;
@@ -680,10 +792,11 @@
     ui.note = 'Tiles slid together. ' +
       (left ? (isFinite(left) ? plural(left, 'pack', 'packs') + ' left this level.' : 'Packs are unlimited.') : 'That was your last pack for this level.');
     render();
-    playPack(from, ghosts);
+    playPack(from, oldCount);
   }
 
   function onAdd() {
+    clearPackMotion();
     var r = L.addNumbers(state);
     if (!r.event) return;
     tok++;
