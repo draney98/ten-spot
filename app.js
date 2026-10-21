@@ -25,6 +25,7 @@
   var KEY_BEST = 'numbermatch.best2.';   // + easy|normal|hard. Old bests are not copied over.
   var KEY_THEME = 'numbermatch.theme';  // 'light'|'dark'
   var KEY_MODE = 'numbermatch.mode';    // 'num'|'tiles'|'icons'|'teams'
+  var KEY_SOUND = 'numbermatch.sound';  // 'on'|'off'; missing means off
   var KEY_PLAYER = 'numbermatch.player';
   var S = window.NumberMatchScores;
   var SCORES_API = (window.NM_SCORES_API || '').replace(/\/$/, '');
@@ -117,6 +118,7 @@
   var ui = {                                      // UI-only state
     mode: savedMode,
     dark: loadDark(),
+    sound: store.get(KEY_SOUND) === 'on',
     settingsOpen: false,
     confirm: null, // the open confirmation dialog: { yes: function } or null
     flash: [],     // cell ids playing the match "pop"
@@ -130,6 +132,50 @@
     puzzleError: '',
     boardCode: ''  // short code from the server; empty until that answer arrives
   };
+
+  /* ---------- 2b. QUIET TICKS ----------
+     Short sine clicks. Off until the player turns sound on; that choice is remembered. */
+  var audioCtx = null;
+  function audio() {
+    if (!ui.sound) return null;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!audioCtx) audioCtx = new AC();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function blip(freq, dur, gain, when) {
+    var ctx = audio();
+    if (!ctx) return;
+    var t = when == null ? ctx.currentTime : when;
+    var osc = ctx.createOscillator();
+    var amp = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    amp.gain.setValueAtTime(gain, t);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(amp);
+    amp.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+  function play(name) {
+    var ctx = audio();
+    if (!ctx) return;
+    var t = ctx.currentTime;
+    if (name === 'match') blip(1180, 0.024, 0.045, t);
+    else if (name === 'row') { blip(1180, 0.02, 0.04, t); blip(1480, 0.028, 0.04, t + 0.05); }
+    else if (name === 'clear') { blip(880, 0.028, 0.04, t); blip(1320, 0.036, 0.045, t + 0.08); }
+    else if (name === 'bad') blip(180, 0.04, 0.05, t);
+    else blip(660, 0.016, 0.032, t);
+  }
+  function setSound(on) {
+    var was = ui.sound;
+    ui.sound = !!on;
+    store.set(KEY_SOUND, ui.sound ? 'on' : 'off');
+    render();
+    if (ui.sound && !was) play('click');
+  }
 
   /* ---------- 3. TIMERS ----------
      `tok` is bumped by every action that changes the board. A delayed
@@ -501,6 +547,7 @@
       if (!el) {
         el = document.createElement('button');
         el.type = 'button';
+        el.draggable = false;
         el.dataset.id = c.id;
         nodes.set(c.id, el);
       }
@@ -624,6 +671,7 @@
     setPressed('[data-diff]', 'data-diff', s.diff);
     setPressed('[data-mode]', 'data-mode', ui.mode);
     setPressed('[data-theme]', 'data-theme', ui.dark ? 'dark' : 'light');
+    setPressed('[data-sound]', 'data-sound', ui.sound ? 'on' : 'off');
     $('diffInfo').textContent = diffInfo(s.diff);
     $('styleInfo').textContent = MODE_HELP[ui.mode];
 
@@ -644,23 +692,22 @@
     }
     paintStanding($('title'));
     paintStanding($('subline'));
-    document.querySelectorAll('.stat').forEach(paintStanding);
+    document.querySelectorAll('.stat:not(.stat-best)').forEach(paintStanding);
+    var record = s.best[s.diff] || 0;
+    document.querySelector('.stat-best').classList.toggle('is-passed', s.score > record || !!s.newBest);
     $('puzzleCode').textContent = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, mode: ui.mode, seed: s.seed });
     $('puzzleError').textContent = ui.puzzleError || '';
 
     // scoreboard
     $('score').textContent = fmt(s.score);
     $('best').textContent = fmt(s.best[s.diff] || 0);
-    var gainTxt = ui.gain ? (ui.gain > 0 ? '+' : '−') + fmt(Math.abs(ui.gain)) : '';
-    var tag = gainTxt;
-    if (ui.gain > 0 && s.streak >= 2 && ui.streakMult) {
-      tag += ', streak ×' + (Math.round(ui.streakMult * 10) / 10).toFixed(1);
-    }
+    var tag = '';
+    if (ui.gain < 0) tag = '−' + fmt(Math.abs(ui.gain));
+    else if ((s.streak || 0) >= 2) tag = '(' + L.streakMult(s.streak).toFixed(1) + 'x)';
     $('scoreTag').textContent = tag;
     $('scoreTag').hidden = !tag;
     $('scoreTag').classList.toggle('is-loss', ui.gain < 0);
     var pct = s.total ? Math.floor(s.cleared / s.total * 100) : 0;   // floor: 100% only when the board is clear
-    $('pct').textContent = pct + '%';
     $('progressFill').style.width = pct + '%';
     $('progress').setAttribute('aria-valuenow', String(pct));
 
@@ -690,13 +737,13 @@
     $('board').classList.toggle('ended', s.status !== 'playing');
     if (s.status === 'playing') { ov.hidden = true; return; }
     var clear = s.status === 'clear';
-    var nextAdds = L.addsFor(s.diff, s.level + 1);
-    $('endKicker').textContent = clear ? 'Level ' + s.level + ' cleared' : 'Out of moves on level ' + s.level;
-    $('endTitle').textContent = clear ? 'Board clear!' : 'Game over';
+    $('endKicker').hidden = clear;
+    $('endKicker').textContent = clear ? '' : 'Out of moves on level ' + s.level;
+    $('endTitle').textContent = clear ? 'Level ' + s.level + ' clear!' : 'Game over';
     $('endNumber').textContent = clear ? '+' + fmt(s.bonus) : fmt(s.final);
     $('endDetail').textContent = clear ? clearDetail(s) : 'No adds left and no pairs to clear. You reached level ' + s.level + '.';
-    $('endBest').textContent = s.newBest ? 'New best score!'
-      : (clear ? 'Next: level ' + (s.level + 1) + ' with ' + plural(nextAdds, 'add', 'adds') : 'Best: ' + fmt(s.best[s.diff] || 0));
+    $('endBest').hidden = clear;
+    $('endBest').textContent = s.newBest ? 'New best score!' : 'Best: ' + fmt(s.best[s.diff] || 0);
     $('btnEndPrimary').textContent = clear ? 'Next level' : 'Play again';
     $('btnEndUndo').hidden = !(s.status === 'lose' && L.canUndo(s));
     if (ov.hidden) ov.hidden = false; // un-hiding restarts the fade-in animation
@@ -743,6 +790,7 @@
 
     if (ev.type === 'select' || ev.type === 'deselect') {
       ui.hint = []; ui.note = '';
+      play('click');
     } else if (ev.type === 'bad') {
       ui.hint = [];
       ui.bad = [ev.id];
@@ -755,6 +803,7 @@
         later(function () { if (gainTok === penTok) { ui.gain = 0; render(); } }, 1400);
       }
       later(function () { ui.bad = []; render(); }, 360);
+      play('bad');
     } else if (ev.type === 'match') {
       clearPackMotion();
       var myTok = ++tok;
@@ -770,6 +819,7 @@
       var myGain = ++gainTok;
       later(function () { if (gainTok === myGain) { ui.gain = 0; render(); } }, 1400);
       if (ev.status !== 'playing') saveBestIfHigher();
+      play(ev.status === 'clear' ? 'clear' : (ev.status === 'lose' ? 'bad' : (ev.rowsCleared.length ? 'row' : 'match')));
     }
     render();
   }
@@ -791,6 +841,7 @@
     var left = r.event.compactsLeft;
     ui.note = 'Tiles slid together. ' +
       (left ? (isFinite(left) ? plural(left, 'pack', 'packs') + ' left this level.' : 'Packs are unlimited.') : 'That was your last pack for this level.');
+    play('click');
     render();
     playPack(from, oldCount);
   }
@@ -806,6 +857,7 @@
       (r.event.addsLeft ? plural(r.event.addsLeft, 'add', 'adds') + ' left this level.' : 'That was your last add for this level.');
     later(function () { ui.born = []; render(); }, 700);
     if (r.event.status !== 'playing') saveBestIfHigher();
+    play(r.event.status === 'lose' ? 'bad' : 'click');
     render();
   }
 
@@ -819,6 +871,7 @@
     ui.flash = []; ui.bad = []; ui.hint = []; ui.born = []; ui.streakMult = 0;
     ui.gain = r.event.cost ? -r.event.cost : 0;
     ui.note = r.event.cost > 0 ? 'Undone (−' + r.event.cost + ' points).' : 'Undone.';
+    play('click');
     if (ui.gain) {
       var undoTok = ++gainTok;
       later(function () { if (gainTok === undoTok) { ui.gain = 0; render(); } }, 1400);
@@ -832,12 +885,14 @@
     state = r.state;
     if (r.event.type === 'nohint') {
       ui.note = state.addsLeft > 0 ? 'No pairs left. Try Add ' + NOUN[ui.mode] + '.' : 'No pairs left.';
+      play('bad');
     } else {
       ui.hint = r.event.ids;
       ui.streakMult = 0;
       ui.note = r.event.cost > 0
         ? 'Select two ' + PICK_NOUN[ui.mode] + ' to clear them. (−' + r.event.cost + ' points)'
         : '';
+      play('click');
       if (r.event.cost) {
         var hintTok = ++gainTok;
         ui.gain = -r.event.cost;
@@ -861,12 +916,9 @@
   }
   function clearDetail(s) {
     var p = L.bonusParts(s);
-    var head = 'You made ' + p.used + ' matches. Par was ' + p.par + '. ';
-    var score = ' Score ' + fmt(s.score) + '.';
-    if (p.under > 0) {
-      return head + 'Level bonus ' + fmt(p.levelPoints) + ', plus ' + fmt(p.parPoints) + ' for finishing ' + p.under + ' under par.' + score;
-    }
-    return head + 'Level bonus ' + fmt(p.levelPoints) + '.' + score;
+    var gap = p.par - p.used;
+    var par = gap > 0 ? gap + ' under par.' : (gap < 0 ? -gap + ' over par.' : 'Even par.');
+    return plural(p.used, 'match.', 'matches.') + '\n' + par;
   }
   function levelNote() {
     var extra = state.rules === 'pairs' ? ' tiles, ' + L.mascots(state.level, state.diff) + ' mascots, '
@@ -963,6 +1015,10 @@
     var btn = e.target.closest('button.c');
     if (btn) onCell(Number(btn.dataset.id));
   });
+  // A long-press on a tile was opening the mobile copy/paste menu.
+  ['selectstart', 'dragstart', 'copy', 'cut', 'paste', 'contextmenu'].forEach(function (type) {
+    $('grid').addEventListener(type, function (e) { e.preventDefault(); });
+  });
   $('btnAdd').addEventListener('click', onAdd);
   $('btnCompact').addEventListener('click', onPack);
   $('btnUndo').addEventListener('click', onUndo);
@@ -1043,6 +1099,9 @@
   });
   document.querySelectorAll('[data-theme]').forEach(function (b) {
     b.addEventListener('click', function () { setTheme(b.dataset.theme === 'dark'); });
+  });
+  document.querySelectorAll('[data-sound]').forEach(function (b) {
+    b.addEventListener('click', function () { setSound(b.dataset.sound === 'on'); });
   });
   $('confirmYes').addEventListener('click', function () { closeConfirm(true); });
   $('confirmNo').addEventListener('click', function () { closeConfirm(false); });

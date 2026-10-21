@@ -54,8 +54,9 @@ test('a wrap match follows the row and a short code can be entered', function ()
 });
 
 test('the clear card names the matches and a whole-number par, and Pack sits beside Add', function () {
-  assert.ok(app.indexOf('You made ') !== -1);
-  assert.ok(app.indexOf(' matches. Par was ') !== -1);
+  assert.ok(app.indexOf(' clear!') !== -1);
+  assert.ok(app.indexOf(' under par.') !== -1);
+  assert.ok(app.indexOf(' over par.') !== -1);
   assert.ok(html.indexOf('id="btnCompact"') !== -1);
   assert.ok(html.indexOf('>Pack<') !== -1);
   assert.ok(html.indexOf('id="btnAdd"') > html.indexOf('id="btnCompact"'));
@@ -66,8 +67,26 @@ test('the clear card names the matches and a whole-number par, and Pack sits bes
   assert.ok(app.indexOf('wrapStroke') !== -1);
   assert.ok(css.indexOf('nmPackOut') !== -1);
   assert.ok(css.indexOf('.c-pack-laser .zap { stroke: var(--h3i);') !== -1);
-  assert.ok(css.indexOf('minmax(0, 1fr) auto minmax(0, 1fr)') !== -1);
-  assert.ok(css.indexOf('.stat-best { justify-self: center;') !== -1);
+  assert.ok(css.indexOf('grid-template-columns: 1fr 1fr;') !== -1);
+  assert.ok(css.indexOf('.stat-best { align-items: flex-end; text-align: right;') !== -1);
+  assert.ok(html.indexOf('>Cleared<') === -1);
+  assert.ok(html.indexOf('id="pct"') === -1);
+  assert.ok(app.indexOf('is-passed') !== -1);
+  assert.ok(css.indexOf('.stat-best.is-passed') !== -1);
+  assert.ok(css.indexOf('-webkit-touch-callout: none') !== -1);
+  assert.ok(app.indexOf("'paste'") !== -1);
+});
+
+test('sound is a quiet tick and starts off', function () {
+  assert.ok(html.indexOf('aria-label="Sound"') !== -1);
+  assert.ok(html.indexOf('data-sound="off"') !== -1);
+  assert.ok(html.indexOf('data-sound="on"') !== -1);
+  assert.ok(app.indexOf("store.get(KEY_SOUND) === 'on'") !== -1);
+  assert.ok(app.indexOf("play('click')") !== -1);
+  assert.ok(app.indexOf("play('bad')") !== -1);
+  assert.ok(app.indexOf("'clear'") !== -1);
+  assert.ok(app.indexOf("'row'") !== -1);
+  assert.ok(app.indexOf("'match'") !== -1);
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');

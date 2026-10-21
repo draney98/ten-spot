@@ -17,6 +17,8 @@
   --line: #b8c5a6;      /* borders, progress track */
   --ink: #161815;       /* graphite: text, primary button, rules */
   --muted: #343a2e;     /* secondary text */
+  --quiet: #8a8d86;     /* best score, until the player passes it */
+  --gold: #9a7200;      /* gold pencil: best score once the player passes it */
   --done: #ccd5c0;      /* cleared cell content: deliberately faint */
   --strike: #b23a2e;    /* red pencil: strikes, score losses, bad pick */
   --gain: #1747a6;      /* blue pencil: score gains / positive clear FX */
@@ -39,7 +41,7 @@
 }
 :root.dark {
   --bg: #18211d; --paper: #1f2b25; --grid: #2d3c34; --line: #3b4b42;
-  --ink: #f6f3ea; --muted: #d5ddd0; --done: #34443b; --strike: #e3877a;
+  --ink: #f6f3ea; --muted: #d5ddd0; --quiet: #7d867e; --gold: #ffd23f; --done: #34443b; --strike: #e3877a;
   --gain: #79adff; --gain-hi: #2a4a7a;
   --focus: #9dbce3; --binding: #0e1411;
   --overlay: rgba(31, 43, 37, .96); --bar: rgba(24, 33, 29, .95); --blend: normal;
@@ -112,18 +114,19 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
 
 /* ---------- 6. SCOREBOARD (a tally line) ---------- */
 .a-stats { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; border-bottom: 1.5px solid var(--ink); }
-.stat-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; align-items: start; }
-.stat-pct { justify-self: end; text-align: right; }
+.stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
 .stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.stat-best { justify-self: center; align-items: center; text-align: center; }
+.stat-best { align-items: flex-end; text-align: right; color: var(--quiet); }
+.stat-best .stat-l, .stat-best .stat-big { color: var(--quiet); }
+.stat-best.is-passed, .stat-best.is-passed .stat-l, .stat-best.is-passed .stat-big { color: var(--gold); }
+.stat-figure { display: flex; align-items: baseline; }
 .stat-l { font-size: 13px; color: var(--muted); }
 .stat.is-stuck, .stat.is-stuck .stat-l, .stat.is-stuck .stat-big, .stat.is-stuck .stat-small { color: var(--strike); }
 .stat.is-under, .stat.is-under .stat-l, .stat.is-under .stat-big, .stat.is-under .stat-small { color: var(--h2i); }
-.stat.is-stuck .score-tag, .stat.is-under .score-tag { color: var(--gain); }
 .stat.is-stuck .score-tag.is-loss, .stat.is-under .score-tag.is-loss { color: var(--strike); }
 .stat-big { font-size: 32px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .stat-small { font-size: 24px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
-.score-tag { color: var(--gain); margin-left: 4px; }
+.score-tag { color: inherit; margin-left: 6px; font-size: 13px; font-weight: 700; }
 .score-tag.is-loss { color: var(--strike); }
 .progress-row { display: flex; align-items: center; gap: 10px; }
 .progress { flex: 1 1 auto; height: 5px; background: var(--line); overflow: hidden; }
@@ -158,8 +161,10 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
   font-family: inherit; font-weight: 700; font-size: clamp(17px, 5.4vw, 27px); line-height: 1;
   display: flex; align-items: center; justify-content: center; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none;
   transition: color .3s ease;
 }
+.c * { -webkit-user-select: none; user-select: none; -webkit-user-drag: none; pointer-events: none; }
 .c:hover:not(.c-done) { background: rgba(127, 140, 110, .12); }
 .c::after { /* red-pencil strike, hidden until .c-done */
   content: ''; position: absolute; left: 16%; right: 16%; top: 50%; height: 2px; border-radius: 2px;
@@ -225,7 +230,7 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
 .end-kicker { font-size: 15px; color: var(--muted); }
 .end-title { font-size: 36px; font-weight: 700; line-height: 1.05; }
 .end-number { font-size: 44px; font-weight: 700; color: var(--strike); }
-.end-detail { font-size: 15px; line-height: 1.45; color: var(--muted); max-width: 300px; }
+.end-detail { font-size: 15px; line-height: 1.45; color: var(--muted); max-width: 300px; white-space: pre-line; }
 .end-best { font-size: 15px; font-weight: 700; }
 .end-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 6px; }
 

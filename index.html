@@ -62,6 +62,13 @@
         <button type="button" data-theme="dark" aria-pressed="false">Chalkboard</button>
       </div>
     </div>
+    <div class="set-group">
+      <h2 class="set-title">Sound</h2>
+      <div class="seg" role="group" aria-label="Sound">
+        <button type="button" data-sound="off" aria-pressed="true">Off</button>
+        <button type="button" data-sound="on" aria-pressed="false">On</button>
+      </div>
+    </div>
     <div class="set-group" id="scoreSync">
       <h2 class="set-title">Score code</h2>
       <p class="set-help">A code keeps your best scores in Easy, Normal, and Hard. Enter it on another browser to use the same bests.</p>
@@ -97,11 +104,10 @@
   <section class="a-stats" aria-label="Scoreboard">
     <div class="stat-row">
       <div class="stat">
-        <span class="stat-l">Score <b class="score-tag" id="scoreTag" hidden></b></span>
-        <span class="stat-big" id="score">0</span>
+        <span class="stat-l">Score</span>
+        <span class="stat-figure"><span class="stat-big" id="score">0</span><b class="score-tag" id="scoreTag" hidden></b></span>
       </div>
       <div class="stat stat-best"><span class="stat-l">Best</span><span class="stat-big" id="best">0</span></div>
-      <div class="stat stat-pct"><span class="stat-l">Cleared</span><span class="stat-small" id="pct">0%</span></div>
     </div>
     <div class="progress-row">
       <div class="progress" id="progress" role="progressbar" aria-label="Board cleared" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-fill" id="progressFill"></div></div>
