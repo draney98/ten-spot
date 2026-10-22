@@ -266,29 +266,64 @@ test('pairs: same mascot matches (outline+solid or identical), different mascot 
   assert.ok(!L.matches(2, 3, 'pairs'));  // mascot 1 vs mascot 2
   assert.ok(!L.matches(1, 9, 'pairs'));  // sums to 10 but different mascots
 });
-test('pairs: mascots per level are 5, 6, 7, then 8 forever', function () {
-  assert.deepStrictEqual([1,2,3,4,5,12].map(L.mascots), [5,6,7,8,8,8]);
+test('pairs: mascots per level are 5, 5, 6, 6, 7, then 8', function () {
+  assert.deepStrictEqual([1,2,3,4,5,12].map(L.mascots), [5,5,6,6,7,8]);
 });
-test('easy starts with 4 mascots and adds one every 2 levels; hard starts at 6', function () {
-  assert.deepStrictEqual([1,2,3,5,9].map(function (level) { return L.mascots(level, 'easy'); }), [4,4,5,6,8]);
-  assert.deepStrictEqual([1,2,3].map(function (level) { return L.mascots(level, 'hard'); }), [6,7,8]);
+test('easy holds a mascot count for 3 levels; hard starts at 6 and holds for 2', function () {
+  assert.deepStrictEqual([1,2,3,5,9].map(function (level) { return L.mascots(level, 'easy'); }), [4,4,4,5,6]);
+  assert.deepStrictEqual([1,2,3].map(function (level) { return L.mascots(level, 'hard'); }), [6,6,7]);
 });
 test('pairs: board sizes are 28, 36, 44, 54 and use only the allowed mascots', function () {
-  [[1,28,5],[2,36,6],[3,44,7],[4,54,8]].forEach(function (t) {
+  [[1,28,5],[2,36,5],[3,44,6],[4,54,6]].forEach(function (t) {
     var b = L.pairsBoard(t[0], Math.random);
     assert.strictEqual(b.length, t[1]);
     b.forEach(function (v) { assert.ok(v >= 1 && v <= 2 * t[2], 'value ' + v + ' on level ' + t[0]); });
   });
 });
 test('pairs: prefer both outline or both solid', function () {
-  assert.deepStrictEqual(L.pairsBoard(1, scripted([0, 0])).slice(0, 2), [1, 1]);
-  assert.deepStrictEqual(L.pairsBoard(1, scripted([0, 0.375])).slice(0, 2), [2, 2]);
-  assert.deepStrictEqual(L.pairsBoard(1, scripted([0, 0.75])).slice(0, 2), [1, 2]);
+  function constant(x) { return function () { return x; }; }
+  function shades(x) {
+    var outline = 0, solid = 0;
+    L.pairsBoard(1, constant(x)).forEach(function (v) { if (v % 2) outline++; else solid++; });
+    return [outline, solid];
+  }
+  assert.deepStrictEqual(shades(0), [28, 0]);
+  assert.deepStrictEqual(shades(0.5), [0, 28]);
+  assert.deepStrictEqual(shades(0.8), [14, 14]);
 });
-test('pairs: every mascot appears an even number of times', function () {
-  var b = L.pairsBoard(4, Math.random), count = {};
-  b.forEach(function (v) { var m = L.mascotOf(v); count[m] = (count[m] || 0) + 1; });
-  Object.keys(count).forEach(function (m) { assert.strictEqual(count[m] % 2, 0); });
+function mascotTiles(board) {
+  var count = {};
+  board.forEach(function (v) { var m = L.mascotOf(v); count[m] = (count[m] || 0) + 1; });
+  return count;
+}
+test('pairs: easy and normal deal every mascot, and counts differ by at most one pair', function () {
+  ['easy', 'normal'].forEach(function (diff) {
+    [1, 2, 4, 8, 13].forEach(function (level) {
+      var fams = L.mascots(level, diff);
+      var count = mascotTiles(L.pairsBoard(level, Math.random, diff));
+      var pairs = [];
+      for (var m = 1; m <= fams; m++) {
+        assert.ok(count[m] > 0, diff + ' level ' + level + ' missing mascot ' + m);
+        assert.strictEqual(count[m] % 2, 0, diff + ' level ' + level + ' mascot ' + m);
+        pairs.push(count[m] / 2);
+      }
+      var min = Math.min.apply(null, pairs), max = Math.max.apply(null, pairs);
+      assert.ok(max - min <= 1, diff + ' level ' + level + ' spread ' + min + '..' + max);
+    });
+  });
+});
+test('pairs: hard deals every mascot and leaves exactly one with a single pair', function () {
+  [1, 3, 5, 8].forEach(function (level) {
+    var fams = L.mascots(level, 'hard');
+    var count = mascotTiles(L.pairsBoard(level, Math.random, 'hard'));
+    var singles = 0;
+    for (var m = 1; m <= fams; m++) {
+      assert.ok(count[m] > 0, 'level ' + level + ' missing mascot ' + m);
+      assert.strictEqual(count[m] % 2, 0);
+      if (count[m] === 2) singles++;
+    }
+    assert.strictEqual(singles, 1, 'level ' + level + ' singles');
+  });
 });
 test('pairs: new game, select, hint and next level keep the Gridiron rules', function () {
   var s = L.newGame('normal', null, Math.random, 'pairs');

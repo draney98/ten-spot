@@ -21,11 +21,11 @@
   /** Difficulty settings. Infinity means "unlimited". */
   var LEVELS = {
     easy:   { label: 'Easy',   adds: 8, minAdds: 4, hints: Infinity, undos: Infinity, compacts: Infinity, diag: true,  mult: 1,
-              kinds: { classic: { start: 3, every: 2 }, pairs: { start: 4, every: 2 }, mahjong: { start: 1, every: 2 } } },
+              kinds: { classic: { start: 3, every: 2 }, pairs: { start: 4, every: 3 }, mahjong: { start: 1, every: 2 } } },
     normal: { label: 'Normal', adds: 5, minAdds: 2, hints: 3,        undos: 5,        compacts: 3,        diag: true,  mult: 1.5,
-              kinds: { classic: { start: 4, every: 1 }, pairs: { start: 5, every: 1 }, mahjong: { start: 2, every: 1 } } },
+              kinds: { classic: { start: 4, every: 1 }, pairs: { start: 5, every: 2 }, mahjong: { start: 2, every: 1 } } },
     hard:   { label: 'Hard',   adds: 3, minAdds: 1, hints: 0,        undos: 1,        compacts: 1,        diag: true,  mult: 2.5,
-              kinds: { classic: { start: 5, every: 1 }, pairs: { start: 6, every: 1 }, mahjong: { start: 4, every: 1 } } }
+              kinds: { classic: { start: 5, every: 1 }, pairs: { start: 6, every: 2 }, mahjong: { start: 4, every: 1 } } }
   };
   // `diag` is kept as a switch so a future mode can turn diagonals off. Every difficulty allows them today.
 
@@ -89,24 +89,53 @@
     return 54;
   }
 
-  /** Gridiron: mascots in play. Normal starts at 5 and adds one each level, up to 8. */
+  /** Gridiron: mascots in play. Normal starts at 5 and adds one every two levels, up to 8. */
   function mascots(level, diff) {
     return kindCount(diff, level, 'pairs');
   }
   function mascotOf(v) { return Math.ceil(v / 2); }   // 1..8
   function isSolid(v) { return v % 2 === 0; }
 
-  /** Gridiron board: pick a mascot, then prefer one version (3/8 both outline,
+  /** Pull one mascot down to a single pair. Spare pairs go to the fullest other mascot. */
+  function plantStrand(counts, rng) {
+    var victims = [];
+    for (var i = 0; i < counts.length; i++) if (counts[i] > 1) victims.push(i);
+    if (!victims.length) return;
+    var v = victims[Math.floor(rng() * victims.length)];
+    while (counts[v] > 1) {
+      var dest = -1;
+      for (var k = 0; k < counts.length; k++) {
+        if (k === v) continue;
+        if (dest < 0 || counts[k] > counts[dest]) dest = k;
+      }
+      counts[v]--;
+      counts[dest]++;
+    }
+  }
+
+  /** Gridiron board: an even share of pairs per mascot (Hard then leaves one mascot
+      with a single pair). Each pair prefers one version (3/8 both outline,
       3/8 both solid, 1/4 one of each). Shuffle. */
   function pairsBoard(level, rng, diff) {
-    var size = boardSize(level, 'pairs'), fams = mascots(level, diff), vals = [];
-    for (var i = 0; i < size / 2; i++) {
-      var f = 1 + Math.floor(rng() * fams);
-      var roll = rng();
-      var outline = 2 * f - 1, solid = 2 * f;
-      if (roll < 0.375) vals.push(outline, outline);
-      else if (roll < 0.75) vals.push(solid, solid);
-      else vals.push(outline, solid);
+    var fams = mascots(level, diff);
+    var pairCount = boardSize(level, 'pairs') / 2;
+    var base = Math.floor(pairCount / fams);
+    var extra = pairCount % fams;
+    var counts = [];
+    var order = [];
+    for (var f = 0; f < fams; f++) { counts.push(base); order.push(f); }
+    shuffle(order, rng);
+    for (var e = 0; e < extra; e++) counts[order[e]]++;
+    if (diff === 'hard') plantStrand(counts, rng);
+    var vals = [];
+    for (var m = 0; m < fams; m++) {
+      var outline = 2 * m + 1, solid = 2 * m + 2;
+      for (var p = 0; p < counts[m]; p++) {
+        var roll = rng();
+        if (roll < 0.375) vals.push(outline, outline);
+        else if (roll < 0.75) vals.push(solid, solid);
+        else vals.push(outline, solid);
+      }
     }
     return shuffle(vals, rng);
   }
