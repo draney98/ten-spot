@@ -62,35 +62,47 @@ body {
   transition: background-color .3s ease, color .3s ease;
 }
 .app { padding: 16px 16px 0; }
+.app, .app * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.app .how, .app .credits, .app input, .app textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.a-board, .a-act, .a-head, button { touch-action: manipulation; }
 [hidden] { display: none !important; }
 
 /* ---------- 3. LAYOUT (mobile first) ---------- */
 .layout {
   width: 100%; max-width: 600px; margin: 0 auto;
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px;
-  grid-template-areas: "head" "settings" "stats" "board" "note" "actions";
+  grid-template-areas: "head" "stats" "board" "note" "actions";
   /* the 1fr row (status line) soaks up spare height so the bottom bar
      sits at the bottom of the screen even when the board is short */
-  grid-template-rows: auto auto auto auto 1fr auto;
+  grid-template-rows: auto auto auto 1fr auto;
   min-height: calc(100vh - 16px);
 }
 .a-head { grid-area: head; } .a-set { grid-area: settings; } .a-stats { grid-area: stats; }
 .a-board { grid-area: board; } .a-note { grid-area: note; } .a-act { grid-area: actions; }
 
 /* ---------- 4. HEADER ---------- */
-.a-head { display: flex; align-items: center; gap: 8px; }
-.title-wrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-h1 { margin: 0; font-size: 27px; line-height: 1.1; font-weight: 700; }
-h1.is-stuck, .subline.is-stuck { color: var(--strike); }
-h1.is-under, .subline.is-under { color: var(--h2i); }
-.subline { font-size: 14px; color: var(--muted); }
+.a-head { display: flex; align-items: center; gap: 4px; height: 44px; }
+h1 { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 20px; line-height: 44px; font-weight: 700; }
+h1.is-stuck { color: var(--strike); }
+h1.is-under { color: var(--h2i); }
 .icon-btn {
   width: 44px; height: 44px; flex: 0 0 44px; padding: 0; border-radius: 6px;
-  border: 1.5px solid var(--line); background: transparent; color: var(--ink);
+  border: 0; background: transparent; color: var(--ink); outline: none;
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
-.icon-btn:hover { border-color: var(--ink); }
-.icon-btn[aria-expanded="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.icon-btn:hover, .icon-btn:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.icon-btn[aria-expanded="true"],
+.icon-btn[aria-expanded="true"]:hover,
+.icon-btn[aria-expanded="true"]:focus-visible { background: var(--ink); color: var(--paper); }
 .i-sun { display: none; }
 :root.dark .i-sun { display: block; }
 :root.dark .i-moon { display: none; }
@@ -113,7 +125,7 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); font-weight: 700; }
 
 /* ---------- 6. SCOREBOARD (a tally line) ---------- */
-.a-stats { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; border-bottom: 1.5px solid var(--ink); }
+.a-stats { display: flex; flex-direction: column; gap: 10px; }
 .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
 .stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .stat-best { align-items: flex-end; text-align: right; color: var(--quiet); }
@@ -148,7 +160,7 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
 .board-inner { position: relative; }
 .puzzle-code {
   margin: 10px 0 0; font-size: 13px; font-weight: 600; text-align: center;
-  color: var(--muted); font-variant-numeric: tabular-nums; user-select: text;
+  color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 /* the pad grid IS the board: cells share 1px grid lines, no gaps */
 .grid9 { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); border-top: 1px solid var(--grid); border-left: 1px solid var(--grid); }
@@ -350,6 +362,21 @@ h1.is-under, .subline.is-under { color: var(--h2i); }
 @keyframes nmS7 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(-7px, -21px) rotate(90deg); } }
 @keyframes nmS8 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(9px, -28px) rotate(90deg); } }
 @keyframes nmS9 { 0% { opacity: 1; transform: translate(0,0); } 100% { opacity: 0; transform: translate(18px, -13px) rotate(90deg); } }
+
+/* phones: tighter space above the score. Desktop keeps the 16px pad and the layout gap. */
+@media (max-width: 959px) {
+  .app { padding-top: 8px; }
+  .layout { min-height: calc(100vh - 8px); }
+  .a-head { margin-bottom: -8px; }   /* the 14px grid gap becomes 6px before the score */
+  .layout:has(.a-set.open) {
+    grid-template-areas: "head" "settings" "stats" "board" "note" "actions";
+    grid-template-rows: auto auto auto auto 1fr auto;
+  }
+}
+@media (max-width: 359px) {
+  .puzzle-code { white-space: normal; overflow-wrap: anywhere; }
+  .caption-board { display: none; }
+}
 
 /* ---------- 11. WIDER SCREENS ---------- */
 @media (min-width: 960px) {

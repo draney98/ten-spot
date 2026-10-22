@@ -38,7 +38,7 @@ test('the title turns red only when the board is not beatable', function () {
 });
 
 test('under par is green and a dead board turns the tally red', function () {
-  assert.ok(css.indexOf('.subline.is-under') !== -1);
+  assert.ok(css.indexOf('h1.is-under') !== -1);
   assert.ok(css.indexOf('.stat.is-stuck') !== -1);
   assert.ok(css.indexOf('var(--h2i)') !== -1);
   assert.ok(app.indexOf('is-under') !== -1);

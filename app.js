@@ -683,7 +683,6 @@
     });
 
     // header and tally: green while under par, red when the board cannot be finished
-    $('subline').textContent = 'Level ' + s.level + ' on ' + D.label + ', points ×' + mult;
     var dead = !L.isBeatable(s);
     var under = !dead && Math.floor(s.cleared / 2) < Math.round(s.par || 0);
     function paintStanding(el) {
@@ -691,11 +690,11 @@
       el.classList.toggle('is-under', under);
     }
     paintStanding($('title'));
-    paintStanding($('subline'));
     document.querySelectorAll('.stat:not(.stat-best)').forEach(paintStanding);
     var record = s.best[s.diff] || 0;
     document.querySelector('.stat-best').classList.toggle('is-passed', s.score > record || !!s.newBest);
-    $('puzzleCode').textContent = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, mode: ui.mode, seed: s.seed });
+    $('captionText').textContent = 'Level ' + s.level + ' on ' + D.label + ', ×' + mult.toFixed(1) + ', ';
+    $('captionCode').textContent = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, mode: ui.mode, seed: s.seed });
     $('puzzleError').textContent = ui.puzzleError || '';
 
     // scoreboard
@@ -1012,10 +1011,15 @@
 
   /* ---------- 11. WIRING ---------- */
   $('grid').addEventListener('click', function (e) {
+    if (window.getSelection) window.getSelection().removeAllRanges();
     var btn = e.target.closest('button.c');
     if (btn) onCell(Number(btn.dataset.id));
   });
   // A long-press on a tile was opening the mobile copy/paste menu.
+  var board = document.getElementById('board');
+  ['selectstart', 'contextmenu', 'dragstart'].forEach(function (t) {
+    board.addEventListener(t, function (e) { e.preventDefault(); });
+  });
   ['selectstart', 'dragstart', 'copy', 'cut', 'paste', 'contextmenu'].forEach(function (type) {
     $('grid').addEventListener(type, function (e) { e.preventDefault(); });
   });
