@@ -54,6 +54,17 @@
 /* ---------- 2. PAGE ---------- */
 * { box-sizing: border-box; }
 html, body { margin: 0; touch-action: manipulation; }
+body, body * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.how, .how *, .credits, .credits *, input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
 body {
   min-height: 100vh;
   background: var(--bg);
@@ -62,16 +73,6 @@ body {
   transition: background-color .3s ease, color .3s ease;
 }
 .app { padding: 16px 16px 0; }
-.app, .app * {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-  -webkit-tap-highlight-color: transparent;
-}
-.app .how, .app .credits, .app input, .app textarea {
-  -webkit-user-select: text;
-  user-select: text;
-}
 .a-board, .a-act, .a-head, button { touch-action: manipulation; }
 [hidden] { display: none !important; }
 
@@ -162,6 +163,7 @@ h1.is-under { color: var(--h2i); }
   margin: 10px 0 0; font-size: 13px; font-weight: 600; text-align: center;
   color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
+.sheet.ended .puzzle-code { visibility: hidden; }
 /* the pad grid IS the board: cells share 1px grid lines, no gaps */
 .grid9 { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); border-top: 1px solid var(--grid); border-left: 1px solid var(--grid); }
 

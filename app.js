@@ -1015,10 +1015,12 @@
     var btn = e.target.closest('button.c');
     if (btn) onCell(Number(btn.dataset.id));
   });
-  // A long-press on a tile was opening the mobile copy/paste menu.
-  var board = document.getElementById('board');
+  // A long-press was opening the mobile selection bar anywhere on the page.
   ['selectstart', 'contextmenu', 'dragstart'].forEach(function (t) {
-    board.addEventListener(t, function (e) { e.preventDefault(); });
+    document.addEventListener(t, function (e) {
+      var node = e.target && e.target.closest ? e.target : (e.target && e.target.parentElement);
+      if (!node || !node.closest('.how, .credits, input, textarea')) e.preventDefault();
+    });
   });
   ['selectstart', 'dragstart', 'copy', 'cut', 'paste', 'contextmenu'].forEach(function (type) {
     $('grid').addEventListener(type, function (e) { e.preventDefault(); });
