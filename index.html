@@ -8,8 +8,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&display=swap" rel="stylesheet">
-<!-- only the six characters used on the Mahjong wind and dragon tiles -->
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700&text=%E6%9D%B1%E5%8D%97%E8%A5%BF%E5%8C%97%E4%B8%AD%E7%99%BC&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -41,16 +39,6 @@
         <button type="button" data-diff="hard" aria-pressed="false">Hard</button>
       </div>
       <p class="set-help" id="diffInfo"></p>
-    </div>
-    <div class="set-group">
-      <h2 class="set-title">Tiles</h2>
-      <div class="seg" role="group" aria-label="Tile style">
-        <button type="button" data-mode="num" aria-pressed="false">Numbers</button>
-        <button type="button" data-mode="tiles" aria-pressed="false">Mahjong</button>
-        <button type="button" data-mode="icons" aria-pressed="true">Icons</button>
-        <button type="button" data-mode="teams" aria-pressed="false">Gridiron</button>
-      </div>
-      <p class="set-help" id="styleInfo"></p>
     </div>
     <div class="set-group">
       <h2 class="set-title">Appearance</h2>
@@ -92,7 +80,7 @@
     </div>
     <div class="set-group">
       <h2 class="set-title">How to play</h2>
-      <p class="how">Clear two numbers that are equal or add up to 10. They must touch, or have only crossed-out cells between them, including across the end of a row. Stuck? Add numbers copies everything left onto the bottom, but each level allows only a few. Clear the board to reach the next level: bigger boards, fewer adds, more points. Pairs score more the farther apart they are, and double when both are outlines or both are shaded. Clear pairs in a row to build a streak, up to double points. A wrong pick breaks your streak and costs points. Hints and undos cost a few points. Finish a level in fewer matches than par for a bonus.</p>
+      <p class="how">Clear two tiles with the same mascot. An outline and its solid twin match, and so do two the same. They must touch, or have only crossed-out cells between them, including across the end of a row and on a diagonal. Stuck? Add mascots copies everything left onto the bottom, but each level allows only a few. Clear the board to reach the next level: bigger boards, fewer adds, more points. Pairs score more the farther apart they are, and double when both are outlines or both are shaded. Clear pairs in a row to build a streak, up to double points. A wrong pick breaks your streak and costs points. Hints and undos cost a few points. Finish a level in fewer matches than par for a bonus.</p>
       <p class="how credits">Gridiron icons: <a href="https://game-icons.net" target="_blank" rel="noopener">Game Icons</a> by Lorc, Delapouite and contributors (CC BY 3.0), and <a href="https://pictogrammers.com/library/mdi/" target="_blank" rel="noopener">Material Design Icons</a> (Apache 2.0).</p>
     </div>
   </section>
@@ -116,7 +104,7 @@
       <div class="grid9" id="grid"></div>          <!-- cells are created by the game script -->
       <div class="fx" id="fx" aria-hidden="true"></div>  <!-- match effects go here -->
     </div>
-    <p class="puzzle-code" id="puzzleCode"><span id="captionText">Level 1 on Normal, ×1.5, </span><span class="caption-board">board </span><span id="captionCode">normal-1-icons-00000000</span></p>
+    <p class="puzzle-code" id="puzzleCode"><span id="captionText">Level 1 on Normal, ×1.5, </span><span class="caption-board">board </span><span id="captionCode">normal-1-teams-00000000</span></p>
     <div class="overlay" id="overlay" role="status" hidden>
       <span class="end-kicker" id="endKicker"></span>
       <span class="end-title" id="endTitle"></span>

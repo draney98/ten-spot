@@ -165,7 +165,7 @@ h1.is-under { color: var(--h2i); }
 }
 .sheet.ended .puzzle-code { visibility: hidden; }
 /* the pad grid IS the board: cells share 1px grid lines, no gaps */
-.grid9 { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); border-top: 1px solid var(--grid); border-left: 1px solid var(--grid); }
+.grid9 { display: grid; grid-template-columns: repeat(var(--cols, 9), minmax(0, 1fr)); border-top: 1px solid var(--grid); border-left: 1px solid var(--grid); }
 
 /* cell */
 .c {
@@ -184,31 +184,14 @@ h1.is-under { color: var(--h2i); }
   content: ''; position: absolute; left: 16%; right: 16%; top: 50%; height: 2px; border-radius: 2px;
   background: var(--strike); transform: scaleX(0) rotate(-38deg); transition: transform .28s ease .3s;
 }
-/* coloured-pencil inks (Dots, Icons, Gridiron) */
+/* coloured-pencil inks */
 .c-tile { color: var(--tink); }
 .c-tile.h0 { --tink: var(--ink); }
 .c-tile.h1 { --tink: var(--h1i); } .c-tile.h2 { --tink: var(--h2i); } .c-tile.h3 { --tink: var(--h3i); } .c-tile.h4 { --tink: var(--h4i); }
 .c-tile.h5 { --tink: var(--h5i); } .c-tile.h6 { --tink: var(--h6i); } .c-tile.h7 { --tink: var(--h7i); } .c-tile.h8 { --tink: var(--h8i); }
 .c-tile.h9 { --tink: var(--h9i); }
-.pips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 5%; width: 90%; aspect-ratio: 1; }
-.pip { border-radius: 50%; background: transparent; }
-.pip.on { /* mahjong circle 1-5: a heavy ring with a dot in the middle */
-  background: radial-gradient(circle, var(--tink, var(--ink)) 0 28%, transparent 31% 43%, var(--tink, var(--ink)) 46% 70%, transparent 73%);
-}
-.pips.solid .pip.on { /* 6-9: shaded discs */
-  background: radial-gradient(circle, var(--tink, var(--ink)) 0 70%, transparent 73%);
-}
-/* Numbers: 1-5 outlined box, 6-9 shaded box with the digit reversed out */
-.numbox {
-  display: flex; align-items: center; justify-content: center; width: 82%; height: 82%;
-  border: 2.5px solid var(--tink, var(--ink)); border-radius: 4px; color: var(--tink, var(--ink));
-  font-size: clamp(16px, 5.4vw, 27px); line-height: 1;
-}
-.numbox.solid { background: var(--tink, var(--ink)); color: var(--paper); }
-.honour { font-family: 'Noto Serif TC', 'Noto Serif CJK TC', 'Songti TC', 'PMingLiU', 'MingLiU', serif; font-weight: 700; font-size: clamp(19px, 6.2vw, 31px); line-height: 1; color: var(--tink, var(--ink)); }
 .glyph { width: 78%; height: 78%; color: var(--tink, var(--ink)); }
-.glyph.mascot { width: 88%; height: 88%; }   /* Gridiron: no corner number, so the mascot can fill the cell */
-.corner { position: absolute; top: 3px; left: 4px; font-size: clamp(8px, 2.3vw, 12px); font-weight: 700; line-height: 1; color: var(--tink, var(--ink)); }
+.glyph.mascot { width: 88%; height: 88%; }
 /* states — ORDER MATTERS */
 .c-sel::before { /* straight graphite frame around the selected cell */
   content: ''; position: absolute; inset: 8%; z-index: 1; pointer-events: none;
@@ -216,10 +199,7 @@ h1.is-under { color: var(--h2i); }
 }
 .c-done { color: var(--done); cursor: default; }
 .c-done::after { transform: scaleX(1) rotate(-38deg); opacity: .4; }
-.c-done .pip.on, .c-done .pips.solid .pip.on { background: radial-gradient(circle, var(--done) 0 70%, transparent 73%); }
-.c-done .numbox { border-color: var(--done); color: var(--done); }
-.c-done .numbox.solid { background: var(--done); color: var(--paper); }
-.c-done .glyph, .c-done .corner, .c-done .honour { color: var(--done); }
+.c-done .glyph { color: var(--done); }
 .c-flash { animation: nmPop .55s ease both; z-index: 2; }
 .c-bad { animation: nmShake .32s ease both; color: var(--strike); }
 .c.c-bad { --tink: var(--strike); }

@@ -24,15 +24,10 @@
   };
   var KEY_BEST = 'numbermatch.best2.';   // + easy|normal|hard. Old bests are not copied over.
   var KEY_THEME = 'numbermatch.theme';  // 'light'|'dark'
-  var KEY_MODE = 'numbermatch.mode';    // 'num'|'tiles'|'icons'|'teams'
   var KEY_SOUND = 'numbermatch.sound';  // 'on'|'off'; missing means off
   var KEY_PLAYER = 'numbermatch.player';
   var S = window.NumberMatchScores;
   var SCORES_API = (window.NM_SCORES_API || '').replace(/\/$/, '');
-  var MODES = ['num', 'tiles', 'icons', 'teams'];
-  // Tile style -> rule set. Numbers and Icons share the classic rules (only the look differs).
-  // 'tiles' (shown as "Mahjong") uses the 'mahjong' rules; 'teams' (shown as "Gridiron") uses 'pairs'.
-  function rulesFor(mode) { return mode === 'teams' ? 'pairs' : (mode === 'tiles' ? 'mahjong' : 'classic'); }
 
   function loadBest() {
     var b = { easy: 0, normal: 0, hard: 0 };
@@ -86,7 +81,7 @@
     S.saveBoard(SCORES_API, {
       diff: state.diff,
       level: state.level,
-      mode: ui.mode,
+      mode: 'teams',
       seed: state.seed >>> 0,
       cells: openingCells(state)
     }, fetch).then(function (res) {
@@ -113,10 +108,8 @@
   }
 
   /* ---------- 2. STATE ---------- */
-  var savedMode = MODES.indexOf(store.get(KEY_MODE)) >= 0 ? store.get(KEY_MODE) : 'icons';
-  var state = L.dealPuzzle({ diff: 'normal', level: 1, rules: rulesFor(savedMode), best: loadBest(), seed: L.randomSeed() });
+  var state = L.dealPuzzle({ diff: 'normal', level: 1, best: loadBest(), seed: L.randomSeed() });
   var ui = {                                      // UI-only state
-    mode: savedMode,
     dark: loadDark(),
     sound: store.get(KEY_SOUND) === 'on',
     settingsOpen: false,
@@ -189,57 +182,7 @@
     resetBoardNodes();
   }
 
-  /* ---------- 4. WORDS THAT DEPEND ON THE TILE STYLE ---------- */
-  var MODE_NAME = { num: 'Numbers', tiles: 'Mahjong', icons: 'Icons', teams: 'Gridiron' };
-  var NOUN = { num: 'numbers', tiles: 'tiles', icons: 'icons', teams: 'mascots' };          // "Add icons", "Added 27 icons"
-  var PICK_NOUN = { num: 'numbers', tiles: 'tiles', icons: 'icons', teams: 'tiles' };       // "Select two icons to clear them."
-  var BAD_VALUE = {
-    num: 'Pick two equal numbers, or two that add up to 10.',
-    tiles: 'Pick two identical tiles, or circle tiles that add up to 10.',
-    icons: 'Pick two identical icons, or an icon and its mirror image.',
-    teams: 'Pick two tiles with the same mascot.'
-  };
-  var MODE_HELP = {
-    num: 'Digits in boxes: 1 to 5 in an outlined box, 6 to 9 in a shaded box.',
-    tiles: 'Mahjong tiles. Circle tiles match like numbers: the same count, or two that add up to 10. 1 to 5 are rings, 6 to 9 are shaded discs. Winds and dragons only match an identical tile. Level 1 has 2 kinds of winds and dragons; each level adds one, up to all 7. Switching to or from Mahjong starts a new game.',
-    icons: 'Identical icons match, and so do mirror images. The lower value is an outline and its partner is filled in. The small number is the value.',
-    teams: 'Any two tiles with the same mascot match: an outline and its solid twin, or two the same. Level 1 has 5 mascots; each level adds one, up to 8 (longhorn, gamecock, elephant, tiger, bulldog, then gator, hog, anchor). Switching to or from Gridiron starts a new game.'
-  };
-
-  /* ---------- 5. CELL ARTWORK ---------- */
-  // Circle-tile dot positions on a 3x3 grid (0 = top-left, 8 = bottom-right) for values 1..9.
-  var PIPS = [[], [4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8], [0, 2, 3, 4, 5, 6, 8], [0, 1, 2, 3, 5, 6, 7, 8], [0, 1, 2, 3, 4, 5, 6, 7, 8]];
-
-  // Mahjong honour tiles, values 11..17. h0 = graphite ink.
-  var HONOURS = {
-    11: { name: 'East wind', ch: '東', h: 0, letter: 'E' },
-    12: { name: 'South wind', ch: '南', h: 0, letter: 'S' },
-    13: { name: 'West wind', ch: '西', h: 0, letter: 'W' },
-    14: { name: 'North wind', ch: '北', h: 0, letter: 'N' },
-    15: { name: 'Red dragon', ch: '中', h: 4 },
-    16: { name: 'Green dragon', ch: '發', h: 2 },
-    17: { name: 'White dragon', ch: '', h: 1 }   // drawn as a framed blank tile
-  };
-  var WHITE_DRAGON = '<svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linejoin="miter" aria-hidden="true">' +
-    '<rect x="5" y="3" width="14" height="18" stroke-width="2"/><rect x="8.2" y="6.2" width="7.6" height="11.6" stroke-width="1.4"/></svg>';
-
-  // Icons: values that add to 10 are the SAME shape, mirrored left-right.
-  // Every icon is a FILLED path (fill-rule evenodd, no stroke): values 1-5 are the "outline" version
-  // (the shape with an even inner border cut out), values 6-9 the solid shape, mirrored.
-  // Drawn with crisp, square-cut edges. Copy these paths exactly.
-  var ICONS = [
-    null,
-    'M6.40 12L16.40 21.60L20.20 17.80L14.20 12L20.20 6.20L16.40 2.40ZM18.42 6.18L12.40 12L18.42 17.82L16.38 19.85L8.20 12L16.38 4.15Z',   // 1  "<" arrowhead, outline
-    'M4.60 13.60L11 13.60L9.20 22.20L19.40 9.80L13 9.80L14.60 1.80ZM11.48 11.05L16.75 11.05L11.47 17.48L12.54 12.35L7.30 12.35L12.43 6.30Z',   // 2  lightning bolt, outline
-    'M11.56 3.01L10.68 3.10L9.81 3.27L8.97 3.53L8.15 3.86L7.37 4.28L6.64 4.77L5.96 5.33L5.33 5.96L4.77 6.64L4.28 7.37L3.86 8.15L3.53 8.97L3.27 9.81L3.10 10.68L3.01 11.56L3.01 12.44L3.10 13.32L3.27 14.19L3.53 15.03L3.86 15.85L4.28 16.63L4.77 17.36L5.33 18.04L5.96 18.67L6.64 19.23L7.37 19.72L8.15 20.14L8.97 20.47L9.81 20.73L10.68 20.90L11.56 20.99L12.44 20.99L13.10 20.93L13.76 20.83L14.40 20.67L15.03 20.47L15.65 20.23L16.24 19.94L16.81 19.60L17.36 19.23L17.88 18.81L18.36 18.36L18.81 17.88L19.23 17.36L19.60 16.81L19.94 16.24L20.23 15.65L20.47 15.04L20 15.35L19.36 15.69L18.69 15.97L18 16.18L17.29 16.32L16.56 16.39L15.84 16.39L15.11 16.32L14.40 16.18L13.71 15.97L13.04 15.69L12.40 15.35L11.79 14.94L11.23 14.48L10.72 13.97L10.26 13.41L9.85 12.80L9.51 12.16L9.23 11.49L9.07 10.97L8.91 10.27L8.82 9.54L8.80 8.82L8.86 8.09L8.98 7.38L9.17 6.68L9.36 6.17L9.67 5.51L10.05 4.89L10.60 4.17L11.23 3.52L11.87 3ZM8.48 5.10L8.21 5.69L8.06 6.09L7.86 6.69L7.76 7.10L7.61 7.94L7.56 8.58L7.55 9L7.56 9.42L7.61 10.06L7.76 10.90L7.86 11.31L8.06 11.91L8.21 12.31L8.47 12.89L8.78 13.45L9.13 13.98L9.65 14.65L10.08 15.12L10.55 15.55L11.05 15.95L11.57 16.31L12.12 16.63L12.89 16.99L13.49 17.21L14.10 17.39L14.72 17.52L15.35 17.61L15.99 17.65L16.62 17.64L17.39 17.57L16.92 17.99L16.46 18.34L15.98 18.65L15.48 18.92L14.79 19.23L14.07 19.47L13.32 19.64L12.57 19.73L11.81 19.75L11.05 19.69L10.30 19.56L9.57 19.36L8.86 19.09L8.18 18.74L7.54 18.34L6.94 17.87L6.39 17.34L5.89 16.77L5.45 16.15L5.08 15.48L4.77 14.79L4.53 14.07L4.36 13.32L4.27 12.57L4.25 11.81L4.31 11.05L4.44 10.30L4.64 9.57L4.91 8.86L5.26 8.18L5.66 7.54L6.13 6.94L6.66 6.39L7.23 5.89L7.85 5.45Z',   // 3  crescent, outline
-    'M6.77 19.48L7.88 19.34L8.96 19.14L9.99 18.88L10.98 18.56L11.92 18.19L12.81 17.76L13.66 17.28L14.47 16.74L15.22 16.15L15.93 15.50L16.58 14.80L17.19 14.04L17.75 13.23L18.25 12.37L18.71 11.46L19.11 10.49L19.46 9.47L19.76 8.40L20 7.27L20.19 6.10L20.32 4.87L20.40 3.60L19.08 3.73L17.82 3.90L16.61 4.13L15.46 4.41L14.38 4.74L13.34 5.12L12.37 5.54L11.45 6.01L10.59 6.54L9.79 7.10L9.04 7.72L8.35 8.38L7.72 9.08L7.14 9.83L6.61 10.62L6.15 11.45L5.74 12.33L5.38 13.25L5.08 14.21L4.84 15.21L4.64 16.25L4.51 17.33L4.43 18.44L4.40 19.60L5.60 19.57ZM6.35 17.15L16.35 7.15L16.85 7.65L6.85 17.65ZM5.69 18.26L5.74 18.31L5.69 18.31ZM18.62 7.65L16.43 5.46L16.88 5.35L18.02 5.14L19.05 4.99L18.95 5.93L18.77 7.04L18.54 8.10L18.27 9.10L17.94 10.04L17.57 10.94L17.15 11.78L16.69 12.56L16.19 13.30L15.64 13.98L15.04 14.61L14.41 15.19L13.73 15.73L13.01 16.22L12.24 16.65L11.42 17.04L10.56 17.38L9.65 17.68L8.69 17.92L8.27 18ZM6.01 15.73L6.29 14.54L6.56 13.66L6.89 12.82L7.26 12.02L7.68 11.27L8.15 10.55L8.68 9.88L9.25 9.25L9.87 8.65L10.55 8.10L11.28 7.58L12.06 7.11L12.91 6.67L13.81 6.28L14.77 5.92L15.79 5.62L16.23 5.51Z',   // 4  leaf, outline
-    'M20.80 11.78L20.73 10.92L20.59 10.07L20.36 9.24L20.05 8.43L19.66 7.66L19.19 6.93L18.66 6.25L18.07 5.63L17.41 5.06L16.71 4.57L15.96 4.14L15.17 3.79L14.35 3.52L13.50 3.33L12.65 3.22L11.78 3.20L10.92 3.27L10.07 3.41L9.24 3.64L8.43 3.95L7.66 4.34L6.93 4.81L6.25 5.34L5.63 5.93L5.06 6.59L4.57 7.29L4.14 8.04L3.79 8.83L3.52 9.65L3.33 10.50L3.22 11.35L3.20 12.22L3.27 13.08L3.41 13.93L3.64 14.76L3.95 15.57L4.34 16.34L4.81 17.07L5.34 17.75L5.93 18.37L6.59 18.94L7.29 19.43L8.04 19.86L8.83 20.21L9.65 20.48L10.50 20.67L11.35 20.78L12.22 20.80L13.08 20.73L13.93 20.59L14.76 20.36L15.57 20.05L16.34 19.66L17.07 19.19L17.75 18.66L18.37 18.07L18.94 17.41L19.43 16.71L19.86 15.96L20.21 15.17L20.48 14.35L20.67 13.50L20.78 12.65ZM19.55 12.19L19.49 12.92L19.37 13.65L19.17 14.37L18.90 15.06L18.57 15.72L18.17 16.35L17.72 16.93L17.21 17.47L16.64 17.95L16.04 18.38L15.39 18.74L14.72 19.04L14.01 19.28L13.29 19.44L12.56 19.53L11.81 19.55L11.08 19.49L10.35 19.37L9.63 19.17L8.94 18.90L8.28 18.57L7.65 18.17L7.07 17.72L6.53 17.21L6.05 16.64L5.62 16.04L5.26 15.39L4.96 14.72L4.72 14.01L4.56 13.29L4.47 12.56L4.45 11.81L4.51 11.08L4.63 10.35L4.83 9.63L5.10 8.94L5.43 8.28L5.83 7.65L6.28 7.07L6.79 6.53L7.36 6.05L7.96 5.62L8.61 5.26L9.28 4.96L9.99 4.72L10.71 4.56L11.44 4.47L12.19 4.45L12.92 4.51L13.65 4.63L14.37 4.83L15.06 5.10L15.72 5.43L16.35 5.83L16.93 6.28L17.47 6.79L17.95 7.36L18.38 7.96L18.74 8.61L19.04 9.28L19.28 9.99L19.44 10.71L19.53 11.44Z',   // 5  ring (5 pairs with itself)
-    'M18.40 19.57L17.23 19.48L16.12 19.34L15.04 19.14L14.01 18.88L13.02 18.56L12.08 18.19L11.19 17.76L10.34 17.28L9.53 16.74L8.78 16.15L8.07 15.50L7.42 14.80L6.81 14.04L6.25 13.23L5.75 12.37L5.29 11.46L4.89 10.49L4.54 9.47L4.24 8.40L4 7.27L3.81 6.10L3.68 4.87L3.60 3.60L4.92 3.73L6.18 3.90L7.39 4.13L8.54 4.41L9.62 4.74L10.66 5.12L11.63 5.54L12.55 6.01L13.41 6.54L14.21 7.10L14.96 7.72L15.65 8.38L16.28 9.08L16.86 9.83L17.39 10.62L17.85 11.45L18.26 12.33L18.62 13.25L18.92 14.21L19.16 15.21L19.36 16.25L19.49 17.33L19.57 18.44L19.60 19.60ZM17.15 17.65L17.65 17.15L7.65 7.15L7.15 7.65Z',   // 6  leaf, solid, mirrored
-    'M12.13 3L13.10 3.07L13.97 3.22L14.82 3.45L15.65 3.77L16.44 4.17L17.18 4.64L17.88 5.19L18.52 5.79L19.10 6.46L19.60 7.19L20.04 7.95L20.40 8.76L20.67 9.60L20.87 10.46L20.98 11.34L21 12.22L20.93 13.10L20.78 13.97L20.55 14.82L20.23 15.65L19.83 16.44L19.36 17.18L18.81 17.88L18.21 18.52L17.54 19.10L16.81 19.60L16.05 20.04L15.24 20.40L14.40 20.67L13.54 20.87L12.66 20.98L11.78 21L11.12 20.96L10.46 20.87L9.81 20.73L9.18 20.55L8.56 20.31L7.95 20.04L7.37 19.72L6.82 19.36L6.29 18.96L5.79 18.52L5.33 18.04L4.90 17.54L4.52 17L4.17 16.44L3.86 15.85L3.53 15.04L4.15 15.44L4.80 15.77L5.48 16.03L6.18 16.22L6.89 16.34L7.62 16.40L8.34 16.38L9.07 16.29L9.77 16.13L10.46 15.90L11.13 15.61L11.76 15.25L12.35 14.83L12.90 14.36L13.40 13.83L13.85 13.26L14.24 12.65L14.57 12L14.83 11.32L15.02 10.62L15.12 10.09L15.19 9.36L15.19 8.64L15.12 7.91L14.98 7.20L14.77 6.51L14.49 5.84L14.15 5.20L13.85 4.74L13.40 4.17L12.77 3.52Z',   // 7  crescent, solid, mirrored
-    'M9.40 1.80L19.40 13.60L13 13.60L14.80 22.20L4.60 9.80L11 9.80Z',   // 8  lightning bolt, solid, mirrored
-    'M7.60 2.40L17.60 12L7.60 21.60L3.80 17.80L9.80 12L3.80 6.20Z'    // 9  ">" arrowhead, solid
-  ];
-
+  /* ---------- 4. GRIDIRON MASCOTS ---------- */
   // Gridiron mascots (SEC). Value v -> mascot L.mascotOf(v) (1..8); odd = outline, even = solid.
   // Introduced in this order: 5 on level 1, then gator, hog, anchor on levels 2, 3, 4. h = pencil colour.
   // Icons: Game Icons (game-icons.net, CC BY 3.0) and Material Design Icons (Apache 2.0); src = set:name.
@@ -273,62 +216,15 @@
       s: 'M11.87 1L11.28 1.08L10.71 1.26L10.19 1.54L9.77 1.86L9.37 2.30L9.09 2.75L8.86 3.29L8.73 3.87L8.70 4.46L8.77 4.99L8.92 5.49L9.19 6.02L9.54 6.50L9.92 6.86L10.36 7.16L10.90 7.41L10.90 8.66L10.87 8.70L7.64 8.70L7.60 8.73L7.61 10.90L10.90 10.91L10.90 20.68L10.87 20.71L10.42 20.62L9.53 20.39L8.77 20.12L8.09 19.82L7.44 19.48L6.83 19.10L6.26 18.67L5.75 18.21L5.22 17.62L4.79 17L6.47 15.33L6.48 15.28L2.10 12.01L2.10 15.37L2.16 16.09L2.29 16.73L2.53 17.41L2.83 18.01L3.27 18.68L3.81 19.34L4.41 19.95L5.07 20.51L5.93 21.11L6.72 21.58L7.55 21.99L8.47 22.36L9.38 22.64L10.29 22.85L11.20 22.97L12.09 23L13.19 22.92L14.29 22.72L15.39 22.40L16.51 21.95L17.62 21.38L18.67 20.70L19.48 20.06L20.22 19.32L20.74 18.67L21.21 17.95L21.52 17.29L21.76 16.54L21.85 16.03L21.90 15.51L21.90 12.01L17.52 15.28L17.53 15.33L19.21 17L18.78 17.62L18.25 18.21L17.74 18.67L17.17 19.10L16.56 19.48L15.91 19.82L15.23 20.12L14.47 20.39L13.58 20.62L13.13 20.71L13.10 20.68L13.10 10.91L16.39 10.90L16.40 8.73L16.36 8.70L13.13 8.70L13.10 8.66L13.10 7.41L13.75 7.09L14.27 6.69L14.70 6.19L15.02 5.61L15.18 5.18L15.27 4.73L15.30 4.27L15.26 3.81L15.12 3.23L14.88 2.69L14.54 2.20L14.13 1.78L13.64 1.44L13.10 1.19L12.53 1.04ZM12.07 3.20L12.33 3.25L12.51 3.33L12.82 3.57L13.03 3.91L13.08 4.10L13.10 4.37L13.07 4.56L12.97 4.81L12.73 5.12L12.51 5.27L12.33 5.35L11.93 5.40L11.55 5.30L11.38 5.21L11.18 5.03L11.03 4.81L10.95 4.63L10.90 4.23L11 3.85L11.09 3.68L11.27 3.48L11.49 3.33L11.67 3.25Z' }
   ];
 
-  var SOLID_DISC = 'M3.2 12a8.8 8.8 0 1 0 17.6 0a8.8 8.8 0 1 0 -17.6 0Z';
-
-  function drawnSolid(v, solid) {
-    return typeof solid === 'boolean' ? solid : v >= 6;
+  function cellInnerHTML(v) {
+    var M = MASCOTS[L.mascotOf(v)], filled = L.isSolid(v);
+    return '<svg class="glyph mascot" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path fill="currentColor" fill-rule="evenodd" d="' + (filled ? M.s : M.o) + '"/></svg>';
   }
 
-  // Outline uses the low value's path; solid uses the high value's path.
-  // Mirror it when this tile is the other end, so a solid 1 is the un-mirrored
-  // solid and an outline 9 is the mirrored outline. A solid 5 is a filled disc.
-  function iconSpec(v, solid) {
-    if (typeof solid !== 'boolean') return { d: ICONS[v], mirror: false };
-    if (v === 5) return { d: solid ? SOLID_DISC : ICONS[5], mirror: false };
-    var low = Math.min(v, 10 - v), high = 10 - low;
-    if (solid) return { d: ICONS[high], mirror: v <= 5 };
-    return { d: ICONS[low], mirror: v >= 6 };
-  }
-
-  function cellInnerHTML(v, mode, solid) {
-    // Numbers: outlined box, or reversed out of a shaded box. The cell's shade
-    // wins, so a light 9 is an outline and a shaded 1 is solid.
-    if (mode === 'num') return '<span class="numbox' + (drawnSolid(v, solid) ? ' solid' : '') + '" aria-hidden="true">' + v + '</span>';
-    if (mode === 'teams') {
-      var M = MASCOTS[L.mascotOf(v)], filled = L.isSolid(v);
-      return '<svg class="glyph mascot" viewBox="0 0 24 24" aria-hidden="true">' +
-        '<path fill="currentColor" fill-rule="evenodd" d="' + (filled ? M.s : M.o) + '"/></svg>';
-    }
-    if (mode === 'tiles') {
-      if (L.isHonour(v)) {
-        var H = HONOURS[v];
-        return (H.ch ? '<span class="honour" aria-hidden="true">' + H.ch + '</span>' : WHITE_DRAGON) +
-          (H.letter ? '<span class="corner" aria-hidden="true">' + H.letter + '</span>' : '');
-      }
-      var html = '<span class="pips' + (drawnSolid(v, solid) ? ' solid' : '') + '" aria-hidden="true">';
-      for (var k = 0; k < 9; k++) html += '<i class="pip' + (PIPS[v].indexOf(k) >= 0 ? ' on' : '') + '"></i>';
-      return html + '</span>';
-    }
-    var spec = iconSpec(v, solid);
-    var tf = spec.mirror ? ' transform="translate(24 0) scale(-1 1)"' : '';
-    return '<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">' +
-      '<path fill="currentColor" fill-rule="evenodd"' + tf + ' d="' + spec.d + '"/>' +
-      '</svg><span class="corner" aria-hidden="true">' + v + '</span>';
-  }
-
-  // Pencil colour family. Classic and circle tiles: 1&9→1, 2&8→2, 3&7→3, 4&6→4, 5→5.
-  // Honour tiles and Gridiron mascots have their own colour.
-  function family(v) {
-    if (ui.mode === 'teams') return MASCOTS[L.mascotOf(v)].h;
-    if (ui.mode === 'tiles' && L.isHonour(v)) return HONOURS[v].h;
-    return Math.min(v, 10 - v);
-  }
-  function cellName(v, solid) {
-    if (ui.mode === 'teams') return MASCOTS[L.mascotOf(v)].name + (L.isSolid(v) ? ', solid' : ', outline');
-    if (ui.mode === 'tiles' && L.isHonour(v)) return HONOURS[v].name;
-    var name = ui.mode === 'tiles' ? plural(v, 'circle', 'circles') : String(v);
-    if (typeof solid === 'boolean') name += solid ? ', solid' : ', outline';
-    return name;
+  function family(v) { return MASCOTS[L.mascotOf(v)].h; }
+  function cellName(v) {
+    return MASCOTS[L.mascotOf(v)].name + (L.isSolid(v) ? ', solid' : ', outline');
   }
 
   function cellClass(c) {
@@ -552,9 +448,8 @@
         nodes.set(c.id, el);
       }
       if (grid.children[i] !== el) grid.insertBefore(el, grid.children[i] || null);
-      var shadeKey = typeof c.solid === 'boolean' ? (c.solid ? 's' : 'o') : '';
-      var key = c.v + '|' + ui.mode + '|' + shadeKey;
-      if (el.dataset.key !== key) { el.innerHTML = cellInnerHTML(c.v, ui.mode, c.solid); el.dataset.key = key; }
+      var key = String(c.v);
+      if (el.dataset.key !== key) { el.innerHTML = cellInnerHTML(c.v); el.dataset.key = key; }
       var cls = cellClass(c);
       if (el.className !== cls) el.className = cls;
       var name = cellName(c.v, c.solid);
@@ -581,14 +476,15 @@
     if (ev.kind === 'wrap') {
       var gridBox = $('grid').getBoundingClientRect();
       var kids = $('grid').children;
+      var cols = state.cols || L.colsFor(state.diff);
       var rowOf = function (el) {
-        for (var i = 0; i < kids.length; i++) if (kids[i] === el) return Math.floor(i / L.COLS);
+        for (var i = 0; i < kids.length; i++) if (kids[i] === el) return Math.floor(i / cols);
         return 0;
       };
       var r0 = rowOf(upper.el), r1 = rowOf(lower.el);
       var rowYs = [];
       for (var r = r0; r <= r1; r++) {
-        var cell = kids[r * L.COLS] || upper.el;
+        var cell = kids[r * cols] || upper.el;
         var rect = cell.getBoundingClientRect();
         rowYs.push(rect.top + rect.height / 2 - box.top);
       }
@@ -601,7 +497,7 @@
 
     // 1) row sweeps (behind everything else)
     ev.rowsCleared.forEach(function (r) {
-      var first = $('grid').children[r * L.COLS];
+      var first = $('grid').children[r * (state.cols || L.colsFor(state.diff))];
       if (!first) return;
       var rr = first.getBoundingClientRect();
       html += '<div class="sweep" style="top:' + (rr.top - box.top) + 'px;height:' + rr.height + 'px"></div>';
@@ -640,7 +536,8 @@
       isFinite(D.undos) ? plural(D.undos, 'undo', 'undos') : 'unlimited undo',
       isFinite(D.compacts) ? plural(D.compacts, 'pack', 'packs') : 'unlimited packs',
       '×' + D.mult + ' points, +20% each level',
-      'more tile kinds sooner on harder games'
+      L.colsFor(diff) + ' columns',
+      'more mascots sooner on harder games'
     ].join(', ') + '. Changing difficulty starts a new game.';
   }
 
@@ -669,11 +566,10 @@
     $('btnScoreForget').hidden = !player;
     $('scoreSyncError').textContent = ui.scoreError || '';
     setPressed('[data-diff]', 'data-diff', s.diff);
-    setPressed('[data-mode]', 'data-mode', ui.mode);
     setPressed('[data-theme]', 'data-theme', ui.dark ? 'dark' : 'light');
     setPressed('[data-sound]', 'data-sound', ui.sound ? 'on' : 'off');
     $('diffInfo').textContent = diffInfo(s.diff);
-    $('styleInfo').textContent = MODE_HELP[ui.mode];
+    $('grid').style.setProperty('--cols', String(s.cols || L.colsFor(s.diff)));
 
     // while settings (or a confirmation) are open, the board and its controls are switched off
     var off = ui.settingsOpen || !!ui.confirm;
@@ -694,7 +590,7 @@
     var record = s.best[s.diff] || 0;
     document.querySelector('.stat-best').classList.toggle('is-passed', s.score > record || !!s.newBest);
     $('captionText').textContent = 'Level ' + s.level + ' on ' + D.label + ', ×' + mult.toFixed(1) + ', ';
-    $('captionCode').textContent = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, mode: ui.mode, seed: s.seed });
+    $('captionCode').textContent = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, seed: s.seed });
     $('puzzleError').textContent = ui.puzzleError || '';
 
     // scoreboard
@@ -712,7 +608,7 @@
 
     // board + status line
     syncBoard();
-    $('note').textContent = ui.note || ('Select two ' + PICK_NOUN[ui.mode] + ' to clear them.');
+    $('note').textContent = ui.note || 'Select two tiles with the same mascot.';
 
     // bottom bar
     $('btnUndo').disabled = !L.canUndo(s);
@@ -793,7 +689,7 @@
     } else if (ev.type === 'bad') {
       ui.hint = [];
       ui.bad = [ev.id];
-      ui.note = ev.reason === 'value' ? BAD_VALUE[ui.mode] : 'Not reachable: only crossed-out cells can sit between a pair.';
+      ui.note = ev.reason === 'value' ? 'Pick two tiles with the same mascot.' : 'Not reachable: only crossed-out cells can sit between a pair.';
       if (ev.penalty) {
         var penTok = ++gainTok;
         ui.note += ' −' + ev.penalty + ' points.';
@@ -852,7 +748,7 @@
     tok++;
     state = r.state;
     ui.born = r.event.ids; ui.hint = []; ui.gain = 0;
-    ui.note = 'Added ' + r.event.count + ' ' + NOUN[ui.mode] + '. ' +
+    ui.note = 'Added ' + r.event.count + ' mascots. ' +
       (r.event.addsLeft ? plural(r.event.addsLeft, 'add', 'adds') + ' left this level.' : 'That was your last add for this level.');
     later(function () { ui.born = []; render(); }, 700);
     if (r.event.status !== 'playing') saveBestIfHigher();
@@ -883,13 +779,13 @@
     if (!r.event) return;
     state = r.state;
     if (r.event.type === 'nohint') {
-      ui.note = state.addsLeft > 0 ? 'No pairs left. Try Add ' + NOUN[ui.mode] + '.' : 'No pairs left.';
+      ui.note = state.addsLeft > 0 ? 'No pairs left. Try Add mascots.' : 'No pairs left.';
       play('bad');
     } else {
       ui.hint = r.event.ids;
       ui.streakMult = 0;
       ui.note = r.event.cost > 0
-        ? 'Select two ' + PICK_NOUN[ui.mode] + ' to clear them. (−' + r.event.cost + ' points)'
+        ? 'Select two tiles with the same mascot. (−' + r.event.cost + ' points)'
         : '';
       play('click');
       if (r.event.cost) {
@@ -920,9 +816,7 @@
     return plural(p.used, 'match.', 'matches.') + '\n' + par;
   }
   function levelNote() {
-    var extra = state.rules === 'pairs' ? ' tiles, ' + L.mascots(state.level, state.diff) + ' mascots, '
-      : (state.rules === 'mahjong' ? ' tiles, ' + L.honoursInPlay(state.level, state.diff) + ' kinds of winds and dragons, ' : ' numbers, ');
-    return 'Level ' + state.level + ': ' + state.total + extra + plural(state.addsLeft, 'add.', 'adds.');
+    return 'Level ' + state.level + ': ' + state.total + ' tiles, ' + L.mascots(state.level, state.diff) + ' mascots, ' + plural(state.addsLeft, 'add.', 'adds.');
   }
 
   // The next board is random, so deal it during this level. Par is ready when Next level is pressed.
@@ -975,27 +869,13 @@
 
   function newGame(diff) {
     resetAll();
-    state = L.dealPuzzle({ diff: diff || state.diff, level: 1, rules: rulesFor(ui.mode), best: state.best, seed: L.randomSeed() });
+    state = L.dealPuzzle({ diff: diff || state.diff, level: 1, best: state.best, seed: L.randomSeed() });
     scheduleUpcoming();
     publishBoard();
     render();
   }
 
   function setTheme(dark) { ui.dark = dark; store.set(KEY_THEME, dark ? 'dark' : 'light'); render(); }
-
-  // Numbers and Icons only change the look. Mahjong and Gridiron have their own rules,
-  // so switching between rule sets starts a new game (after confirming).
-  function setMode(mode) {
-    if (mode === ui.mode) return;
-    if (rulesFor(mode) === rulesFor(ui.mode)) {
-      ui.mode = mode; store.set(KEY_MODE, mode); publishBoard(); render();
-      return;
-    }
-    confirmReset('Switch to ' + MODE_NAME[mode] + '?',
-      MODE_NAME[mode] + ' uses different tiles, so switching starts a new game.',
-      'Switch to ' + MODE_NAME[mode],
-      function () { ui.mode = mode; store.set(KEY_MODE, mode); ui.settingsOpen = false; newGame(); });
-  }
 
   function setDifficulty(diff) {
     if (diff === state.diff) return;
@@ -1033,13 +913,16 @@
   $('btnTheme').addEventListener('click', function () { setTheme(!ui.dark); });
   $('btnSettings').addEventListener('click', function () { ui.settingsOpen = !ui.settingsOpen; render(); });
   function startPuzzle(spec) {
+    if (!spec || spec.mode !== 'teams') {
+      ui.puzzleError = 'That puzzle code is not valid.';
+      render();
+      return;
+    }
     var best = state.best;
-    ui.mode = spec.mode;
-    store.set(KEY_MODE, spec.mode);
     ui.settingsOpen = false;
     ui.puzzleError = '';
     resetAll();
-    state = L.dealPuzzle({ diff: spec.diff, level: spec.level, rules: rulesFor(spec.mode), best: best, seed: spec.seed });
+    state = L.dealPuzzle({ diff: spec.diff, level: spec.level, best: best, seed: spec.seed });
     scheduleUpcoming();
     publishBoard();
     render();
@@ -1100,9 +983,6 @@
   document.querySelectorAll('[data-diff]').forEach(function (b) {
     b.addEventListener('click', function () { setDifficulty(b.dataset.diff); });
   });
-  document.querySelectorAll('[data-mode]').forEach(function (b) {
-    b.addEventListener('click', function () { setMode(b.dataset.mode); });
-  });
   document.querySelectorAll('[data-theme]').forEach(function (b) {
     b.addEventListener('click', function () { setTheme(b.dataset.theme === 'dark'); });
   });
@@ -1155,10 +1035,6 @@
       render();
     },
     setTheme: setTheme,
-    setMode: function (mode) { // test helper: switch style with no confirmation
-      ui.mode = mode; store.set(KEY_MODE, mode);
-      if (rulesFor(mode) !== state.rules) newGame(); else { publishBoard(); render(); }
-    },
     openSettings: function (open) { ui.settingsOpen = open; render(); },
     beatable: function () { return L.isBeatable(state); }
   };
