@@ -95,5 +95,11 @@ test('FIX2 selection is cleared the moment it appears', function () {
   assert.ok(app.indexOf("'dblclick'") !== -1);
 });
 
+test('FIX3 local files carry a version placeholder', function () {
+  ['styles.css', 'scores-client.js', 'game-logic.js', 'app.js'].forEach(function (f) {
+    assert.ok(html.indexOf(f + '?v=__V__') !== -1, f + ' should have ?v=__V__');
+  });
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

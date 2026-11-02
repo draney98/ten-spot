@@ -7,12 +7,16 @@ services:
     name: ten-spot
     runtime: static
     branch: main
-    buildCommand: "true"
+    buildCommand: sed -i "s/__V__/${RENDER_GIT_COMMIT:-dev}/g" index.html
     staticPublishPath: .
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
 
   - type: web
     name: ten-spot-scores
