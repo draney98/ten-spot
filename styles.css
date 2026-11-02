@@ -380,3 +380,4 @@ h1.is-under { color: var(--h2i); }
   .c-pack-ghost { display: none; }
   .fx { display: none; }
 }
+#btnAdd.is-blocked { opacity: .55; }

@@ -28,11 +28,11 @@
 
   /** Difficulty settings. Infinity means "unlimited". */
   var LEVELS = {
-    easy:   { label: 'Easy',   adds: 8, minAdds: 4, hints: Infinity, undos: Infinity, compacts: Infinity, diag: true,  mult: 1,
+    easy:   { label: 'Easy',   adds: 8, minAdds: 4, hints: Infinity, undos: Infinity, compacts: Infinity, diag: true,  mult: 1, maxPairsToAdd: 2,
               kinds: { pairs: { start: 4, every: 3 } } },
-    normal: { label: 'Normal', adds: 5, minAdds: 2, hints: 3,        undos: 5,        compacts: 3,        diag: true,  mult: 1.5,
+    normal: { label: 'Normal', adds: 5, minAdds: 2, hints: 3,        undos: 5,        compacts: 3,        diag: true,  mult: 1.5, maxPairsToAdd: 1,
               kinds: { pairs: { start: 5, every: 2 } } },
-    hard:   { label: 'Hard',   adds: 3, minAdds: 1, hints: 0,        undos: 1,        compacts: 1,        diag: true,  mult: 2.5,
+    hard:   { label: 'Hard',   adds: 3, minAdds: 1, hints: 0,        undos: 1,        compacts: 1,        diag: true,  mult: 2.5, maxPairsToAdd: 0,
               kinds: { pairs: { start: 6, every: 2 } } }
   };
   // `diag` is kept as a switch so a future mode can turn diagonals off. Every difficulty allows them today.
@@ -1087,7 +1087,11 @@
 
   /** Copy every not-done value, in order, onto the end of the board. */
   function addNumbers(s) {
-    if (s.status !== 'playing' || s.addsLeft <= 0) return { state: s, event: null };
+    var block = addBlock(s);
+    if (block === 'tooManyPairs') {
+      return { state: s, event: { type: 'addBlocked', pairs: pairsOnBoard(s), max: LEVELS[s.diff].maxPairsToAdd } };
+    }
+    if (block) return { state: s, event: null };
     var active = s.cells.filter(function (c) { return !c.done; });
     if (!active.length) return { state: s, event: null };
 
@@ -1212,7 +1216,21 @@
   function remaining(s) { return s.total - s.cleared; }
   function canUndo(s) { return s.history.length > 0 && s.undosLeft > 0 && s.status !== 'clear'; }
   function canHint(s) { return s.status === 'playing' && s.hintsLeft > 0 && remaining(s) > 0; }
-  function canAdd(s) { return s.status === 'playing' && s.addsLeft > 0 && remaining(s) > 0; }
+  /** How many legal pairs are on the board right now. */
+  function pairsOnBoard(s) {
+    return allPairs(s.cells, LEVELS[s.diff].diag, s.rules, boardCols(s)).length;
+  }
+
+  /** Why Add is not allowed right now.
+      Returns null if Add IS allowed.
+      Otherwise returns 'notPlaying', 'noAdds' or 'tooManyPairs'. */
+  function addBlock(s) {
+    if (s.status !== 'playing' || remaining(s) <= 0) return 'notPlaying';
+    if (s.addsLeft <= 0) return 'noAdds';
+    if (pairsOnBoard(s) > LEVELS[s.diff].maxPairsToAdd) return 'tooManyPairs';
+    return null;
+  }
+  function canAdd(s) { return addBlock(s) === null; }
 
   return {
     colsFor: colsFor, LEVELS: LEVELS, MAX_MASCOTS: MAX_MASCOTS,
@@ -1227,7 +1245,7 @@
     nextLevel: nextLevel, compactBoard: compactBoard,
     mulberry32: mulberry32, nextSeed: nextSeed, randomSeed: randomSeed, seekSeed: seekSeed,
     parsePuzzle: parsePuzzle, formatPuzzle: formatPuzzle,
-    indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd, canCompact: canCompact,
+    indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd, addBlock: addBlock, pairsOnBoard: pairsOnBoard, canCompact: canCompact,
     kindCount: kindCount
   };
 });

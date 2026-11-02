@@ -614,7 +614,10 @@
     $('btnUndo').disabled = !L.canUndo(s);
     $('btnHint').disabled = !L.canHint(s);
     $('btnCompact').disabled = !L.canCompact(s);
-    $('btnAdd').disabled = !L.canAdd(s);
+    var addWhy = L.addBlock(s);
+    $('btnAdd').disabled = (addWhy === 'noAdds' || addWhy === 'notPlaying');
+    $('btnAdd').classList.toggle('is-blocked', addWhy === 'tooManyPairs');
+    $('btnAdd').setAttribute('aria-disabled', addWhy ? 'true' : 'false');
     $('undoCount').textContent = lim(s.undosLeft) + ' left';
     $('hintCount').textContent = lim(s.hintsLeft) + ' left';
     $('compactCount').textContent = lim(s.compactsLeft) + ' left';
@@ -622,7 +625,9 @@
     $('btnHint').setAttribute('aria-label', 'Hint, ' + lim(s.hintsLeft) + ' left');
     $('btnCompact').setAttribute('aria-label', 'Pack, ' + lim(s.compactsLeft) + ' left');
     $('addMain').textContent = 'Add';
-    $('addSub').textContent = s.addsLeft + ' of ' + L.addsFor(s.diff, s.level) + ' left';
+    $('addSub').textContent = (addWhy === 'tooManyPairs')
+      ? 'Clear pairs first'
+      : s.addsLeft + ' of ' + L.addsFor(s.diff, s.level) + ' left';
 
     renderOverlay();
   }
@@ -744,6 +749,17 @@
   function onAdd() {
     clearPackMotion();
     var r = L.addNumbers(state);
+    if (r.event && r.event.type === 'addBlocked') {
+      if (r.event.max === 0) {
+        ui.note = 'You can add only when no pairs are left.';
+      } else {
+        ui.note = 'Add unlocks at ' + r.event.max + ' pair' + (r.event.max === 1 ? '' : 's') +
+          ' or fewer. ' + r.event.pairs + ' left to find.';
+      }
+      play('bad');
+      render();
+      return;
+    }
     if (!r.event) return;
     tok++;
     state = r.state;

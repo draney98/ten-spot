@@ -819,5 +819,49 @@ test('a level starts with the difficulty compact limit', function () {
   assert.strictEqual(L.newGame('hard', null, L.mulberry32(1)).compactsLeft, 1);
 });
 
+test('FIX1 easy: 3 pairs blocks Add, 2 pairs allows it', function () {
+  // three touching pairs: (1,2) (3,4) (5,6)
+  var three = stateWith([1, 2, 3, 4, 5, 6], 'easy');
+  assert.strictEqual(L.pairsOnBoard(three), 3);
+  assert.strictEqual(L.canAdd(three), false);
+  var r = L.addNumbers(three);
+  assert.strictEqual(r.event.type, 'addBlocked');
+  assert.strictEqual(r.event.max, 2);
+  assert.strictEqual(r.state.addsLeft, three.addsLeft);   // no add used
+  // two touching pairs: (1,2) (3,4), then a lone 5
+  var two = stateWith([1, 2, 3, 4, 5], 'easy');
+  assert.strictEqual(L.pairsOnBoard(two), 2);
+  assert.strictEqual(L.canAdd(two), true);
+  assert.notStrictEqual(L.addNumbers(two).event.type, 'addBlocked');
+});
+test('FIX1 normal: 2 pairs blocks Add, 1 pair allows it', function () {
+  var two = stateWith([1, 2, 3, 4, 5], 'normal');
+  assert.strictEqual(L.canAdd(two), false);
+  assert.strictEqual(L.addNumbers(two).event.type, 'addBlocked');
+  var one = stateWith([1, 2, 5], 'normal');
+  assert.strictEqual(L.canAdd(one), true);
+});
+test('FIX1 hard: any pair blocks Add, none allows it', function () {
+  var one = stateWith([1, 2, 5], 'hard');
+  assert.strictEqual(L.canAdd(one), false);
+  assert.strictEqual(L.addNumbers(one).event.type, 'addBlocked');
+  var none = stateWith([1, 5, 9], 'hard');
+  assert.strictEqual(L.pairsOnBoard(none), 0);
+  assert.strictEqual(L.canAdd(none), true);
+});
+test('FIX1 a blocked Add changes nothing', function () {
+  var s = stateWith([1, 2, 3, 4, 5, 6], 'normal', { streak: 3 });
+  var r = L.addNumbers(s);
+  assert.strictEqual(r.state, s);                 // same object, nothing changed
+  assert.strictEqual(r.state.streak, 3);
+  assert.strictEqual(r.state.history.length, s.history.length);
+});
+test('FIX1 undo after an allowed add still refunds the add', function () {
+  var s = stateWith([1, 5, 9], 'hard');
+  var added = L.addNumbers(s).state;
+  assert.strictEqual(added.addsLeft, s.addsLeft - 1);
+  assert.strictEqual(L.undo(added).state.addsLeft, s.addsLeft);
+});
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
