@@ -918,6 +918,20 @@
       if (!node || !node.closest('.how, .credits, input, textarea')) e.preventDefault();
     });
   });
+  // iPhone Firefox can still select a word. Clear any selection the moment it appears,
+  // except inside How to play, the credits and text fields.
+  document.addEventListener('selectionchange', function () {
+    var sel = window.getSelection && window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.anchorNode) return;
+    var node = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+    if (node && node.closest && node.closest('.how, .credits, input, textarea')) return;
+    sel.removeAllRanges();
+  });
+  // A quick double tap can select a word without a selectstart event.
+  document.addEventListener('dblclick', function (e) {
+    var node = e.target && e.target.closest ? e.target : (e.target && e.target.parentElement);
+    if (!node || !node.closest('.how, .credits, input, textarea')) e.preventDefault();
+  }, { passive: false });
   ['selectstart', 'dragstart', 'copy', 'cut', 'paste', 'contextmenu'].forEach(function (type) {
     $('grid').addEventListener(type, function (e) { e.preventDefault(); });
   });

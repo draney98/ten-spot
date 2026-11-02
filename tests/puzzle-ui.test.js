@@ -89,5 +89,11 @@ test('sound is a quiet tick and starts off', function () {
   assert.ok(app.indexOf("'match'") !== -1);
 });
 
+test('FIX2 selection is cleared the moment it appears', function () {
+  assert.ok(app.indexOf("'selectionchange'") !== -1);
+  assert.ok(app.indexOf('removeAllRanges') !== -1);
+  assert.ok(app.indexOf("'dblclick'") !== -1);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
