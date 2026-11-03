@@ -381,3 +381,11 @@ h1.is-under { color: var(--h2i); }
   .fx { display: none; }
 }
 #btnAdd.is-blocked { opacity: .55; }
+
+/* Text drawn by CSS can't be selected, so iPhone Firefox never shows its selection bar. */
+.drawn::before { content: attr(data-text); }
+/* Visible to screen readers only. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}

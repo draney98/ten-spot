@@ -22,6 +22,16 @@
     get: function (k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } },
     set: function (k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
   };
+
+  /** Show text that the browser can't select: it is drawn by CSS from data-text.
+      label (optional) is what screen readers hear; it defaults to the text. */
+  function drawText(el, text, label) {
+    if (!el) return;
+    text = String(text);
+    if (el.getAttribute('data-text') !== text) el.setAttribute('data-text', text);
+    el.setAttribute('aria-label', label == null ? text : label);
+    if (el.firstChild) el.textContent = '';
+  }
   var KEY_BEST = 'numbermatch.best2.';   // + easy|normal|hard. Old bests are not copied over.
   var KEY_THEME = 'numbermatch.theme';  // 'light'|'dark'
   var KEY_SOUND = 'numbermatch.sound';  // 'on'|'off'; missing means off
@@ -589,17 +599,20 @@
     document.querySelectorAll('.stat:not(.stat-best)').forEach(paintStanding);
     var record = s.best[s.diff] || 0;
     document.querySelector('.stat-best').classList.toggle('is-passed', s.score > record || !!s.newBest);
-    $('captionText').textContent = 'Level ' + s.level + ' on ' + D.label + ', ×' + mult.toFixed(1) + ', ';
-    $('captionCode').textContent = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, seed: s.seed });
+    var capText = 'Level ' + s.level + ' on ' + D.label + ', ×' + mult.toFixed(1) + ', ';
+    var capCode = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, seed: s.seed });
+    drawText($('captionText'), capText);
+    drawText($('captionCode'), capCode);
+    $('captionSr').textContent = capText + 'board ' + capCode;
     $('puzzleError').textContent = ui.puzzleError || '';
 
     // scoreboard
-    $('score').textContent = fmt(s.score);
-    $('best').textContent = fmt(s.best[s.diff] || 0);
+    drawText($('score'), fmt(s.score), 'Score ' + fmt(s.score));
+    drawText($('best'), fmt(s.best[s.diff] || 0), 'Best ' + fmt(s.best[s.diff] || 0));
     var tag = '';
     if (ui.gain < 0) tag = '−' + fmt(Math.abs(ui.gain));
     else if ((s.streak || 0) >= 2) tag = '(' + L.streakMult(s.streak).toFixed(1) + 'x)';
-    $('scoreTag').textContent = tag;
+    drawText($('scoreTag'), tag);
     $('scoreTag').hidden = !tag;
     $('scoreTag').classList.toggle('is-loss', ui.gain < 0);
     var pct = s.total ? Math.floor(s.cleared / s.total * 100) : 0;   // floor: 100% only when the board is clear
@@ -608,7 +621,9 @@
 
     // board + status line
     syncBoard();
-    $('note').textContent = ui.note || 'Select two tiles with the same mascot.';
+    var noteText = ui.note || 'Select two tiles with the same mascot.';
+    drawText($('note'), noteText, '');
+    if ($('noteSr').textContent !== noteText) $('noteSr').textContent = noteText;
 
     // bottom bar
     $('btnUndo').disabled = !L.canUndo(s);

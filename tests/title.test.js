@@ -14,7 +14,7 @@ var bundle = fs.readFileSync('number-match.html', 'utf8');
 
 test('the page title and heading say ten-spot', function () {
   assert.ok(page.indexOf('<title>ten-spot</title>') !== -1);
-  assert.ok(page.indexOf('<h1 id="title">ten-spot</h1>') !== -1);
+  assert.ok(page.indexOf('<h1 id="title" class="drawn" data-text="ten-spot" aria-label="ten-spot"></h1>') !== -1);
   assert.ok(page.indexOf('Number Match') === -1);
 });
 

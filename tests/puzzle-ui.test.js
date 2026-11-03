@@ -101,5 +101,13 @@ test('FIX3 local files carry a version placeholder', function () {
   });
 });
 
+test('top-of-page text is drawn by CSS so it cannot be selected', function () {
+  assert.ok(css.indexOf('.drawn::before { content: attr(data-text); }') !== -1);
+  ['id="title" class="drawn"', 'id="score" data-text', 'id="best" data-text', 'id="note" data-text', 'id="noteSr"'].forEach(function (bit) {
+    assert.ok(html.indexOf(bit) !== -1, bit);
+  });
+  assert.ok(app.indexOf('function drawText(') !== -1);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
