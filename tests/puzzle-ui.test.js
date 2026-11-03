@@ -109,5 +109,14 @@ test('top-of-page text is drawn by CSS so it cannot be selected', function () {
   assert.ok(app.indexOf('function drawText(') !== -1);
 });
 
+test('the game is saved on this device and picked up again after a reload', function () {
+  assert.ok(html.indexOf('<script src="save.js?v=__V__"></script>\n<script src="app.js?v=__V__"></script>') !== -1);
+  assert.ok(html.indexOf('id="saveError"') !== -1);
+  assert.ok(app.indexOf("'numbermatch.save1'") !== -1);
+  assert.ok(app.indexOf("window.addEventListener('pagehide', saveNow)") !== -1);
+  assert.ok(app.indexOf('SV.unpack(store.get(KEY_SAVE))') !== -1);
+  assert.ok(app.indexOf('saveSoon();') !== -1);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

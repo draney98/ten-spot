@@ -20,7 +20,7 @@
   /* ---------- 1. SAFE STORAGE (never let a storage error break the game) ---------- */
   var store = {
     get: function (k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } },
-    set: function (k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
+    set: function (k, v) { try { window.localStorage.setItem(k, v); return true; } catch (e) { return false; } }
   };
 
   /** Show text that the browser can't select: it is drawn by CSS from data-text.
@@ -36,6 +36,9 @@
   var KEY_THEME = 'numbermatch.theme';  // 'light'|'dark'
   var KEY_SOUND = 'numbermatch.sound';  // 'on'|'off'; missing means off
   var KEY_PLAYER = 'numbermatch.player';
+  var KEY_SAVE = 'numbermatch.save1';   // the game in progress (see save.js)
+  var KEY_DIFF = 'numbermatch.diff';    // last difficulty played
+  var SV = window.NumberMatchSave;
   var S = window.NumberMatchScores;
   var SCORES_API = (window.NM_SCORES_API || '').replace(/\/$/, '');
 
@@ -118,11 +121,24 @@
   }
 
   /* ---------- 2. STATE ---------- */
-  var state = L.dealPuzzle({ diff: 'normal', level: 1, best: loadBest(), seed: L.randomSeed() });
+  // Pick up where the player left off: the saved game if there is a good one, else a new board at the last difficulty.
+  var restored = SV ? SV.unpack(store.get(KEY_SAVE)) : null;
+  var startDiff = store.get(KEY_DIFF);
+  if (['easy', 'normal', 'hard'].indexOf(startDiff) === -1) startDiff = 'normal';
+  var state = restored ? restored.state
+    : L.dealPuzzle({ diff: startDiff, level: 1, best: loadBest(), seed: L.randomSeed() });
+  if (restored) {   // bests have their own keys; keep whichever is higher
+    var storedBest = loadBest();
+    state.best = state.best || {};
+    ['easy', 'normal', 'hard'].forEach(function (k) {
+      state.best[k] = Math.max(state.best[k] || 0, storedBest[k] || 0);
+    });
+  }
+  var saved = restored ? restored.extras : {};
   var ui = {                                      // UI-only state
     dark: loadDark(),
     sound: store.get(KEY_SOUND) === 'on',
-    settingsOpen: false,
+    settingsOpen: !!saved.settingsOpen,
     confirm: null, // the open confirmation dialog: { yes: function } or null
     flash: [],     // cell ids playing the match "pop"
     bad: [],       // cell ids playing the "shake"
@@ -130,11 +146,28 @@
     born: [],      // cell ids just added (fade-in)
     gain: 0,       // last points earned, shown in the score tag
     streakMult: 0, // multiplier that goes with a positive score tag
-    note: '',      // status line text ('' = default text)
+    note: typeof saved.note === 'string' ? saved.note : '',      // status line text ('' = default text)
     scoreError: '',
     puzzleError: '',
-    boardCode: ''  // short code from the server; empty until that answer arrives
+    boardCode: typeof saved.boardCode === 'string' ? saved.boardCode : '',  // short code from the server; empty until that answer arrives
+    saveFailed: false  // true when this browser won't let us save
   };
+
+  /* ---------- 2a. SAVE THE GAME ON THIS DEVICE ----------
+     Saved shortly after every render, and at once when the page is hidden or closed. */
+  var saveTimer = 0;
+  function saveNow() {
+    clearTimeout(saveTimer); saveTimer = 0;
+    if (!SV) return;
+    var ok = store.set(KEY_SAVE, SV.pack(state, { settingsOpen: ui.settingsOpen, boardCode: ui.boardCode, note: ui.note }));
+    store.set(KEY_DIFF, state.diff);
+    ui.saveFailed = !ok;
+    var el = document.getElementById('saveError');
+    if (el) el.hidden = ok;
+  }
+  function saveSoon() {
+    if (!saveTimer) saveTimer = setTimeout(saveNow, 300);
+  }
 
   /* ---------- 2b. QUIET TICKS ----------
      Short sine clicks. Off until the player turns sound on; that choice is remembered. */
@@ -645,6 +678,7 @@
       : s.addsLeft + ' of ' + L.addsFor(s.diff, s.level) + ' left';
 
     renderOverlay();
+    saveSoon();
   }
 
   function renderOverlay() {
@@ -1046,8 +1080,17 @@
     }
   });
 
+  window.addEventListener('pagehide', saveNow);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') saveNow();
+  });
+  // Leaving is always safe because the game is saved. Only warn if this browser won't save.
+  window.addEventListener('beforeunload', function (e) {
+    if (ui.saveFailed && state.status === 'playing') { e.preventDefault(); e.returnValue = ''; }
+  });
+
   scheduleUpcoming();
-  publishBoard();
+  if (!ui.boardCode) publishBoard();   // a restored game already has its board code
   render();
   pullBests();
 
