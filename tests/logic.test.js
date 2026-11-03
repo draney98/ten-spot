@@ -849,12 +849,40 @@ test('FIX1 hard: any pair blocks Add, none allows it', function () {
   assert.strictEqual(L.pairsOnBoard(none), 0);
   assert.strictEqual(L.canAdd(none), true);
 });
-test('FIX1 a blocked Add changes nothing', function () {
-  var s = stateWith([1, 2, 3, 4, 5, 6], 'normal', { streak: 3 });
+test('FIX1 a blocked Add on Easy changes nothing', function () {
+  var s = stateWith([1, 2, 3, 4, 5, 6, 7, 8], 'easy', { streak: 3, score: 500 });
   var r = L.addNumbers(s);
+  assert.strictEqual(r.event.type, 'addBlocked');
+  assert.strictEqual(r.event.penalty, 0);
   assert.strictEqual(r.state, s);                 // same object, nothing changed
   assert.strictEqual(r.state.streak, 3);
   assert.strictEqual(r.state.history.length, s.history.length);
+});
+test('Add too early on Normal is a mistake: points lost, streak lost, nothing added', function () {
+  var s = stateWith([1, 2, 3, 4, 5], 'normal', { streak: 3, score: 500, penalties: 10 });
+  var r = L.addNumbers(s);
+  assert.strictEqual(r.event.type, 'addBlocked');
+  assert.strictEqual(r.event.pairs, 2);
+  assert.ok(r.event.penalty > 0, 'costs points');
+  assert.strictEqual(r.state.score, 500 - r.event.penalty);
+  assert.strictEqual(r.state.penalties, 10 + r.event.penalty);
+  assert.strictEqual(r.state.streak, 0);
+  assert.strictEqual(r.state.cells.length, s.cells.length);   // no rows added
+  assert.strictEqual(r.state.addsLeft, s.addsLeft);           // no add used
+  assert.strictEqual(r.state.history.length, s.history.length);
+  assert.strictEqual(s.score, 500);                           // the old state is untouched
+});
+test('Add too early on Hard is a mistake, and never takes the score below zero', function () {
+  var s = stateWith([1, 2, 5], 'hard', { streak: 2, score: 3 });
+  var r = L.addNumbers(s);
+  assert.strictEqual(r.event.type, 'addBlocked');
+  assert.ok(r.event.penalty <= 3);
+  assert.strictEqual(r.state.score, 3 - r.event.penalty);
+  assert.ok(r.state.score >= 0);
+  assert.strictEqual(r.state.streak, 0);
+  var zero = L.addNumbers(stateWith([1, 2, 5], 'hard', { score: 0 }));
+  assert.strictEqual(zero.event.penalty, 0);
+  assert.strictEqual(zero.state.score, 0);
 });
 test('FIX1 undo after an allowed add still refunds the add', function () {
   var s = stateWith([1, 5, 9], 'hard');

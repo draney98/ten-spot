@@ -203,6 +203,10 @@
     else if (name === 'row') { blip(1180, 0.02, 0.04, t); blip(1480, 0.028, 0.04, t + 0.05); }
     else if (name === 'clear') { blip(880, 0.028, 0.04, t); blip(1320, 0.036, 0.045, t + 0.08); }
     else if (name === 'bad') blip(180, 0.04, 0.05, t);
+    else if (name === 'end') {   // game over: four soft falling notes
+      blip(523, 0.16, 0.04, t); blip(440, 0.16, 0.04, t + 0.2);
+      blip(349, 0.18, 0.04, t + 0.4); blip(262, 0.4, 0.045, t + 0.62);
+    }
     else blip(660, 0.016, 0.032, t);
   }
   function setSound(on) {
@@ -227,7 +231,8 @@
 
   /* ---------- 4. GRIDIRON MASCOTS ---------- */
   // Gridiron mascots (SEC). Value v -> mascot L.mascotOf(v) (1..8); odd = outline, even = solid.
-  // Introduced in this order: 5 on level 1, then gator, hog, anchor on levels 2, 3, 4. h = pencil colour.
+  // A board with k mascots uses MASCOTS[1..k]. Easy starts with 4 and adds one every 3 levels; Normal starts
+  // with 5 and Hard with 6, each adding one every 2 levels (LEVELS.kinds in game-logic.js). h = pencil colour.
   // Icons: Game Icons (game-icons.net, CC BY 3.0) and Material Design Icons (Apache 2.0); src = set:name.
   // s = the icon as published, fitted to 24x24. o = the same shape with an even inner border cut out.
   // Both are FILLED paths (fill-rule evenodd, no stroke). Copy exactly; do not redraw.
@@ -663,9 +668,11 @@
     $('btnHint').disabled = !L.canHint(s);
     $('btnCompact').disabled = !L.canCompact(s);
     var addWhy = L.addBlock(s);
-    $('btnAdd').disabled = (addWhy === 'noAdds' || addWhy === 'notPlaying');
-    $('btnAdd').classList.toggle('is-blocked', addWhy === 'tooManyPairs');
-    $('btnAdd').setAttribute('aria-disabled', addWhy ? 'true' : 'false');
+    // Easy: greyed out until few enough pairs are left. Normal and Hard: it can be pressed, but too early is a mistake.
+    var addGrey = addWhy === 'tooManyPairs' && s.diff === 'easy';
+    $('btnAdd').disabled = (addWhy === 'noAdds' || addWhy === 'notPlaying' || addGrey);
+    $('btnAdd').classList.toggle('is-blocked', addGrey);
+    $('btnAdd').setAttribute('aria-disabled', $('btnAdd').disabled ? 'true' : 'false');
     $('undoCount').textContent = lim(s.undosLeft) + ' left';
     $('hintCount').textContent = lim(s.hintsLeft) + ' left';
     $('compactCount').textContent = lim(s.compactsLeft) + ' left';
@@ -681,8 +688,36 @@
     saveSoon();
   }
 
+  /* Game over winds down: the board dims row by row with a falling four-note sound, then the
+     Game over card fades in. Tapping skips to the card. With reduced motion the card shows as before. */
+  var lastStatus = state.status;   // a game restored already over does not wind down again
+  function startWindDown() {
+    play('end');
+    if (!motionOk()) return;
+    var cols = state.cols || L.colsFor(state.diff);
+    var rows = Math.max(1, Math.ceil(state.cells.length / cols));
+    var step = Math.min(120, Math.round(900 / rows));
+    Array.prototype.forEach.call($('grid').children, function (el, i) {
+      el.style.setProperty('--wd', (Math.floor(i / cols) * step) + 'ms');
+    });
+    $('board').classList.add('winding');
+    $('overlay').classList.remove('ov-now');
+    $('overlay').classList.add('ov-late');
+  }
+  function skipWindDown() {
+    var ov = $('overlay');
+    if (ov.classList.contains('ov-late')) { ov.classList.remove('ov-late'); ov.classList.add('ov-now'); }
+  }
+  function stopWindDown() {
+    $('board').classList.remove('winding');
+    $('overlay').classList.remove('ov-late', 'ov-now');
+  }
+
   function renderOverlay() {
     var s = state, ov = $('overlay');
+    if (s.status === 'lose' && lastStatus === 'playing') startWindDown();
+    if (s.status !== 'lose') stopWindDown();
+    lastStatus = s.status;
     $('board').classList.toggle('ended', s.status !== 'playing');
     if (s.status === 'playing') { ov.hidden = true; return; }
     var clear = s.status === 'clear';
@@ -768,7 +803,7 @@
       var myGain = ++gainTok;
       later(function () { if (gainTok === myGain) { ui.gain = 0; render(); } }, 1400);
       if (ev.status !== 'playing') saveBestIfHigher();
-      play(ev.status === 'clear' ? 'clear' : (ev.status === 'lose' ? 'bad' : (ev.rowsCleared.length ? 'row' : 'match')));
+      play(ev.status === 'clear' ? 'clear' : (ev.rowsCleared.length ? 'row' : 'match'));   // game over plays its own sound
     }
     render();
   }
@@ -799,11 +834,27 @@
     clearPackMotion();
     var r = L.addNumbers(state);
     if (r.event && r.event.type === 'addBlocked') {
-      if (r.event.max === 0) {
-        ui.note = 'You can add only when no pairs are left.';
-      } else {
+      state = r.state;
+      ui.hint = [];
+      if (state.diff === 'easy') {
         ui.note = 'Add unlocks at ' + r.event.max + ' pair' + (r.event.max === 1 ? '' : 's') +
           ' or fewer. ' + r.event.pairs + ' left to find.';
+      } else {
+        // Normal says how many matches are left; Hard only says that there are some.
+        var lead = state.diff === 'normal' ? plural(r.event.pairs, 'match', 'matches') + ' left.' : 'Matches are left.';
+        ui.note = lead + ' Clear them before adding' +
+          (r.event.penalty ? ': −' + fmt(r.event.penalty) + ', streak lost.' : '. Streak lost.');
+        if (r.event.penalty) {
+          var addTok = ++gainTok;
+          ui.gain = -r.event.penalty;
+          ui.streakMult = 0;
+          later(function () { if (gainTok === addTok) { ui.gain = 0; render(); } }, 1400);
+        }
+        var btn = $('btnAdd');           // red shake on the Add button, like a wrong tile
+        btn.classList.remove('is-wrong');
+        void btn.offsetWidth;            // restart the animation if pressed again quickly
+        btn.classList.add('is-wrong');
+        setTimeout(function () { btn.classList.remove('is-wrong'); }, 420);   // not later(): a reset must not leave it red
       }
       play('bad');
       render();
@@ -817,7 +868,7 @@
       (r.event.addsLeft ? plural(r.event.addsLeft, 'add', 'adds') + ' left this level.' : 'That was your last add for this level.');
     later(function () { ui.born = []; render(); }, 700);
     if (r.event.status !== 'playing') saveBestIfHigher();
-    play(r.event.status === 'lose' ? 'bad' : 'click');
+    play('click');   // game over plays its own sound
     render();
   }
 
@@ -880,8 +931,12 @@
     var par = gap > 0 ? gap + ' under par.' : (gap < 0 ? -gap + ' over par.' : 'Even par.');
     return plural(p.used, 'match.', 'matches.') + '\n' + par;
   }
+  // The caption already shows the level, difficulty and multiplier, and the Add button shows the adds,
+  // so the start-of-level note only says what is new. '' means the normal prompt.
   function levelNote() {
-    return 'Level ' + state.level + ': ' + state.total + ' tiles, ' + L.mascots(state.level, state.diff) + ' mascots, ' + plural(state.addsLeft, 'add.', 'adds.');
+    var now = L.mascots(state.level, state.diff);
+    var before = state.level > 1 ? L.mascots(state.level - 1, state.diff) : now;
+    return now > before && MASCOTS[now] ? 'New mascot: ' + MASCOTS[now].name + '.' : '';
   }
 
   // The next board is random, so deal it during this level. Par is ready when Next level is pressed.
@@ -985,6 +1040,7 @@
     $('grid').addEventListener(type, function (e) { e.preventDefault(); });
   });
   $('btnAdd').addEventListener('click', onAdd);
+  $('board').addEventListener('pointerdown', skipWindDown);   // tap during the game-over fade = show the card now
   $('btnCompact').addEventListener('click', onPack);
   $('btnUndo').addEventListener('click', onUndo);
   $('btnHint').addEventListener('click', onHint);

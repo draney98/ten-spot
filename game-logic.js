@@ -1089,7 +1089,20 @@
   function addNumbers(s) {
     var block = addBlock(s);
     if (block === 'tooManyPairs') {
-      return { state: s, event: { type: 'addBlocked', pairs: pairsOnBoard(s), max: LEVELS[s.diff].maxPairsToAdd } };
+      var pairs = pairsOnBoard(s), max = LEVELS[s.diff].maxPairsToAdd;
+      // Easy: the button is greyed out, so this only happens if it is called anyway. Nothing changes.
+      if (s.diff === 'easy') return { state: s, event: { type: 'addBlocked', pairs: pairs, max: max, penalty: 0 } };
+      // Normal and Hard: pressing Add too early is a mistake, like picking two tiles that don't match.
+      // It costs half of what the best pair on the board (the one Hint would show) would have scored,
+      // and the streak goes back to zero. No rows are added and no add is used.
+      var p = findPair(s.cells, LEVELS[s.diff].diag, s.rules, true, boardCols(s));
+      var would = p ? pairScore(s, p[0], p[1], (s.streak || 0) + 1, 0).pair : 0;
+      var penalty = Math.min(s.score, Math.round(would / 2));
+      var n = copy(s);
+      n.score = s.score - penalty;
+      n.penalties = (s.penalties || 0) + penalty;
+      n.streak = 0;
+      return { state: n, event: { type: 'addBlocked', pairs: pairs, max: max, penalty: penalty } };
     }
     if (block) return { state: s, event: null };
     var active = s.cells.filter(function (c) { return !c.done; });

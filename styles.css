@@ -381,6 +381,13 @@ h1.is-under { color: var(--h2i); }
   .fx { display: none; }
 }
 #btnAdd.is-blocked { opacity: .55; }
+/* Add pressed too early on Normal or Hard: a red shake, like a wrong tile. */
+#btnAdd.is-wrong { animation: nmShake .36s ease; box-shadow: 0 0 0 2px var(--strike); }
+
+/* Game over wind-down: the board dims row by row, then the card fades in late. Tapping skips (ov-now). */
+#board.winding .c { opacity: .3; filter: grayscale(1); transition: opacity .6s ease var(--wd, 0ms), filter .6s ease var(--wd, 0ms); }
+.overlay.ov-late { animation-delay: 1.5s; }
+.overlay.ov-now { animation-duration: .15s; animation-delay: 0s; }
 
 /* Text drawn by CSS can't be selected, so iPhone Firefox never shows its selection bar. */
 .drawn::before { content: attr(data-text); }

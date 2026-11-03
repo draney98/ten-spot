@@ -118,5 +118,22 @@ test('the game is saved on this device and picked up again after a reload', func
   assert.ok(app.indexOf('saveSoon();') !== -1);
 });
 
+test('the start-of-level note only names a new mascot', function () {
+  assert.ok(app.indexOf("'New mascot: ' + MASCOTS[now].name") !== -1);
+  assert.ok(app.indexOf("' tiles, ' + L.mascots(") === -1, 'old note removed');
+});
+test('Add is greyed out only on Easy; on Normal and Hard too early is a mistake', function () {
+  assert.ok(app.indexOf("var addGrey = addWhy === 'tooManyPairs' && s.diff === 'easy';") !== -1);
+  assert.ok(app.indexOf("'Matches are left.'") !== -1);
+  assert.ok(css.indexOf('#btnAdd.is-wrong') !== -1);
+  assert.ok(html.indexOf('On Normal and Hard, pressing Add too soon counts as a wrong pick.') !== -1);
+});
+test('game over winds down with a sound before the card', function () {
+  assert.ok(app.indexOf('function startWindDown()') !== -1);
+  assert.ok(app.indexOf("name === 'end'") !== -1);
+  assert.ok(css.indexOf('#board.winding .c') !== -1);
+  assert.ok(css.indexOf('.overlay.ov-late') !== -1);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
