@@ -28,12 +28,12 @@
 
   /** Difficulty settings. Infinity means "unlimited". */
   var LEVELS = {
-    easy:   { label: 'Easy',   adds: 8, minAdds: 4, hints: Infinity, undos: Infinity, compacts: Infinity, diag: true,  mult: 1, maxPairsToAdd: 2,
-              kinds: { pairs: { start: 4, every: 3 } } },
+    easy:   { label: 'Easy',   adds: 8, minAdds: 1, hints: Infinity, undos: Infinity, compacts: Infinity, diag: true,  mult: 1, maxPairsToAdd: 2,
+              board: { start: 16, grow: 4 }, kinds: { pairs: { start: 4, every: 5 } } },
     normal: { label: 'Normal', adds: 5, minAdds: 2, hints: 3,        undos: 5,        compacts: 3,        diag: true,  mult: 1.5, maxPairsToAdd: 1,
-              kinds: { pairs: { start: 5, every: 2 } } },
-    hard:   { label: 'Hard',   adds: 3, minAdds: 1, hints: 0,        undos: 1,        compacts: 1,        diag: true,  mult: 2.5, maxPairsToAdd: 0,
-              kinds: { pairs: { start: 6, every: 2 } } }
+              board: { start: 20, grow: 6 }, kinds: { pairs: { start: 5, every: 4 } } },
+    hard:   { label: 'Hard',   adds: 4, minAdds: 1, hints: 0,        undos: 1,        compacts: 1,        diag: true,  mult: 2.5, maxPairsToAdd: 0,
+              board: { start: 24, grow: 8 }, kinds: { pairs: { start: 6, every: 3 } } }
   };
   // `diag` is kept as a switch so a future mode can turn diagonals off. Every difficulty allows them today.
 
@@ -67,15 +67,19 @@
      BOARDS
      ------------------------------------------------------------------ */
 
-  /** How many tiles a level starts with. Level 1 is 28 (dealt in pairs). */
-  function boardSize(level) {
-    if (level <= 1) return 28;
-    if (level === 2) return 36;
-    if (level === 3) return 44;
-    return 54;
+  /** How many tiles a level starts with. Boards grow every level: by LEVELS[diff].board.grow
+      up to level 10, then by 2 a level, and never past 100 tiles (bigger boards are slow to
+      deal and check on phones). Every number here is even, so tiles always come in pairs. */
+  var BOARD_FAST_LEVELS = 10, BOARD_SLOW_GROW = 2, BOARD_MAX = 100;
+  function boardSize(level, diff) {
+    var b = (LEVELS[diff] || LEVELS.normal).board;
+    var lv = Math.max(1, level || 1);
+    var fast = Math.min(lv, BOARD_FAST_LEVELS) - 1;
+    var slow = Math.max(0, lv - BOARD_FAST_LEVELS);
+    return Math.min(BOARD_MAX, b.start + b.grow * fast + BOARD_SLOW_GROW * slow);
   }
 
-  /** Gridiron: mascots in play. Normal starts at 5 and adds one every two levels, up to 8. */
+  /** Gridiron: mascots in play. Easy starts at 4 and adds one every 5 levels, Normal 5 every 4, Hard 6 every 3, up to 8. */
   function mascots(level, diff) {
     return kindCount(diff, level, 'pairs');
   }
@@ -104,7 +108,7 @@
       3/8 both solid, 1/4 one of each). Shuffle. */
   function pairsBoard(level, rng, diff) {
     var fams = mascots(level, diff);
-    var pairCount = boardSize(level) / 2;
+    var pairCount = boardSize(level, diff) / 2;
     var base = Math.floor(pairCount / fams);
     var extra = pairCount % fams;
     var counts = [];

@@ -231,8 +231,8 @@
 
   /* ---------- 4. GRIDIRON MASCOTS ---------- */
   // Gridiron mascots (SEC). Value v -> mascot L.mascotOf(v) (1..8); odd = outline, even = solid.
-  // A board with k mascots uses MASCOTS[1..k]. Easy starts with 4 and adds one every 3 levels; Normal starts
-  // with 5 and Hard with 6, each adding one every 2 levels (LEVELS.kinds in game-logic.js). h = pencil colour.
+  // A board with k mascots uses MASCOTS[1..k]. Easy starts with 4 and adds one every 5 levels, Normal starts
+  // with 5 and adds one every 4, Hard starts with 6 and adds one every 3 (LEVELS.kinds in game-logic.js). h = pencil colour.
   // Icons: Game Icons (game-icons.net, CC BY 3.0) and Material Design Icons (Apache 2.0); src = set:name.
   // s = the icon as published, fitted to 24x24. o = the same shape with an even inner border cut out.
   // Both are FILLED paths (fill-rule evenodd, no stroke). Copy exactly; do not redraw.

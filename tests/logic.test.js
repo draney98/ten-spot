@@ -34,8 +34,16 @@ function stateWith(values, diff, extra) {
 var X = 0; // filler value used in canLink tests (value doesn't matter there)
 
 /* ---------------- boards ---------------- */
-test('board sizes per level', function () {
-  assert.deepStrictEqual([1,2,3,4,9].map(L.boardSize), [28,36,44,54,54]);
+test('boards grow every level, more slowly after level 10, and stop at 100 tiles', function () {
+  function size(diff) { return function (level) { return L.boardSize(level, diff); }; }
+  assert.deepStrictEqual([1, 2, 5, 10, 11, 15, 40].map(size('easy')),   [16, 20, 32, 52, 54, 62, 100]);
+  assert.deepStrictEqual([1, 2, 5, 10, 11, 15, 40].map(size('normal')), [20, 26, 44, 74, 76, 84, 100]);
+  assert.deepStrictEqual([1, 2, 5, 10, 11, 15, 40].map(size('hard')),   [24, 32, 56, 96, 98, 100, 100]);
+  for (var level = 1; level <= 60; level++) {
+    ['easy', 'normal', 'hard'].forEach(function (diff) {
+      assert.strictEqual(L.boardSize(level, diff) % 2, 0, diff + ' level ' + level + ' is odd');
+    });
+  }
 });
 test('easy is 7 columns, normal 8, and hard 9', function () {
   assert.strictEqual(L.newGame('easy').cols, 7);
@@ -112,8 +120,9 @@ test('a fully-done partial last row is removed too', function () {
 /* ---------------- difficulty ---------------- */
 test('adds per level drop by one every two levels to a minimum', function () {
   assert.deepStrictEqual([1,2,3,4,5,6,7,8,9,10].map(function (l) { return L.addsFor('normal', l); }), [5,5,4,4,3,3,2,2,2,2]);
-  assert.deepStrictEqual([1,3,5,7,9,11].map(function (l) { return L.addsFor('easy', l); }), [8,7,6,5,4,4]);
-  assert.deepStrictEqual([1,2,3,4].map(function (l) { return L.addsFor('hard', l); }), [3,3,2,2]);
+  assert.deepStrictEqual([1,3,5,7,9,11].map(function (l) { return L.addsFor('easy', l); }), [8,7,6,5,4,3]);
+  assert.strictEqual(L.addsFor('easy', 99), 1);
+  assert.deepStrictEqual([1,2,3,4].map(function (l) { return L.addsFor('hard', l); }), [4,4,3,3]);
   assert.strictEqual(L.addsFor('hard', 99), 1);
 });
 test('point multiplier', function () {
@@ -217,7 +226,7 @@ test('next level deals a bigger board, keeps score, resets adds', function () {
   var s = L.select(L.select(stateWith([1, 2], 'normal'), 1).state, 2).state;
   var n = L.nextLevel(s, Math.random).state;
   assert.strictEqual(n.level, 2);
-  assert.strictEqual(n.cells.length, 36);
+  assert.strictEqual(n.cells.length, 26);
   assert.strictEqual(n.score, s.score);
   assert.strictEqual(n.addsLeft, 5);
   assert.strictEqual(n.status, 'playing');
@@ -251,15 +260,15 @@ test('pairs: same mascot matches (outline+solid or identical), different mascot 
   assert.ok(!L.matches(2, 3, 'pairs'));  // mascot 1 vs mascot 2
   assert.ok(!L.matches(1, 9, 'pairs'));  // sums to 10 but different mascots
 });
-test('pairs: mascots per level are 5, 5, 6, 6, 7, then 8', function () {
-  assert.deepStrictEqual([1,2,3,4,5,12].map(L.mascots), [5,5,6,6,7,8]);
+test('normal starts with 5 mascots and adds one every 4 levels, up to 8', function () {
+  assert.deepStrictEqual([1, 4, 5, 8, 9, 13, 30].map(function (level) { return L.mascots(level, 'normal'); }), [5, 5, 6, 6, 7, 8, 8]);
 });
-test('easy holds a mascot count for 3 levels; hard starts at 6 and holds for 2', function () {
-  assert.deepStrictEqual([1,2,3,5,9].map(function (level) { return L.mascots(level, 'easy'); }), [4,4,4,5,6]);
-  assert.deepStrictEqual([1,2,3].map(function (level) { return L.mascots(level, 'hard'); }), [6,6,7]);
+test('easy starts with 4 and adds one every 5 levels; hard starts with 6 and adds one every 3', function () {
+  assert.deepStrictEqual([1, 5, 6, 11, 16].map(function (level) { return L.mascots(level, 'easy'); }), [4, 4, 5, 6, 7]);
+  assert.deepStrictEqual([1, 3, 4, 7, 10].map(function (level) { return L.mascots(level, 'hard'); }), [6, 6, 7, 8, 8]);
 });
-test('pairs: board sizes are 28, 36, 44, 54 and use only the allowed mascots', function () {
-  [[1,28,5],[2,36,5],[3,44,6],[4,54,6]].forEach(function (t) {
+test('pairs: normal boards are 20, 26, 44, 68 tiles on levels 1, 2, 5, 9 and use only the allowed mascots', function () {
+  [[1,20,5],[2,26,5],[5,44,6],[9,68,7]].forEach(function (t) {
     var b = L.pairsBoard(t[0], Math.random);
     assert.strictEqual(b.length, t[1]);
     b.forEach(function (v) { assert.ok(v >= 1 && v <= 2 * t[2], 'value ' + v + ' on level ' + t[0]); });
@@ -272,9 +281,9 @@ test('pairs: prefer both outline or both solid', function () {
     L.pairsBoard(1, constant(x)).forEach(function (v) { if (v % 2) outline++; else solid++; });
     return [outline, solid];
   }
-  assert.deepStrictEqual(shades(0), [28, 0]);
-  assert.deepStrictEqual(shades(0.5), [0, 28]);
-  assert.deepStrictEqual(shades(0.8), [14, 14]);
+  assert.deepStrictEqual(shades(0), [20, 0]);
+  assert.deepStrictEqual(shades(0.5), [0, 20]);
+  assert.deepStrictEqual(shades(0.8), [10, 10]);
 });
 function mascotTiles(board) {
   var count = {};
@@ -313,7 +322,7 @@ test('pairs: hard deals every mascot and leaves exactly one with a single pair',
 test('pairs: new game, select, hint and next level keep the Gridiron rules', function () {
   var s = L.newGame('normal', null, Math.random, 'pairs');
   assert.strictEqual(s.rules, 'pairs');
-  assert.strictEqual(s.cells.length, 28);
+  assert.strictEqual(s.cells.length, 20);
   s.cells = board([1, 2, 3, 6]); s.total = 4; s.nextId = 5;   // longhorn outline+solid, paw outline, helmet solid
   var h = L.hint(s);
   assert.deepStrictEqual(h.event.ids, [1, 2]);
@@ -325,7 +334,7 @@ test('pairs: new game, select, hint and next level keep the Gridiron rules', fun
   assert.strictEqual(cleared.status, 'clear');
   var next = L.nextLevel(cleared, Math.random).state;
   assert.strictEqual(next.rules, 'pairs');
-  assert.strictEqual(next.cells.length, 36);
+  assert.strictEqual(next.cells.length, 26);
 });
 test('Gridiron is the only ruleset', function () {
   assert.strictEqual(L.newGame('normal').rules, 'pairs');
@@ -358,7 +367,7 @@ test('add copies a stored shade flag onto the new tiles', function () {
 test('the next level deals a larger Gridiron board', function () {
   var dealt = L.nextLevel(stateWith([1, 1], 'easy', { status: 'clear', level: 1 }), scripted([0.01, 0])).state;
   assert.strictEqual(dealt.level, 2);
-  assert.strictEqual(dealt.cells.length, 36);
+  assert.strictEqual(dealt.cells.length, 20);
   assert.strictEqual(dealt.rules, 'pairs');
   assert.strictEqual(dealt.cols, 7);
   dealt.cells.forEach(function (c) { assert.ok(c.v >= 1 && c.v <= 8); });
@@ -474,7 +483,7 @@ test('each difficulty deals a beatable Gridiron board at its width', function ()
     var s = L.dealPuzzle({ diff: diff, level: 1, seed: 5 });
     assert.strictEqual(s.cols, L.colsFor(diff));
     assert.strictEqual(s.rules, 'pairs');
-    assert.strictEqual(s.cells.length, 28);
+    assert.strictEqual(s.cells.length, { easy: 16, normal: 20, hard: 24 }[diff]);
     assert.strictEqual(L.isBeatable(s), true);
     assert.strictEqual(s.seed, 5);
   });
