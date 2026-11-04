@@ -264,7 +264,11 @@
       s: 'M11.87 1L11.28 1.08L10.71 1.26L10.19 1.54L9.77 1.86L9.37 2.30L9.09 2.75L8.86 3.29L8.73 3.87L8.70 4.46L8.77 4.99L8.92 5.49L9.19 6.02L9.54 6.50L9.92 6.86L10.36 7.16L10.90 7.41L10.90 8.66L10.87 8.70L7.64 8.70L7.60 8.73L7.61 10.90L10.90 10.91L10.90 20.68L10.87 20.71L10.42 20.62L9.53 20.39L8.77 20.12L8.09 19.82L7.44 19.48L6.83 19.10L6.26 18.67L5.75 18.21L5.22 17.62L4.79 17L6.47 15.33L6.48 15.28L2.10 12.01L2.10 15.37L2.16 16.09L2.29 16.73L2.53 17.41L2.83 18.01L3.27 18.68L3.81 19.34L4.41 19.95L5.07 20.51L5.93 21.11L6.72 21.58L7.55 21.99L8.47 22.36L9.38 22.64L10.29 22.85L11.20 22.97L12.09 23L13.19 22.92L14.29 22.72L15.39 22.40L16.51 21.95L17.62 21.38L18.67 20.70L19.48 20.06L20.22 19.32L20.74 18.67L21.21 17.95L21.52 17.29L21.76 16.54L21.85 16.03L21.90 15.51L21.90 12.01L17.52 15.28L17.53 15.33L19.21 17L18.78 17.62L18.25 18.21L17.74 18.67L17.17 19.10L16.56 19.48L15.91 19.82L15.23 20.12L14.47 20.39L13.58 20.62L13.13 20.71L13.10 20.68L13.10 10.91L16.39 10.90L16.40 8.73L16.36 8.70L13.13 8.70L13.10 8.66L13.10 7.41L13.75 7.09L14.27 6.69L14.70 6.19L15.02 5.61L15.18 5.18L15.27 4.73L15.30 4.27L15.26 3.81L15.12 3.23L14.88 2.69L14.54 2.20L14.13 1.78L13.64 1.44L13.10 1.19L12.53 1.04ZM12.07 3.20L12.33 3.25L12.51 3.33L12.82 3.57L13.03 3.91L13.08 4.10L13.10 4.37L13.07 4.56L12.97 4.81L12.73 5.12L12.51 5.27L12.33 5.35L11.93 5.40L11.55 5.30L11.38 5.21L11.18 5.03L11.03 4.81L10.95 4.63L10.90 4.23L11 3.85L11.09 3.68L11.27 3.48L11.49 3.33L11.67 3.25Z' }
   ];
 
+  // A wall: a small brick pattern. It can't be cleared (see WALLS in game-logic.js).
+  var WALL_SVG = '<svg class="glyph wall-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" ' +
+    'd="M2 3h9v5H2zM13 3h9v5h-9zM2 10h4v5H2zM8 10h8v5H8zM18 10h4v5h-4zM2 17h9v4H2zM13 17h9v4h-9z"/></svg>';
   function cellInnerHTML(v) {
+    if (v === L.WALL) return WALL_SVG;
     var M = MASCOTS[L.mascotOf(v)], filled = L.isSolid(v);
     return '<svg class="glyph mascot" viewBox="0 0 24 24" aria-hidden="true">' +
       '<path fill="currentColor" fill-rule="evenodd" d="' + (filled ? M.s : M.o) + '"/></svg>';
@@ -272,11 +276,13 @@
 
   function family(v) { return MASCOTS[L.mascotOf(v)].h; }
   function cellName(v) {
+    if (v === L.WALL) return 'Wall, cannot be cleared';
     return MASCOTS[L.mascotOf(v)].name + (L.isSolid(v) ? ', solid' : ', outline');
   }
 
   function cellClass(c) {
     var cls = 'c';
+    if (c.v === L.WALL) return cls + ' c-wall';
     cls += ' c-tile h' + family(c.v);
     if (c.done) cls += ' c-done';
     if (c.id === state.selected) cls += ' c-sel';
@@ -770,6 +776,13 @@
     var r = L.select(state, id);
     state = r.state;
     var ev = r.event;
+    var cell = state.cells[L.indexOfId(state.cells, id)];
+    if (!ev && cell && cell.v === L.WALL && state.status === 'playing') {
+      ui.note = "Walls can't be cleared. Clear the rest of the wall's row and it goes too.";
+      play('bad');
+      render();
+      return;
+    }
     if (!ev) return;
 
     if (ev.type === 'select' || ev.type === 'deselect') {
@@ -915,6 +928,7 @@
   }
 
   function matchNote(ev) {
+    if (ev.wallBonus) return 'Wall gone! +' + ev.wallBonus + (ev.rowBonus ? ', and the row +' + ev.rowBonus : '') + '.';
     var rows = ev.rowsCleared.length;
     if (rows >= 2) return rows + ' rows at once! +' + ev.rowBonus;
     if (rows === 1) return 'Row cleared! +' + ev.rowBonus;
@@ -936,7 +950,14 @@
   function levelNote() {
     var now = L.mascots(state.level, state.diff);
     var before = state.level > 1 ? L.mascots(state.level - 1, state.diff) : now;
-    return now > before && MASCOTS[now] ? 'New mascot: ' + MASCOTS[now].name + '.' : '';
+    var parts = [];
+    if (now > before && MASCOTS[now]) parts.push('New mascot: ' + MASCOTS[now].name + '.');
+    var walls = L.wallCount(state.diff, state.level);
+    var wallsBefore = state.level > 1 ? L.wallCount(state.diff, state.level - 1) : 0;
+    if (walls > wallsBefore) {
+      parts.push(wallsBefore ? 'Another wall.' : "A wall! It can't be cleared and blocks the way. Clear the rest of its row and it goes too.");
+    }
+    return parts.join(' ');
   }
 
   // The next board is random, so deal it during this level. Par is ready when Next level is pressed.

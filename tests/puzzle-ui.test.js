@@ -135,5 +135,14 @@ test('game over winds down with a sound before the card', function () {
   assert.ok(css.indexOf('.overlay.ov-late') !== -1);
 });
 
+test('walls are drawn, named, explained and announced', function () {
+  assert.ok(app.indexOf('if (v === L.WALL) return WALL_SVG;') !== -1);
+  assert.ok(app.indexOf("return cls + ' c-wall';") !== -1);
+  assert.ok(app.indexOf("'Wall gone! +'") !== -1);
+  assert.ok(app.indexOf('L.wallCount(state.diff, state.level)') !== -1);
+  assert.ok(css.indexOf('.c-wall {') !== -1);
+  assert.ok(html.indexOf('a brick wall blocks the way') !== -1);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

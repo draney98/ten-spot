@@ -231,7 +231,7 @@ test('next level deals a bigger board, keeps score, resets adds', function () {
   assert.strictEqual(n.addsLeft, 5);
   assert.strictEqual(n.status, 'playing');
   var n3 = L.nextLevel(Object.assign({}, n, { status: 'clear' }), Math.random).state;
-  assert.strictEqual(n3.addsLeft, 4);
+  assert.strictEqual(n3.addsLeft, 5);   // 4 for level 3, plus 1 for its wall
 });
 test('actions never mutate the state they were given', function () {
   var s = L.newGame('normal');
@@ -898,6 +898,73 @@ test('FIX1 undo after an allowed add still refunds the add', function () {
   var added = L.addNumbers(s).state;
   assert.strictEqual(added.addsLeft, s.addsLeft - 1);
   assert.strictEqual(L.undo(added).state.addsLeft, s.addsLeft);
+});
+
+/* ---------------- walls ---------------- */
+var WL = L.WALL;
+test('walls: a wall never matches, not even another wall', function () {
+  assert.strictEqual(L.matches(WL, WL), false);
+  assert.strictEqual(L.matches(WL, 1), false);
+  assert.strictEqual(L.matches(1, 2), true);
+});
+test('walls: a wall cannot be selected', function () {
+  var s = stateWith([1, WL, 2], 'normal');
+  var r = L.select(s, 2);
+  assert.strictEqual(r.event, null);
+  assert.strictEqual(r.state, s);
+});
+test('walls: a wall blocks the path between two tiles', function () {
+  var s = stateWith([1, WL, 2], 'normal');
+  var r = L.select(L.select(s, 1).state, 3);
+  assert.strictEqual(r.event.type, 'bad');
+  assert.strictEqual(r.event.reason, 'path');
+  assert.deepStrictEqual(L.allPairs(s.cells, true, 'pairs', 8), []);
+});
+test('walls: clearing the rest of its row removes the wall and pays a wall bonus', function () {
+  // 8 columns on Normal. Row 0: 1 1 W 3 3 5 5 7   Row 1: 9 11 13 15 9 11 13 7
+  var vals = [1, 1, WL, 3, 3, 5, 5, 7, 9, 11, 13, 15, 9, 11, 13, 7];
+  var s = stateWith(vals, 'normal', { total: 15 });
+  [[1, 2], [4, 5], [6, 7]].forEach(function (p) { s = L.select(L.select(s, p[0]).state, p[1]).state; });
+  var r = L.select(L.select(s, 8).state, 16);          // the last tile of row 0, paired straight down
+  assert.strictEqual(r.event.type, 'match');
+  assert.deepStrictEqual(r.event.rowsCleared, [0]);
+  assert.strictEqual(r.event.wallsGone, 1);
+  assert.strictEqual(r.event.wallBonus, Math.round(50 * L.pointMult('normal', 1)));
+  var packed = L.compactBoard(r.state);
+  assert.ok(packed.cells.every(function (c) { return !L.isWall(c); }), 'the wall left with its row');
+});
+test('walls: Add never copies a wall', function () {
+  var s = stateWith([1, WL, 3, 5, 7, 9, 11, 13, 15], 'hard', { total: 8 });
+  var r = L.addNumbers(s);
+  assert.strictEqual(r.event.type, 'add');
+  assert.strictEqual(r.event.count, 8);
+  assert.strictEqual(r.state.cells.filter(L.isWall).length, 1);
+});
+test('walls: the board is clear when every tile is gone, even with a wall left', function () {
+  var s = stateWith([1, 2, 3, 4, 5, 6, 7, 8, WL, 9, 10], 'normal', { total: 10 });
+  [[1, 2], [3, 4], [5, 6], [7, 8], [10, 11]].forEach(function (p) { s = L.select(L.select(s, p[0]).state, p[1]).state; if (s.status === 'playing') s = L.compactBoard(s); });
+  assert.strictEqual(s.status, 'clear');
+});
+test('walls: schedule per difficulty', function () {
+  assert.deepStrictEqual([1, 2, 3, 4, 9, 30].map(function (l) { return L.wallCount('easy', l); }), [0, 0, 0, 1, 1, 1]);
+  assert.deepStrictEqual([1, 2, 3, 6, 30].map(function (l) { return L.wallCount('normal', l); }), [0, 0, 1, 1, 1]);
+  assert.deepStrictEqual([1, 2, 3, 6, 30].map(function (l) { return L.wallCount('hard', l); }), [0, 0, 1, 1, 1]);
+});
+test('walls: dealt boards get their wall, never in the last row, and Normal/Hard get one extra add', function () {
+  ['easy', 'normal', 'hard'].forEach(function (diff) {
+    [1, 3, 4, 8, 12].forEach(function (level) {
+      var s = L.dealPuzzle({ diff: diff, level: level, seed: 100 + level });
+      var walls = s.cells.map(function (c, i) { return L.isWall(c) ? i : -1; }).filter(function (i) { return i >= 0; });
+      var want = L.wallCount(diff, level);
+      assert.strictEqual(walls.length, want, diff + ' level ' + level);
+      assert.strictEqual(s.total, s.cells.length - want);
+      var lastRow = Math.floor((s.cells.length - 1) / s.cols);
+      walls.forEach(function (i) { assert.ok(Math.floor(i / s.cols) < lastRow, diff + ' level ' + level + ' wall in last row'); });
+      var extra = diff === 'easy' ? 0 : want;
+      assert.strictEqual(s.addsLeft, L.addsFor(diff, level) + extra, diff + ' level ' + level + ' adds');
+      assert.strictEqual(L.isBeatable(s), true);
+    });
+  });
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

@@ -29,11 +29,11 @@
   /** Difficulty settings. Infinity means "unlimited". */
   var LEVELS = {
     easy:   { label: 'Easy',   adds: 8, minAdds: 1, hints: Infinity, undos: Infinity, compacts: Infinity, diag: true,  mult: 1, maxPairsToAdd: 2,
-              board: { start: 16, grow: 4 }, kinds: { pairs: { start: 4, every: 5 } } },
+              board: { start: 16, grow: 4 }, kinds: { pairs: { start: 4, every: 5 } }, walls: { from: 4, every: 4, max: 1, addsEach: 0 } },
     normal: { label: 'Normal', adds: 5, minAdds: 2, hints: 3,        undos: 5,        compacts: 3,        diag: true,  mult: 1.5, maxPairsToAdd: 1,
-              board: { start: 20, grow: 6 }, kinds: { pairs: { start: 5, every: 4 } } },
+              board: { start: 20, grow: 6 }, kinds: { pairs: { start: 5, every: 4 } }, walls: { from: 3, every: 3, max: 1, addsEach: 1 } },
     hard:   { label: 'Hard',   adds: 4, minAdds: 1, hints: 0,        undos: 1,        compacts: 1,        diag: true,  mult: 2.5, maxPairsToAdd: 0,
-              board: { start: 24, grow: 8 }, kinds: { pairs: { start: 6, every: 3 } } }
+              board: { start: 24, grow: 8 }, kinds: { pairs: { start: 6, every: 3 } }, walls: { from: 3, every: 3, max: 1, addsEach: 1 } }
   };
   // `diag` is kept as a switch so a future mode can turn diagonals off. Every difficulty allows them today.
 
@@ -57,6 +57,7 @@
     streakStep: 0.1,   // streak multiplier grows 0.1 per pair in a row
     streakMax: 2,      // ...up to x2
     row: 30,           // row bonus = 30 x (rows emptied by this pair)^2
+    wall: 50,          // + 50 for each wall that leaves with its row (x mult)
     levelPerLevel: 100,// level bonus = 100 x level ...
     parAdd: 200,       // ... + 200 for each match under par
     hintCost: 25,      // points, x mult
@@ -210,7 +211,46 @@
 
   /** Same mascot. The rules argument is ignored; every deal is Gridiron. */
   function matches(x, y) {
-    return mascotOf(x) === mascotOf(y);
+    return x > 0 && y > 0 && mascotOf(x) === mascotOf(y);   // a wall (v = -1) never matches
+  }
+
+  /* WALLS. A wall is a cell with v = WALL (-1). It is never done and never matches, so it blocks
+     every path through it. It can't be selected, and Add never copies it. When every tile
+     in its row is cleared, the row is removed and the wall goes with it. */
+  var WALL = -1;
+  function isWall(c) { return c.v === WALL; }
+  /** A row is gone when it has no tiles left: every cell is cleared or a wall. */
+  function rowGone(row) {
+    var tile = false;
+    for (var i = 0; i < row.length; i++) {
+      if (isWall(row[i])) continue;
+      if (!row[i].done) return false;
+      tile = true;
+    }
+    return tile;
+  }
+  /** How many walls a level is dealt with. LEVELS[diff].walls: from = first level with a wall,
+      every = levels between each extra wall, max = most walls, addsEach = extra adds per wall. */
+  function wallCount(diff, level) {
+    var W = (LEVELS[diff] || LEVELS.normal).walls;
+    if (!W || level < W.from) return 0;
+    return Math.min(W.max, 1 + Math.floor((level - W.from) / W.every));
+  }
+  /** Put `count` walls into the tile list, each in a different row and never in the last row. */
+  function placeWalls(vals, count, cols, rng) {
+    if (!count) return vals;
+    var w = width(cols);
+    var rows = Math.floor((vals.length + count - 1) / w);   // rows before the last one
+    var pick = [];
+    for (var r = 0; r < rows; r++) pick.push(r);
+    shuffle(pick, rng);
+    pick = pick.slice(0, Math.min(count, pick.length)).sort(function (a, b) { return a - b; });
+    var out = vals.slice();
+    for (var k = 0; k < pick.length; k++) {
+      var at = pick[k] * w + Math.floor(rng() * w);
+      out.splice(at, 0, { v: WALL });
+    }
+    return out;
   }
 
   /** Can cells at indexes a and b be paired (position rule only)?
@@ -366,14 +406,14 @@
   }
 
   function hasLive(cells) {
-    for (var i = 0; i < cells.length; i++) if (!cells[i].done) return true;
+    for (var i = 0; i < cells.length; i++) if (!cells[i].done && !isWall(cells[i])) return true;
     return false;
   }
 
   function mascotCounts(cells) {
     var counts = Object.create(null);
     for (var i = 0; i < cells.length; i++) {
-      if (cells[i].done) continue;
+      if (cells[i].done || isWall(cells[i])) continue;
       var m = mascotOf(cells[i].v);
       counts[m] = (counts[m] || 0) + 1;
     }
@@ -551,18 +591,18 @@
     var w = width(cols);
     for (var r = 0; r * w < cells.length; r++) {
       var row = cells.slice(r * w, r * w + w);
-      if (row.every(function (c) { return c.done; })) out.push(r);
+      if (rowGone(row)) out.push(r);
     }
     return out;
   }
 
-  /** Remove every row whose cells are all done. Remaining cells keep order. */
+  /** Remove every row with no tiles left (walls in it go too). Remaining cells keep order. */
   function compact(cells, cols) {
     var out = [];
     var w = width(cols);
     for (var r = 0; r * w < cells.length; r++) {
       var row = cells.slice(r * w, r * w + w);
-      if (!row.every(function (c) { return c.done; })) out = out.concat(row);
+      if (!rowGone(row)) out = out.concat(row);
     }
     return out;
   }
@@ -663,7 +703,7 @@
 
   function countLive(cells) {
     var n = 0;
-    for (var i = 0; i < cells.length; i++) if (!cells[i].done) n++;
+    for (var i = 0; i < cells.length; i++) if (!cells[i].done && !isWall(cells[i])) n++;
     return n;
   }
 
@@ -673,7 +713,7 @@
     var counts = new Array(rows);
     for (var r = 0; r < rows; r++) counts[r] = 0;
     for (var i = 0; i < cells.length; i++) {
-      if (!cells[i].done) counts[Math.floor(i / w)]++;
+      if (!cells[i].done && !isWall(cells[i])) counts[Math.floor(i / w)]++;
     }
     return counts;
   }
@@ -779,7 +819,7 @@
     function added() {
       var extra = [];
       for (var i = 0; i < cells.length; i++) {
-        if (!cells[i].done) extra.push({ id: 0, v: cells[i].v, done: false });
+        if (!cells[i].done && !isWall(cells[i])) extra.push({ id: 0, v: cells[i].v, done: false });
       }
       return linkBoard(compact(cells.concat(extra), w), diag, rules, w);
     }
@@ -875,8 +915,10 @@
   function levelFields(diff, level, rng) {
     var L = LEVELS[diff];
     var cols = colsFor(diff);
-    var vals = pairsBoard(level, rng || Math.random, diff);
-    var addsThisLevel = addsFor(diff, level);
+    var tiles = pairsBoard(level, rng || Math.random, diff);
+    var walls = wallCount(diff, level);
+    var vals = placeWalls(tiles, walls, cols, rng || Math.random);
+    var addsThisLevel = addsFor(diff, level) + walls * (L.walls ? L.walls.addsEach : 0);   // Normal and Hard: a wall brings one extra add
     var play = tidyPlay(vals, L.diag, 'pairs', addsThisLevel, null, cols);
     return {
       level: level,
@@ -894,8 +936,8 @@
       par: Math.round(play.matches),
       refClear: play.cleared || play.timedOut,
       cleared: 0,
-      total: vals.length,
-      addsLeft: addsFor(diff, level),
+      total: tiles.length,   // tiles only; walls are never cleared
+      addsLeft: addsThisLevel,
       hintsLeft: L.hints,
       undosLeft: L.undos,
       compactsLeft: L.compacts,
@@ -995,7 +1037,7 @@
   function select(s, id) {
     if (s.status !== 'playing') return { state: s, event: null };
     var idx = indexOfId(s.cells, id);
-    if (idx < 0 || s.cells[idx].done) return { state: s, event: null };
+    if (idx < 0 || s.cells[idx].done || isWall(s.cells[idx])) return { state: s, event: null };
 
     var n;
     if (s.selected === null) {
@@ -1037,6 +1079,11 @@
     var rowsCleared = doneRows(cells, w).filter(function (r) { return had.indexOf(r) < 0; });
     var streak = (s.streak || 0) + 1;
     var scored = pairScore(s, a, b, streak, rowsCleared.length);
+    var wallsGone = 0;
+    rowsCleared.forEach(function (r) {
+      for (var k = r * w; k < Math.min(cells.length, r * w + w); k++) if (isWall(cells[k])) wallsGone++;
+    });
+    var wallBonus = Math.round(SCORE.wall * wallsGone * pointMult(s.diff, s.level));
 
     var n = copy(s);
     n.history = snapshot(s);
@@ -1045,7 +1092,7 @@
     n.moves = s.moves + 1;
     n.cleared = s.cleared + 2;
     n.streak = streak;
-    n.score = s.score + scored.gain;
+    n.score = s.score + scored.gain + wallBonus;
     finish(n);
 
     return {
@@ -1054,8 +1101,10 @@
         type: 'match',
         ids: [before[a].id, before[b].id],
         indexes: [a, b],
-        gain: scored.gain,
+        gain: scored.gain + wallBonus,
         pair: scored.pair,
+        wallsGone: wallsGone,
+        wallBonus: wallBonus,
         streak: streak,
         streakMult: scored.streakMult,
         rowsCleared: rowsCleared,
@@ -1109,7 +1158,7 @@
       return { state: n, event: { type: 'addBlocked', pairs: pairs, max: max, penalty: penalty } };
     }
     if (block) return { state: s, event: null };
-    var active = s.cells.filter(function (c) { return !c.done; });
+    var active = s.cells.filter(function (c) { return !c.done && !isWall(c); });   // walls are never copied
     if (!active.length) return { state: s, event: null };
 
     var nextId = s.nextId;
@@ -1263,6 +1312,6 @@
     mulberry32: mulberry32, nextSeed: nextSeed, randomSeed: randomSeed, seekSeed: seekSeed,
     parsePuzzle: parsePuzzle, formatPuzzle: formatPuzzle,
     indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd, addBlock: addBlock, pairsOnBoard: pairsOnBoard, canCompact: canCompact,
-    kindCount: kindCount
+    kindCount: kindCount, wallCount: wallCount, isWall: isWall, WALL: WALL
   };
 });
