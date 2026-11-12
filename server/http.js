@@ -1,11 +1,13 @@
 'use strict';
 var http = require('http');
 var scores = require('./scores.js');
+var limits = require('./limits.js');
 
 var MAX_BODY = 8192;
 
-function send(req, res, status, body, origin) {
+function send(req, res, status, body, origin, extra) {
   var headers = { 'content-type': 'application/json; charset=utf-8' };
+  for (var k in (extra || {})) headers[k] = extra[k];
   if (origin && req.headers.origin === origin) {
     headers['access-control-allow-origin'] = origin;
     headers['access-control-allow-methods'] = 'GET, POST, PUT, OPTIONS';
@@ -37,17 +39,29 @@ function readBody(req) {
   });
 }
 
+/** opts: { db, origin, limits (rules for limits.js; tests pass small ones), now (a clock, tests) } */
 function createScoresServer(opts) {
   var db = opts.db;
   var origin = opts.origin || '';
+  var limiter = limits.createLimiter(opts.limits, opts.now);
+  /** True when this post may go ahead; otherwise sends 429 and returns false. */
+  function allowed(name, req, res) {
+    var r = limiter.check(name, limits.clientAddress(req));
+    if (r.ok) return true;
+    req.resume();   // drop the body
+    send(req, res, 429, { error: 'too many requests' }, origin, { 'retry-after': String(r.retryAfter) });
+    return false;
+  }
   return http.createServer(function (req, res) {
     var url = new URL(req.url, 'http://127.0.0.1');
     if (req.method === 'OPTIONS') return send(req, res, 204, null, origin);
     if (req.method === 'GET' && url.pathname === '/health') return send(req, res, 200, { ok: true }, origin);
     if (req.method === 'POST' && url.pathname === '/v1/players') {
+      if (!allowed('players', req, res)) return;
       return send(req, res, 201, scores.createPlayer(db), origin);
     }
     if (req.method === 'POST' && url.pathname === '/v1/boards') {
+      if (!allowed('boards', req, res)) return;
       readBody(req).then(function (text) {
         var body;
         try { body = JSON.parse(text || '{}'); }
@@ -62,6 +76,7 @@ function createScoresServer(opts) {
       return;
     }
     if (req.method === 'POST' && url.pathname === '/v1/runs') {
+      if (!allowed('runs', req, res)) return;
       readBody(req).then(function (text) {
         var body;
         try { body = JSON.parse(text || '{}'); }
@@ -95,6 +110,7 @@ function createScoresServer(opts) {
       return send(req, res, 200, found, origin);
     }
     if (req.method === 'PUT') {
+      if (!allowed('bests', req, res)) return;
       readBody(req).then(function (text) {
         var patch;
         try { patch = JSON.parse(text || '{}'); }

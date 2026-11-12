@@ -17,6 +17,47 @@ function listen(server) {
   });
 }
 
+/* A second server with tiny limits and a clock the test moves. */
+function limitedServer() {
+  var t = 5000000;
+  var db = scores.openScores(':memory:');
+  var srv = api.createScoresServer({ db: db, origin: 'https://ten-spot.example', now: function () { return t; },
+    limits: { runs: { max: 2, windowMs: 60000 }, players: { max: 1, windowMs: 3600000 } } });
+  var run = { version: 2, start: 'easy', level: 9 };
+  var port;
+  return listen(srv).then(function (p) {
+    port = p;
+    return call(port, 'POST', '/v1/runs', run, 'https://ten-spot.example');
+  }).then(function () { return call(port, 'POST', '/v1/runs', run, 'https://ten-spot.example'); })
+    .then(function () { return call(port, 'POST', '/v1/runs', run, 'https://ten-spot.example'); })
+    .then(function (res) {
+      test('the third run end in a minute is 429, and the page can still read the answer', function () {
+        assert.strictEqual(res.status, 429);
+        assert.deepStrictEqual(res.json, { error: 'too many requests' });
+        assert.strictEqual(res.allow, 'https://ten-spot.example');
+        assert.strictEqual(res.retry, '60');
+      });
+      return call(port, 'GET', '/v1/runs?version=2', null, 'https://ten-spot.example');
+    })
+    .then(function (res) {
+      test('reading is never limited, and the refused post was not counted', function () {
+        assert.strictEqual(res.status, 200);
+        assert.deepStrictEqual(res.json.runs, [{ version: 2, start: 'easy', level: 9, n: 2 }]);
+      });
+      t += 60000;
+      return call(port, 'POST', '/v1/runs', run, 'https://ten-spot.example');
+    })
+    .then(function (res) {
+      test('a minute later run ends are taken again', function () { assert.strictEqual(res.status, 201); });
+      return call(port, 'POST', '/v1/players', {}, 'https://ten-spot.example');
+    })
+    .then(function () { return call(port, 'POST', '/v1/players', {}, 'https://ten-spot.example'); })
+    .then(function (res) {
+      test('a second new score code in an hour is 429', function () { assert.strictEqual(res.status, 429); });
+      srv.close();
+    });
+}
+
 function call(port, method, path, body, origin) {
   return new Promise(function (resolve, reject) {
     var req = http.request({
@@ -29,7 +70,7 @@ function call(port, method, path, body, origin) {
         var text = Buffer.concat(chunks).toString('utf8');
         var json = null;
         try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
-        resolve({ status: res.statusCode, json: json, allow: res.headers['access-control-allow-origin'] || '' });
+        resolve({ status: res.statusCode, json: json, allow: res.headers['access-control-allow-origin'] || '', retry: res.headers['retry-after'] || '' });
       });
     });
     req.on('error', reject);
@@ -153,6 +194,8 @@ listen(server).then(function (port) {
     });
 }).then(function () {
   server.close();
+  return limitedServer();
+}).then(function () {
   console.log(passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 }).catch(function (e) {

@@ -150,5 +150,30 @@ test('a bad run end is rejected', function () {
   assert.strictEqual(scores.runEnds(db).length, 0);
 });
 
+test('a run end sent again with the same run id is counted once', function () {
+  var db = scores.openScores(':memory:');
+  assert.deepStrictEqual(scores.countRunEnd(db, { version: 2, start: 'easy', level: 30, run: 'k3x9w2m7q1' }), { ok: true });
+  assert.deepStrictEqual(scores.countRunEnd(db, { version: 2, start: 'easy', level: 30, run: 'k3x9w2m7q1' }), { ok: true, repeat: true });
+  scores.countRunEnd(db, { version: 2, start: 'easy', level: 30 });                    // no run id: always counted
+  scores.countRunEnd(db, { version: 2, start: 'easy', level: 30, run: 'BAD ID' });     // a bad run id is ignored
+  assert.deepStrictEqual(scores.runEnds(db, 2), [{ version: 2, start: 'easy', level: 30, n: 3 }]);
+});
+
+test('raising a best records it in the log with its rules version and run', function () {
+  var db = scores.openScores(':memory:');
+  var p = scores.createPlayer(db);
+  scores.raiseBests(db, p.code, { easy: 500, version: 2, run: 'abc12345' });
+  scores.raiseBests(db, p.code, { easy: 400, hard: 90, version: 2, run: 'zzz99999' });   // only hard goes up
+  scores.raiseBests(db, p.code, { easy: 700 });                                         // an older page: no version or run
+  scores.raiseBests(db, p.code, { easy: 800, version: 'two', run: 5 });                 // bad extras are ignored, the best still counts
+  assert.deepStrictEqual(scores.getPlayer(db, p.code), { code: p.code, easy: 800, normal: 0, hard: 90 });
+  assert.deepStrictEqual(scores.bestLog(db, p.code), [
+    { start: 'easy', score: 800, version: null, run: null },
+    { start: 'easy', score: 700, version: null, run: null },
+    { start: 'hard', score: 90, version: 2, run: 'zzz99999' },
+    { start: 'easy', score: 500, version: 2, run: 'abc12345' }
+  ]);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

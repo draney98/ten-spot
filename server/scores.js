@@ -1,5 +1,6 @@
 'use strict';
 var crypto = require('crypto');
+var migrations = require('./migrations.js');
 var { DatabaseSync } = require('node:sqlite');
 
 var ALPHABET = '23456789abcdefghjkmnpqrstuvwxyz';
@@ -27,52 +28,42 @@ function rowFrom(record) {
   return { code: formatCode(record.code), easy: record.easy, normal: record.normal, hard: record.hard };
 }
 
+/** Open the database and bring it up to date (see migrations.js). Throws if a change fails. */
 function openScores(path) {
   var db = new DatabaseSync(path, { timeout: 5000 });
   if (path !== ':memory:') db.exec('PRAGMA journal_mode = WAL');
-  db.exec(
-    'CREATE TABLE IF NOT EXISTS players (' +
-    'code TEXT PRIMARY KEY,' +
-    'easy INTEGER NOT NULL DEFAULT 0,' +
-    'normal INTEGER NOT NULL DEFAULT 0,' +
-    'hard INTEGER NOT NULL DEFAULT 0,' +
-    'created_at TEXT NOT NULL,' +
-    'updated_at TEXT NOT NULL)'
-  );
-  var have = db.prepare('PRAGMA table_info(players)').all().map(function (c) { return c.name; });
-  ['ramp_easy', 'ramp_normal', 'ramp_hard'].forEach(function (col) {
-    if (have.indexOf(col) === -1) db.exec('ALTER TABLE players ADD COLUMN ' + col + ' INTEGER NOT NULL DEFAULT 0');
-  });
-  db.exec(
-    'CREATE TABLE IF NOT EXISTS boards (' +
-    'code TEXT PRIMARY KEY,' +
-    'board_key TEXT NOT NULL UNIQUE,' +
-    'diff TEXT NOT NULL,' +
-    'level INTEGER NOT NULL,' +
-    'mode TEXT NOT NULL,' +
-    'seed INTEGER NOT NULL)'
-  );
-  db.exec(
-    'CREATE TABLE IF NOT EXISTS run_ends (' +
-    'version INTEGER NOT NULL,' +
-    'start TEXT NOT NULL,' +
-    'level INTEGER NOT NULL,' +
-    'n INTEGER NOT NULL DEFAULT 0,' +
-    'PRIMARY KEY (version, start, level))'
-  );
+  db.migrated = migrations.migrate(db, { backupBase: path === ':memory:' ? null : path });
   return db;
 }
 
+/* A run id is made by the game for each new run: 8 to 32 letters and digits. A rules version is
+   RULES_VERSION in game-logic.js. Both are optional on what the game sends; a bad one is ignored. */
+function runId(v) { return (typeof v === 'string' && /^[0-9a-z]{8,32}$/.test(v)) ? v : null; }
+function rulesVersion(v) { return (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 9999) ? v : null; }
+
 /* Run ends: how many runs ended (Game over) on each level. Nothing about the player is stored:
-   only the rules version, where the run started (easy / normal / hard) and the level it ended on. */
+   only the rules version, where the run started (easy / normal / hard) and the level it ended on.
+   A run end sent with a run id is counted once: the id is remembered, and a repeat is ignored. */
 function isCount(n, max) { return typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= max; }
 
 function countRunEnd(db, body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('invalid run');
   if (FIELDS.indexOf(body.start) === -1) throw new Error('invalid run');
   if (!isCount(body.level, 999) || !isCount(body.version, 9999)) throw new Error('invalid run');
-  db.prepare('INSERT INTO run_ends (version, start, level, n) VALUES (?, ?, ?, 1) ' +
-    'ON CONFLICT (version, start, level) DO UPDATE SET n = n + 1').run(body.version, body.start, body.level);
+  var run = runId(body.run);
+  db.exec('BEGIN');
+  try {
+    if (run && db.prepare('INSERT OR IGNORE INTO run_seen (run, at) VALUES (?, ?)').run(run, new Date().toISOString()).changes === 0) {
+      db.exec('COMMIT');
+      return { ok: true, repeat: true };
+    }
+    db.prepare('INSERT INTO run_ends (version, start, level, n) VALUES (?, ?, ?, 1) ' +
+      'ON CONFLICT (version, start, level) DO UPDATE SET n = n + 1').run(body.version, body.start, body.level);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
   return { ok: true };
 }
 
@@ -83,6 +74,14 @@ function runEnds(db, version) {
     ? db.prepare(sql + ' ORDER BY version, start, level').all()
     : db.prepare(sql + ' WHERE version = ? ORDER BY start, level').all(version);
   return rows.map(function (r) { return { version: r.version, start: r.start, level: r.level, n: r.n }; });
+}
+
+/** Every recorded best for a score code, newest first (for tests and later for stats). */
+function bestLog(db, code) {
+  var raw = normalizeCode(code);
+  if (!raw) return [];
+  return db.prepare('SELECT start, score, version, run FROM best_log WHERE code = ? ORDER BY id DESC').all(raw)
+    .map(function (r) { return { start: r.start, score: r.score, version: r.version, run: r.run }; });
 }
 
 function createPlayer(db) {
@@ -107,15 +106,27 @@ function raiseBests(db, code, patch) {
   var current = db.prepare('SELECT ' + COLS + ' FROM players WHERE code = ?').get(raw);
   if (!current) return null;
   var next = { easy: current.easy, normal: current.normal, hard: current.hard };
+  var raisedKeys = [];
   for (var i = 0; i < FIELDS.length; i++) {
     var key = FIELDS[i];
     if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
     var n = patch[key];
     if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > MAX_SCORE) throw new Error('invalid score');
-    if (n > next[key]) next[key] = n;
+    if (n > next[key]) { next[key] = n; raisedKeys.push(key); }
   }
-  db.prepare('UPDATE players SET ramp_easy = ?, ramp_normal = ?, ramp_hard = ?, updated_at = ? WHERE code = ?')
-    .run(next.easy, next.normal, next.hard, new Date().toISOString(), raw);
+  if (!raisedKeys.length) return getPlayer(db, raw);
+  var now = new Date().toISOString(), version = rulesVersion(patch.version), run = runId(patch.run);
+  db.exec('BEGIN');
+  try {
+    db.prepare('UPDATE players SET ramp_easy = ?, ramp_normal = ?, ramp_hard = ?, updated_at = ? WHERE code = ?')
+      .run(next.easy, next.normal, next.hard, now, raw);
+    var log = db.prepare('INSERT INTO best_log (code, start, score, version, run, at) VALUES (?, ?, ?, ?, ?, ?)');
+    raisedKeys.forEach(function (k) { log.run(raw, k, next[k], version, run, now); });
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
   return getPlayer(db, raw);
 }
 
@@ -227,5 +238,6 @@ module.exports = {
   getBoard: getBoard,
   saveBoard: saveBoard,
   countRunEnd: countRunEnd,
-  runEnds: runEnds
+  runEnds: runEnds,
+  bestLog: bestLog
 };

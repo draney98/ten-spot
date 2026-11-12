@@ -21,7 +21,7 @@ and the score server uses only what ships with Node 22.
 | `save.js` | Turns a game into text for browser storage and back. |
 | `scores-client.js` | Talks to the score server: bests, shared boards, run ends. |
 | `index.html`, `styles.css` | The page and its looks. |
-| `server/` | The score server: `scores.js` (SQLite), `http.js` (routes), `index.js` (start-up). |
+| `server/` | The score server: `scores.js` (SQLite), `http.js` (routes), `limits.js` (posting limits), `migrations.js` (numbered database changes), `index.js` (start-up). |
 | `tools/` | `tuner.html` and `tuner-core.js` (configurator and bot), `sim.js` (the bot from the command line). |
 | `tests/` | Plain node scripts, one per area. `run.js` runs them all. |
 | `design-info/`, `docs/`, `number-match.html` | Earlier design notes and the original single-file version. Not used by the live game. |
@@ -30,5 +30,6 @@ and the score server uses only what ships with Node 22.
 
 - A change to the rules goes in `game-logic.js` with a test in `tests/logic.test.js`.
 - When the difficulty numbers change, raise `RULES_VERSION` in `game-logic.js` so real-play counts stay apart.
+- A database change is a new numbered entry at the end of `server/migrations.js`. Never edit one that has shipped. The server copies the database to `<file>.before-change-<n>` before applying change n.
 - Text on the board is drawn with `drawText()` (see `app.js`), not typed into the page, so phones can't select it.
 - Deploys happen on push to `main` (see `render.yaml`).
