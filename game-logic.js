@@ -84,13 +84,19 @@
     return lv >= LEVELS.hard.start ? 'hard' : lv >= LEVELS.normal.start ? 'normal' : 'easy';
   }
   /** Tiles rise by 2 every 2 levels, from 12 at level 1 to 80 at level 69. */
-  function tilesAt(level) { return Math.min(80, 10 + 2 * Math.ceil(Math.max(1, level || 1) / 2)); }
+  /* How the board grows. Tiles at a level = tilesBase + tilesStep for every tilesEvery levels (rounded up),
+     never more than tilesMax: 12 at level 1, +2 every 2 levels, 80 from level 69. maxWidth is the widest board.
+     tools/tuner.html changes these (and RAMP, TOOLS and the stage starts) to try out other numbers. */
+  var TUNE = { tilesBase: 10, tilesStep: 2, tilesEvery: 2, tilesMax: 80, maxWidth: 9 };
+  function tilesAt(level) {
+    return Math.min(TUNE.tilesMax, TUNE.tilesBase + TUNE.tilesStep * Math.ceil(Math.max(1, level || 1) / TUNE.tilesEvery));
+  }
   /** The board is as wide as it needs to be to hold the tiles and walls as a square:
       5 x 5, 6 x 6 ... 9 x 9 (odd squares keep the centre spot blank). Never wider than 9. */
   function widthAt(level) {
     var need = tilesAt(level) + rampAt(level).walls;
-    for (var w = 5; w <= 9; w++) if (w * w - (w % 2) >= need) return w;
-    return 9;
+    for (var w = 5; w <= TUNE.maxWidth; w++) if (w * w - (w % 2) >= need) return w;
+    return TUNE.maxWidth;
   }
 
   /** Gridiron. Value v belongs to mascot Math.ceil(v / 2):
@@ -1588,6 +1594,7 @@
     parsePuzzle: parsePuzzle, formatPuzzle: formatPuzzle,
     indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd, addBlock: addBlock, pairsOnBoard: pairsOnBoard, canCompact: canCompact,
     kindCount: kindCount, wallCount: wallCount, isWall: isWall, WALL: WALL,
+    TUNE: TUNE,
     WALL_V: WALL_V, WALL_KINDS: WALL_KINDS, wallKind: wallKind, wallKinds: wallKinds, settleWalls: settleWalls, wallBonusAt: wallBonusAt,
     RAMP: RAMP, TOOLS: TOOLS, PACK_FROM: PACK_FROM, rampAt: rampAt, toolsAt: toolsAt, stageOf: stageOf, tilesAt: tilesAt, widthAt: widthAt,
     RULES_VERSION: RULES_VERSION, runStats: runStats, retryLevel: retryLevel,

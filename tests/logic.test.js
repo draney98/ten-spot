@@ -1115,6 +1115,14 @@ test('guided first level: a match only finishes the step it fits', function () {
   assert.strictEqual(L.guideDone('match', { type: 'bad' }), false);
 });
 
+test('tile growth comes from TUNE', function () {
+  assert.deepStrictEqual(L.TUNE, { tilesBase: 10, tilesStep: 2, tilesEvery: 2, tilesMax: 80, maxWidth: 9 });
+  L.TUNE.tilesMax = 30;
+  assert.strictEqual(L.boardSize(100), 30);
+  L.TUNE.tilesMax = 80;
+  assert.strictEqual(L.boardSize(100), 80);
+});
+
 test('the rules version is a whole number', function () {
   assert.ok(Number.isInteger(L.RULES_VERSION) && L.RULES_VERSION >= 1);
 });

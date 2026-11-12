@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ten-spot tuner</title>
+<style>
+/* The difficulty configurator. A tool page, not part of the game: plain tables on the game's paper. */
+:root {
+  --bg: #e3e9d8; --paper: #f2f6ea; --line: #b8c5a6; --grid: #c9d8b5; --ink: #161815; --muted: #343a2e;
+  --bad: #b23a2e; --run: #161815; --target: #6d7068; --real: #1747a6;
+  --c1: #c25400; --c2: #7426b5; --c3: #00737d;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+.wrap { max-width: 980px; margin: 0 auto; padding: 16px 16px 48px; }
+h1 { margin: 0; font-size: 24px; }
+h2 { margin: 0 0 4px; font-size: 18px; }
+h3 { margin: 16px 0 6px; font-size: 15px; }
+p { margin: 0 0 10px; }
+.quiet { color: var(--muted); font-size: 14px; }
+a { color: var(--ink); }
+section { background: var(--paper); border: 1.5px solid var(--line); border-radius: 6px; padding: 14px; margin-top: 14px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 3px 6px; text-align: left; white-space: nowrap; }
+th { font-size: 13px; color: var(--muted); font-weight: 600; border-bottom: 1.5px solid var(--line); }
+td.num, th.num { text-align: right; }
+input, select, button, textarea { font: inherit; color: var(--ink); }
+input[type=text], input[type=number], select { min-height: 36px; padding: 2px 6px; border: 1.5px solid var(--line); border-radius: 4px; background: #fff; }
+td input[type=text], td input[type=number] { width: 64px; }
+td input.wide { width: 150px; }
+input:focus-visible, select:focus-visible, button:focus-visible, textarea:focus-visible { outline: 2.5px solid #27466f; outline-offset: 1px; }
+button { min-height: 40px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 6px; background: transparent; font-weight: 700; cursor: pointer; }
+button.primary { background: var(--ink); color: var(--paper); }
+button.small { min-height: 32px; padding: 0 8px; font-weight: 600; font-size: 13px; border-color: var(--line); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+.fields { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; }
+.fields label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.fields label.check { flex-direction: row; align-items: center; gap: 6px; min-height: 36px; font-size: 15px; color: var(--ink); font-weight: 400; }
+.fields input[type=number] { width: 84px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.problems { color: var(--bad); font-weight: 600; margin: 10px 0 0; padding-left: 18px; }
+.bar { height: 10px; background: var(--grid); border-radius: 2px; overflow: hidden; flex: 1 1 200px; min-width: 120px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--ink); }
+.loss { display: inline-block; height: 10px; background: var(--bad); border-radius: 2px; vertical-align: middle; }
+svg.chart { width: 100%; height: auto; display: block; background: #fff; border: 1.5px solid var(--line); border-radius: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.legend svg { vertical-align: middle; margin-right: 4px; }
+textarea { width: 100%; min-height: 150px; padding: 8px; border: 1.5px solid var(--line); border-radius: 4px; background: #fff; font: 13px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+.headline { font-size: 17px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ten-spot tuner</h1>
+    <p class="quiet">Change the difficulty numbers, press Run, and a bot plays a batch of games on the real game code. Nothing here changes the game itself. <a href="../">Back to the game</a></p>
+  </header>
+
+  <section aria-labelledby="hNumbers">
+    <h2 id="hNumbers">1. The numbers</h2>
+    <p class="quiet">Each row is true from its level until the next row. These start as the game's own numbers.</p>
+    <h3>Ramp</h3>
+    <div class="scroll"><table id="rampTable"></table></div>
+    <div class="row"><button type="button" class="small" id="rampAdd">Add a ramp row</button><span class="quiet">Walls: up to four of <code>row</code>, <code>col</code>, <code>either</code>, <code>both</code>, with commas. Leave empty for none.</span></div>
+    <h3>Buttons</h3>
+    <div class="scroll"><table id="toolsTable"></table></div>
+    <div class="row"><button type="button" class="small" id="toolsAdd">Add a buttons row</button><span class="quiet">Type <code>inf</code> for unlimited. "Add at" = Add works once this many pairs or fewer are left.</span></div>
+    <h3>Tiles and stages</h3>
+    <div class="fields" id="tileFields"></div>
+    <div class="row"><button type="button" id="reset">Reset to the game's numbers</button></div>
+    <ul class="problems" id="problems" hidden></ul>
+  </section>
+
+  <section aria-labelledby="hRun">
+    <h2 id="hRun">2. The bot and the run</h2>
+    <div class="fields">
+      <label>Play style
+        <select id="botStyle">
+          <option value="careful">Careful: the pair that keeps the most pairs open</option>
+          <option value="casual">Casual: the first pair it sees</option>
+          <option value="random">Random: any legal pair</option>
+        </select>
+      </label>
+      <label>Undos a level <input type="number" id="botUndos" min="0" max="99" value="0"></label>
+      <label class="check"><input type="checkbox" id="botPack" checked> Uses Pack</label>
+      <label>Start at
+        <select id="startAt"><option value="easy">Easy (level 1)</option><option value="normal">Normal</option><option value="hard">Hard</option></select>
+      </label>
+      <label>Games <select id="runCount"><option>50</option><option selected>100</option><option>200</option></select></label>
+      <label>Seconds a move <input type="number" id="secMove" min="1" max="30" step="0.5" value="3"></label>
+      <label>Name this setup <input type="text" id="runName" maxlength="40" placeholder="fewer packs"></label>
+    </div>
+    <div class="row">
+      <button type="button" class="primary" id="run">Run</button>
+      <button type="button" id="stop" disabled>Stop</button>
+      <div class="bar" role="progressbar" aria-label="Games played" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar"><i id="barFill"></i></div>
+      <span id="progress" class="quiet" role="status"></span>
+    </div>
+  </section>
+
+  <section aria-labelledby="hResult" id="result" hidden>
+    <h2 id="hResult">3. What happened</h2>
+    <p class="headline" id="headline"></p>
+    <h3>How far runs get</h3>
+    <svg class="chart" id="chart" viewBox="0 0 720 300" role="img" aria-label="Share of runs that reach each level"></svg>
+    <ul class="legend" id="legend"></ul>
+    <div class="row"><button type="button" class="small" id="loadReal">Load real play</button><span class="quiet" id="realNote">Real players' run ends, from the scores server.</span></div>
+    <h3>Runs lost in each 5 levels</h3>
+    <div class="scroll"><table id="bandTable"></table></div>
+    <h3>How long each stage lasts</h3>
+    <div class="scroll"><table id="stageTable"></table></div>
+    <p class="quiet">Minutes are moves × the seconds a move you set. Levels and minutes are averages over the runs that got to that stage.</p>
+  </section>
+
+  <section aria-labelledby="hCompare" id="compare" hidden>
+    <h2 id="hCompare">4. Compare runs</h2>
+    <p class="quiet">The last 12 runs are kept in this browser. Tick up to three to draw them on the chart.</p>
+    <div class="scroll"><table id="runTable"></table></div>
+  </section>
+
+  <section aria-labelledby="hCopy" id="copy" hidden>
+    <h2 id="hCopy">5. Hand it to Claude</h2>
+    <p class="quiet">The numbers and the result of the latest run, as text.</p>
+    <div class="row"><button type="button" id="copyBtn">Copy for Claude</button><span class="quiet" id="copyNote" role="status"></span></div>
+    <textarea id="report" readonly aria-label="Report text"></textarea>
+  </section>
+</div>
+
+<script src="../game-logic.js"></script>
+<script src="tuner-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var L = window.NumberMatchLogic, T = window.TenSpotTuner;
+  var $ = function (id) { return document.getElementById(id); };
+  var GAME = T.readConfig(L);                       // the game's own numbers, for Reset
+  var cfg = JSON.parse(JSON.stringify(GAME));       // the numbers being edited
+  var KEY = 'tenspot.tuner.runs';
+  var SCORES = 'https://ten-spot-scores.onrender.com';
+  var saved = loadSaved(), latest = null, real = null, running = null, shown = {};
+
+  function loadSaved() { try { var a = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function storeSaved() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) { /* the page still works */ } }
+
+  function el(tag, props, kids) {
+    var n = document.createElement(tag);
+    for (var k in (props || {})) { if (k === 'text') n.textContent = props[k]; else if (k in n) n[k] = props[k]; else n.setAttribute(k, props[k]); }
+    (kids || []).forEach(function (c) { n.appendChild(c); });
+    return n;
+  }
+  function pct(x) { return Math.round(x * 100) + '%'; }
+
+  /* ---------- 1. the editable tables ---------- */
+  var RAMP_COLS = [['from', 'From level'], ['kinds', 'Mascots'], ['adds', 'Adds'], ['walls', 'Walls']];
+  var TOOL_COLS = [['from', 'From level'], ['hints', 'Hints'], ['undos', 'Undos'], ['packs', 'Packs'], ['addAt', 'Add at'], ['mistake', 'Early Add is a mistake']];
+  function parseCount(text) { text = String(text).trim().toLowerCase(); return text === 'inf' ? 'inf' : (text === '' ? NaN : Number(text)); }
+
+  function drawTable(id, cols, rows, kind) {
+    var table = $(id); table.textContent = '';
+    table.appendChild(el('tr', {}, cols.map(function (c) { return el('th', { text: c[1], scope: 'col' }); }).concat([el('th', { text: '' })])));
+    rows.forEach(function (row, i) {
+      var tr = el('tr');
+      cols.forEach(function (c) {
+        var key = c[0], input;
+        if (key === 'mistake') {
+          input = el('input', { type: 'checkbox', checked: !!row.mistake });
+          input.addEventListener('change', function () { row.mistake = input.checked; });
+        } else if (key === 'walls') {
+          input = el('input', { type: 'text', className: 'wide', value: row.walls.join(', ') });
+          input.addEventListener('change', function () { row.walls = input.value.split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean); check(); });
+        } else if (kind === 'tools' && key !== 'from' && key !== 'addAt') {
+          input = el('input', { type: 'text', value: String(row[key]) });
+          input.addEventListener('change', function () { row[key] = parseCount(input.value); check(); });
+        } else {
+          input = el('input', { type: 'number', value: String(row[key]), min: '0' });
+          input.addEventListener('change', function () { row[key] = Number(input.value); check(); });
+        }
+        input.setAttribute('aria-label', c[1] + ', row ' + (i + 1));
+        tr.appendChild(el('td', {}, [input]));
+      });
+      var del = el('button', { type: 'button', className: 'small', text: 'Remove', disabled: rows.length < 2 });
+      del.addEventListener('click', function () { rows.splice(i, 1); drawNumbers(); });
+      tr.appendChild(el('td', {}, [del]));
+      table.appendChild(tr);
+    });
+  }
+  var TILE_FIELDS = [
+    ['tiles.base', 'Tiles: base'], ['tiles.step', 'plus'], ['tiles.every', 'every (levels)'], ['tiles.max', 'Most tiles'],
+    ['tiles.maxWidth', 'Widest board'], ['normalStart', 'Normal starts at'], ['hardStart', 'Hard starts at']
+  ];
+  function drawNumbers() {
+    drawTable('rampTable', RAMP_COLS, cfg.ramp, 'ramp');
+    drawTable('toolsTable', TOOL_COLS, cfg.tools, 'tools');
+    var box = $('tileFields'); box.textContent = '';
+    TILE_FIELDS.forEach(function (f) {
+      var path = f[0].split('.'), holder = path.length === 2 ? cfg[path[0]] : cfg, key = path[path.length - 1];
+      var input = el('input', { type: 'number', value: String(holder[key]), min: '0' });
+      input.addEventListener('change', function () { holder[key] = Number(input.value); check(); });
+      box.appendChild(el('label', { text: f[1] + ' ' }, [input]));
+    });
+    check();
+  }
+  function check() {
+    var problems = T.checkConfig(cfg), list = $('problems');
+    list.textContent = '';
+    problems.forEach(function (p) { list.appendChild(el('li', { text: p })); });
+    list.hidden = !problems.length;
+    $('run').disabled = !!problems.length || !!running;
+    return !problems.length;
+  }
+  $('rampAdd').addEventListener('click', function () {
+    var last = cfg.ramp[cfg.ramp.length - 1];
+    cfg.ramp.push({ from: last.from + 5, kinds: last.kinds, adds: last.adds, walls: last.walls.slice() });
+    drawNumbers();
+  });
+  $('toolsAdd').addEventListener('click', function () {
+    var last = cfg.tools[cfg.tools.length - 1];
+    cfg.tools.push({ from: last.from + 5, hints: last.hints, undos: last.undos, packs: last.packs, addAt: last.addAt, mistake: last.mistake });
+    drawNumbers();
+  });
+  $('reset').addEventListener('click', function () { cfg = JSON.parse(JSON.stringify(GAME)); drawNumbers(); });
+
+  /* ---------- 2. running a batch ---------- */
+  function botNow() { return { style: $('botStyle').value, pack: $('botPack').checked, undos: Math.max(0, Math.min(99, Number($('botUndos').value) || 0)) }; }
+  function setProgress(done, total, text) {
+    var v = total ? Math.round(100 * done / total) : 0;
+    $('barFill').style.width = v + '%'; $('bar').setAttribute('aria-valuenow', String(v));
+    $('progress').textContent = text;
+  }
+  $('run').addEventListener('click', function () {
+    if (running || !check()) return;
+    var runCfg = JSON.parse(JSON.stringify(cfg)), bot = botNow(), total = Number($('runCount').value);
+    try { T.applyConfig(L, runCfg); } catch (e) { check(); return; }
+    var start = L.startLevel($('startAt').value);
+    running = { stop: false };
+    var job = running, runs = [], climb = null, r = 0, t0 = Date.now();
+    $('run').disabled = true; $('stop').disabled = false;
+    function slice() {
+      var until = Date.now() + 40;
+      while (Date.now() < until && r < total && !job.stop) {
+        if (!climb) climb = T.makeClimb(L, 1 + r * 7919, bot, start, 150);
+        if (!climb.step()) { runs.push(climb.result); climb = null; r++; }
+      }
+      if (r < total && !job.stop) {
+        setProgress(r, total, r + ' of ' + total + ' games' + (climb ? ', on level ' + (climb.result.start + climb.result.moves.length) : ''));
+        setTimeout(slice, 0);
+        return;
+      }
+      running = null; $('stop').disabled = true;
+      T.applyConfig(L, GAME);   // leave the game's own numbers in place
+      check();
+      if (!runs.length) { setProgress(0, total, 'Stopped before any game finished.'); return; }
+      setProgress(runs.length, total, (job.stop ? 'Stopped after ' : 'Done: ') + runs.length + ' games in ' + Math.round((Date.now() - t0) / 1000) + ' s.');
+      finish(runs, runCfg, bot);
+    }
+    setProgress(0, total, 'Starting…');
+    setTimeout(slice, 0);
+  });
+  $('stop').addEventListener('click', function () { if (running) running.stop = true; });
+
+  function finish(runs, runCfg, bot) {
+    var sec = Math.max(1, Number($('secMove').value) || 3);
+    var sum = T.summarize(runs, runCfg, sec);
+    var name = $('runName').value.trim() || ('Run ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    latest = { id: Date.now(), name: name, cfg: runCfg, bot: bot, sum: sum };
+    saved.unshift(latest);
+    if (saved.length > 12) saved.length = 12;
+    storeSaved();
+    drawAll();
+  }
+
+  /* ---------- 3. results ---------- */
+  var SERIES_STYLE = [
+    { stroke: 'var(--c1)', dash: '7 4' }, { stroke: 'var(--c2)', dash: '2 4' }, { stroke: 'var(--c3)', dash: '10 3 2 3' }
+  ];
+  function svgEl(tag, attrs) {
+    var n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+  function drawChart() {
+    var svg = $('chart'), legend = $('legend');
+    svg.textContent = ''; legend.textContent = '';
+    var others = saved.filter(function (s) { return shown[s.id] && s !== latest; }).slice(0, 3);
+    var maxLevel = 90;
+    [latest].concat(others).forEach(function (s) { if (s) maxLevel = Math.max(maxLevel, s.sum.top + 2); });
+    if (real) maxLevel = Math.max(maxLevel, real.reach.length + 2);
+    maxLevel = Math.ceil(maxLevel / 10) * 10;
+    var X0 = 46, X1 = 706, Y0 = 14, Y1 = 262;
+    var x = function (lv) { return X0 + (lv - 1) / (maxLevel - 1) * (X1 - X0); };
+    var y = function (share) { return Y1 - share * (Y1 - Y0); };
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (g) {
+      svg.appendChild(svgEl('line', { x1: X0, x2: X1, y1: y(g), y2: y(g), stroke: '#dfe6d3', 'stroke-width': 1 }));
+      var t = svgEl('text', { x: X0 - 6, y: y(g) + 4, 'text-anchor': 'end', 'font-size': 12, fill: '#343a2e' }); t.textContent = pct(g); svg.appendChild(t);
+    });
+    for (var lv = 10; lv <= maxLevel; lv += 10) {
+      svg.appendChild(svgEl('line', { x1: x(lv), x2: x(lv), y1: Y1, y2: Y1 + 5, stroke: '#343a2e', 'stroke-width': 1 }));
+      var t2 = svgEl('text', { x: x(lv), y: Y1 + 19, 'text-anchor': 'middle', 'font-size': 12, fill: '#343a2e' }); t2.textContent = String(lv); svg.appendChild(t2);
+    }
+    var cap = svgEl('text', { x: (X0 + X1) / 2, y: 296, 'text-anchor': 'middle', 'font-size': 12, fill: '#343a2e' }); cap.textContent = 'Level'; svg.appendChild(cap);
+    svg.appendChild(svgEl('line', { x1: X0, x2: X1, y1: Y1, y2: Y1, stroke: '#343a2e', 'stroke-width': 1.2 }));
+    [cfg.normalStart, cfg.hardStart].forEach(function (s, i) {
+      if (s > maxLevel) return;
+      svg.appendChild(svgEl('line', { x1: x(s), x2: x(s), y1: Y0, y2: Y1, stroke: '#b8c5a6', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
+      var t3 = svgEl('text', { x: x(s) + 4, y: Y0 + 10, 'font-size': 11, fill: '#343a2e' }); t3.textContent = i ? 'Hard' : 'Normal'; svg.appendChild(t3);
+    });
+    function line(points, style, label) {
+      var d = points.map(function (p, i) { return (i ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + y(p[1]).toFixed(1); }).join('');
+      var attrs = { d: d, fill: 'none', stroke: style.stroke, 'stroke-width': style.width || 2, 'stroke-linejoin': 'round' };
+      if (style.dash) attrs['stroke-dasharray'] = style.dash;
+      svg.appendChild(svgEl('path', attrs));
+      var key = svgEl('svg', { width: 34, height: 10, viewBox: '0 0 34 10', 'aria-hidden': 'true' });
+      var ka = { x1: 1, x2: 33, y1: 5, y2: 5, stroke: style.stroke, 'stroke-width': style.width || 2 };
+      if (style.dash) ka['stroke-dasharray'] = style.dash;
+      key.appendChild(svgEl('line', ka));
+      legend.appendChild(el('li', {}, [key, document.createTextNode(label)]));
+    }
+    function curve(sum) { return sum.reach.map(function (v, i) { return [sum.start + i, v]; }).concat([[sum.start + sum.reach.length, 0]]); }
+    var target = []; for (var l2 = 1; l2 <= maxLevel; l2++) target.push([l2, T.targetReach(l2)]);
+    line(target, { stroke: 'var(--target)', dash: '4 4', width: 1.5 }, 'Target');
+    others.forEach(function (s, i) { line(curve(s.sum), SERIES_STYLE[i], s.name); });
+    if (real) line(curve(real), { stroke: 'var(--real)', width: 2.5, dash: '1 3' }, 'Real play (' + real.runs + ' runs)');
+    if (latest) line(curve(latest.sum), { stroke: 'var(--run)', width: 3 }, latest.name + ' (latest)');
+  }
+  function drawResult() {
+    if (!latest) return;
+    var sum = latest.sum;
+    $('result').hidden = false; $('compare').hidden = false; $('copy').hidden = false;
+    $('headline').textContent = sum.runs + ' games from level ' + sum.start + '. Half ended by level ' + sum.median + '. ' +
+      [41, 61, 71, 81].filter(function (l) { return l > sum.start; }).map(function (l) { return pct(T.reachAt(sum, l)) + ' reached ' + l; }).join(', ') + '.';
+    var bands = $('bandTable'); bands.textContent = '';
+    bands.appendChild(el('tr', {}, [el('th', { text: 'Levels' }), el('th', { text: 'Got there', className: 'num' }), el('th', { text: 'Lost here', className: 'num' }), el('th', { text: '' })]));
+    sum.bands.forEach(function (b) {
+      var bar = el('span', { className: 'loss' }); bar.style.width = Math.round(b.lost * 200) + 'px';
+      bands.appendChild(el('tr', {}, [el('td', { text: b.from + '–' + b.to }), el('td', { text: String(b.entered), className: 'num' }), el('td', { text: pct(b.lost), className: 'num' }), el('td', {}, [bar])]));
+    });
+    var stages = $('stageTable'); stages.textContent = '';
+    stages.appendChild(el('tr', {}, ['Stage', 'Levels', 'Got there', 'Levels played', 'About', 'Got past it'].map(function (t, i) { return el('th', { text: t, className: i > 1 ? 'num' : '' }); })));
+    sum.stages.forEach(function (s) {
+      stages.appendChild(el('tr', {}, [
+        el('td', { text: s.name }), el('td', { text: s.from + (isFinite(s.to) ? '–' + s.to : ' on') }),
+        el('td', { text: String(s.runs), className: 'num' }), el('td', { text: s.runs ? s.levels.toFixed(1) : '', className: 'num' }),
+        el('td', { text: s.runs ? Math.round(s.minutes) + ' min' : '', className: 'num' }), el('td', { text: s.finished == null || !s.runs ? '' : pct(s.finished), className: 'num' })
+      ]));
+    });
+    $('report').value = T.reportText(latest.name, latest.cfg, latest.bot, sum);
+  }
+  function drawCompare() {
+    var table = $('runTable'); table.textContent = '';
+    table.appendChild(el('tr', {}, ['Chart', 'Name', 'Bot', 'Games', 'Half ended by', '41', '51', '61', '71', '81', '', ''].map(function (t, i) { return el('th', { text: t, className: i > 2 && i < 10 ? 'num' : '' }); })));
+    saved.forEach(function (s) {
+      var box = el('input', { type: 'checkbox', checked: !!shown[s.id] || s === latest, disabled: s === latest });
+      box.setAttribute('aria-label', 'Draw ' + s.name + ' on the chart');
+      box.addEventListener('change', function () { shown[s.id] = box.checked; drawChart(); });
+      var use = el('button', { type: 'button', className: 'small', text: 'Use these numbers' });
+      use.addEventListener('click', function () { cfg = JSON.parse(JSON.stringify(s.cfg)); drawNumbers(); window.scrollTo(0, 0); });
+      var del = el('button', { type: 'button', className: 'small', text: 'Delete' });
+      del.addEventListener('click', function () { saved = saved.filter(function (x) { return x !== s; }); if (latest === s) latest = null; storeSaved(); drawAll(); });
+      table.appendChild(el('tr', {}, [el('td', {}, [box]), el('td', { text: s.name }), el('td', { text: s.bot.style + (s.bot.pack ? '' : ', no Pack') + (s.bot.undos ? ', ' + s.bot.undos + ' undos' : '') }),
+        el('td', { text: String(s.sum.runs), className: 'num' }), el('td', { text: 'level ' + s.sum.median, className: 'num' })]
+        .concat([41, 51, 61, 71, 81].map(function (l) { return el('td', { text: pct(T.reachAt(s.sum, l)), className: 'num' }); }))
+        .concat([el('td', {}, [use]), el('td', {}, [del])])));
+    });
+    $('compare').hidden = !saved.length;
+  }
+  function drawAll() { drawResult(); drawCompare(); if (latest) drawChart(); }
+
+  $('loadReal').addEventListener('click', function () {
+    $('realNote').textContent = 'Loading…';
+    fetch(SCORES + '/v1/runs?version=' + L.RULES_VERSION).then(function (res) { return res.json(); }).then(function (body) {
+      real = T.realReach(body && body.runs, $('startAt').value);
+      $('realNote').textContent = real ? real.runs + ' real runs loaded (rules version ' + L.RULES_VERSION + ').' : 'No real runs yet for this start point and rules version ' + L.RULES_VERSION + '.';
+      drawChart();
+    }).catch(function () { $('realNote').textContent = "Couldn't reach the scores server from this page. It works when the tuner is opened from the game's own site."; });
+  });
+  $('copyBtn').addEventListener('click', function () {
+    var box = $('report');
+    function done(ok) { $('copyNote').textContent = ok ? 'Copied.' : 'Select the text below and copy it.'; }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(box.value).then(function () { done(true); }, function () { box.select(); done(false); });
+    else { box.select(); done(false); }
+  });
+
+  drawNumbers();
+  drawCompare();
+  window.__tuner = { cfg: function () { return cfg; }, latest: function () { return latest; } };
+})();
+</script>
+</body>
+</html>
