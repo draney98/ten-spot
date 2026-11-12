@@ -40,10 +40,10 @@
     { from: 31, kinds: 7, adds: 4, walls: 0 },
     { from: 40, kinds: 7, adds: 4, walls: 1 },
     { from: 46, kinds: 7, adds: 4, walls: 2 },
-    { from: 53, kinds: 7, adds: 4, walls: 1 },   // the board goes 9 wide here, so one wall goes away
-    { from: 59, kinds: 7, adds: 3, walls: 1 },
-    { from: 65, kinds: 7, adds: 3, walls: 2 },
-    { from: 76, kinds: 7, adds: 3, walls: 3 }
+    { from: 53, kinds: 7, adds: 4, walls: 1, wk: ['col'] },   // the board goes 9 wide here, so one wall goes away
+    { from: 59, kinds: 7, adds: 3, walls: 2, wk: ['col', 'either'] },
+    { from: 65, kinds: 7, adds: 3, walls: 2, wk: ['both', 'either'] },
+    { from: 76, kinds: 7, adds: 3, walls: 3, wk: ['row', 'either', 'both'] }
   ];
   /* The buttons you have. Infinity means unlimited. Undo is never unlimited: with unlimited
      undo any board can be won by stepping back and trying again (tools/sim.js style bot:
@@ -113,7 +113,7 @@
     streakStep: 0.1,   // streak multiplier grows 0.1 per pair in a row
     streakMax: 2,      // ...up to x2
     row: 30,           // row bonus = 30 x (rows emptied by this pair)^2
-    wall: 50,          // + 50 for each wall that leaves with its row (x mult)
+    wall: 50,          // wall bonus = (50 + n x n) x mult, n = dealt pairs cleared while it stood; x2 on the last pair
     sweep: 25,         // clean sweep: + 25 per pair (x mult), on top of each pair's own points
     levelPerLevel: 100,// level bonus = 100 x level ...
     parAdd: 200,       // ... + 200 for each match under par
@@ -242,16 +242,54 @@
     return x > 0 && y > 0 && mascotOf(x) === mascotOf(y);   // a wall (v = -1) never matches
   }
 
-  /* WALLS. A wall is a cell with v = WALL (-1). It is never done and never matches, so it blocks
-     every path through it. It can't be selected, and Add never copies it. When every tile
-     in its row is cleared, the row is removed and the wall goes with it. */
+  /* WALLS. A wall is a cell with a negative v. It is never done and never matches, so it blocks
+     every path through it. It can't be selected, and Add never copies it. There are four kinds,
+     told apart by v, and each goes away in its own way:
+       row    (-1)  when every tile in its row is cleared. The row is removed and the wall with it.
+       col    (-2)  when every tile in its column is cleared (tiles added below count too).
+                    Columns are never removed, so the wall turns into an empty spot that paths pass through.
+       either (-3)  when its row OR its column is cleared, whichever comes first.
+       both   (-4)  only when its row AND its column are both cleared.
+     A wall that is waiting on its column keeps its row on the board, even when the row has no tiles left. */
   var WALL = -1;
-  function isWall(c) { return c.v === WALL; }
-  /** A row is gone when it has no tiles left: every cell is cleared or a wall. */
+  var WALL_V = { row: -1, col: -2, either: -3, both: -4 };
+  var WALL_KINDS = ['row', 'col', 'either', 'both'];
+  function isWall(c) { return c.v < 0; }
+  /** 'row' | 'col' | 'either' | 'both', or null when the cell is not a wall. */
+  function wallKind(c) { return (c && c.v < 0 && WALL_KINDS[-c.v - 1]) || null; }
+  /** Is every tile in this wall's row / column cleared? Other walls are not tiles. */
+  function wallLines(cells, i, w) {
+    var row = true, col = true, k;
+    var r0 = Math.floor(i / w) * w;
+    for (k = r0; k < Math.min(cells.length, r0 + w); k++) if (!isWall(cells[k]) && !cells[k].done) { row = false; break; }
+    for (k = i % w; k < cells.length; k += w) if (!isWall(cells[k]) && !cells[k].done) { col = false; break; }
+    return { row: row, col: col };
+  }
+  /** Turn every wall whose column condition is met into an empty spot (a cleared BLANK cell).
+      Row walls, and 'either' walls whose row empties, leave with their row instead (see rowGone).
+      Returns the same list when nothing changed. */
+  function settleWalls(cells, cols) {
+    var w = width(cols), out = null;
+    for (var i = 0; i < cells.length; i++) {
+      var v = cells[i].v;
+      if (v >= 0 || v === WALL_V.row) continue;
+      var L2 = wallLines(cells, i, w);
+      var free = v === WALL_V.both ? (L2.row && L2.col) : L2.col;
+      if (!free) continue;
+      if (!out) out = cells.slice();
+      out[i] = { id: cells[i].id, v: BLANK, done: true };
+    }
+    return out || cells;
+  }
+  /** A row is gone when it has no tiles left: every cell is cleared or a wall that leaves with its row.
+      A col or both wall still standing keeps the row. */
   function rowGone(row) {
     var tile = false;
     for (var i = 0; i < row.length; i++) {
-      if (isWall(row[i])) continue;
+      if (isWall(row[i])) {
+        if (row[i].v === WALL_V.col || row[i].v === WALL_V.both) return false;
+        continue;
+      }
       if (!row[i].done) return false;
       tile = true;
     }
@@ -260,6 +298,13 @@
   /** How many walls a level is dealt with (see RAMP). The diff argument is ignored. */
   function wallCount(diff, level) {
     return rampAt(level).walls;
+  }
+  /** The kinds of the walls a level is dealt with, e.g. ['row', 'col']. A RAMP row may list them
+      in `wk`; walls not listed are row walls. */
+  function wallKinds(level) {
+    var row = rampAt(level), out = [];
+    for (var i = 0; i < row.walls; i++) out.push((row.wk && row.wk[i]) || 'row');
+    return out;
   }
   /** On an odd square that is exactly full (5 x 5, 7 x 7, 9 x 9) the centre spot is blank:
       an empty spot that starts cleared, so paths pass through it. v = BLANK (0). */
@@ -272,8 +317,11 @@
     out.splice((w * w - 1) / 2, 0, { v: BLANK, done: true });
     return out;
   }
-  /** Put `count` walls into the tile list, each in a different row and never in the last row. */
-  function placeWalls(vals, count, cols, rng) {
+  /** Put walls into the tile list, each in a different row and never in the last row.
+      `kinds` is a list like ['row', 'col'] (a plain number means that many row walls). */
+  function placeWalls(vals, kinds, cols, rng) {
+    if (typeof kinds === 'number') { var nKinds = []; for (var q = 0; q < kinds; q++) nKinds.push('row'); kinds = nKinds; }
+    var count = kinds ? kinds.length : 0;
     if (!count) return vals;
     var w = width(cols);
     var rows = Math.floor((vals.length + count - 1) / w);   // rows before the last one
@@ -284,7 +332,7 @@
     var out = vals.slice();
     for (var k = 0; k < pick.length; k++) {
       var at = pick[k] * w + Math.floor(rng() * w);
-      out.splice(at, 0, { v: WALL });
+      out.splice(at, 0, { v: WALL_V[kinds[k]] || WALL });
     }
     return out;
   }
@@ -632,10 +680,12 @@
     return out;
   }
 
-  /** Remove every row with no tiles left (walls in it go too). Remaining cells keep order. */
+  /** Settle the walls, then remove every row with no tiles left (walls that leave with their row go too).
+      Remaining cells keep order. */
   function compact(cells, cols) {
     var out = [];
     var w = width(cols);
+    cells = settleWalls(cells, w);
     for (var r = 0; r * w < cells.length; r++) {
       var row = cells.slice(r * w, r * w + w);
       if (!rowGone(row)) out = out.concat(row);
@@ -759,6 +809,13 @@
     var w = width(cols);
     var next = buildNext(cells, diag, w);
     var rowLive = rowLiveCounts(cells, w);
+    // columns that hold a col / either / both wall: emptying one changes the board, so it is rebuilt
+    var colLive = [], colWall = [], anyColWall = false;
+    for (var ci = 0; ci < w; ci++) { colLive.push(0); colWall.push(false); }
+    for (var q = 0; q < cells.length; q++) {
+      if (isWall(cells[q])) { if (cells[q].v !== WALL_V.row) { colWall[q % w] = true; anyColWall = true; } }
+      else if (!cells[q].done) colLive[q % w]++;
+    }
     var count = listPairs(cells, next, rules).length;
     var live = countLive(cells);
 
@@ -776,8 +833,11 @@
 
     function completesRow(i, j) {
       var ri = Math.floor(i / w), rj = Math.floor(j / w);
-      if (ri === rj) return rowLive[ri] <= 2;
-      return rowLive[ri] <= 1 || rowLive[rj] <= 1;
+      if (ri === rj ? rowLive[ri] <= 2 : (rowLive[ri] <= 1 || rowLive[rj] <= 1)) return true;
+      if (!anyColWall) return false;
+      var ci = i % w, cj = j % w;   // does this pair empty a column that a wall is waiting on?
+      if (ci === cj) return colWall[ci] && colLive[ci] <= 2;
+      return (colWall[ci] && colLive[ci] <= 1) || (colWall[cj] && colLive[cj] <= 1);
     }
 
     function drop(x, log) {
@@ -789,6 +849,8 @@
       var row = Math.floor(x / w);
       rowLive[row]--;
       log.push(['row', row]);
+      colLive[x % w]--;
+      log.push(['col', x % w]);
       live--;
       for (var f = 0; f < LINK_FWD.length; f++) {
         var d = LINK_FWD[f];
@@ -819,6 +881,7 @@
         if (op[0] === 'ptr') next[op[1]][op[2]] = op[3];
         else if (op[0] === 'done') { cells[op[1]].done = false; live++; }
         else if (op[0] === 'row') rowLive[op[1]]++;
+        else if (op[0] === 'col') colLive[op[1]]++;
       }
     }
 
@@ -974,8 +1037,7 @@
     var T = toolsAt(level);
     var cols = widthAt(level);
     var tiles = pairsBoard(level, rng || Math.random, diff);
-    var walls = wallCount(diff, level);
-    var vals = placeBlank(placeWalls(tiles, walls, cols, rng || Math.random), cols);
+    var vals = placeBlank(placeWalls(tiles, wallKinds(level), cols, rng || Math.random), cols);
     var addsThisLevel = addsFor(diff, level);
     var play = tidyPlay(vals, DIAG, 'pairs', addsThisLevel, null, cols);
     return {
@@ -989,6 +1051,8 @@
         return cell;
       }),
       nextId: vals.length + 1,
+      dealtIds: vals.length + 1,   // cells with a lower id were dealt with the level (Add hands out higher ones)
+      wallPairs: 0,                // pairs of dealt tiles cleared this level: what the wall bonus grows with
       selected: null,
       streak: 0,
       par: Math.round(play.matches),
@@ -1046,7 +1110,7 @@
     var h = s.history.concat([{
       cells: s.cells, nextId: s.nextId, moves: s.moves, cleared: s.cleared, total: s.total,
       score: s.score, streak: s.streak, addsLeft: s.addsLeft, penalties: s.penalties || 0,
-      compactsLeft: s.compactsLeft, run: runStats(s)
+      compactsLeft: s.compactsLeft, run: runStats(s), wallPairs: s.wallPairs || 0
     }]);
     return h.length > HISTORY_LIMIT ? h.slice(h.length - HISTORY_LIMIT) : h;
   }
@@ -1133,21 +1197,35 @@
     return { state: n, event: { type: 'bad', id: id, reason: okValue ? 'path' : 'value', penalty: penalty } };
   }
 
+  /** What one wall would pay if it went now: (50 + n x n) x the level multiplier,
+      n = pairs of dealt tiles cleared so far this level. Pass n to price a different count. */
+  function wallBonusAt(s, n) {
+    if (n == null) n = s.wallPairs || 0;
+    return Math.round((SCORE.wall + n * n) * pointMult(s.diff, s.level));
+  }
+
   function applyMatch(s, a, b) {
     var before = s.cells;
-    var cells = before.map(function (c, i) {
+    var w = boardCols(s);
+    var marked = before.map(function (c, i) {
       return (i === a || i === b) ? copyCell(c, true) : c;
     });
-    var w = boardCols(s);
+    var cells = settleWalls(marked, w);   // walls freed by their column become empty spots
     var had = doneRows(before, w);
     var rowsCleared = doneRows(cells, w).filter(function (r) { return had.indexOf(r) < 0; });
     var streak = (s.streak || 0) + 1;
     var scored = pairScore(s, a, b, streak, rowsCleared.length);
-    var wallsGone = 0;
+    var wallsGone = 0, wallIds = [];
+    for (var q = 0; q < cells.length; q++) if (isWall(marked[q]) && !isWall(cells[q])) { wallsGone++; wallIds.push(cells[q].id); }
     rowsCleared.forEach(function (r) {
-      for (var k = r * w; k < Math.min(cells.length, r * w + w); k++) if (isWall(cells[k])) wallsGone++;
+      for (var k = r * w; k < Math.min(cells.length, r * w + w); k++) if (isWall(cells[k])) { wallsGone++; wallIds.push(cells[k].id); }
     });
-    var wallBonus = Math.round(SCORE.wall * wallsGone * pointMult(s.diff, s.level));
+    // The wall bonus grows with the pairs of dealt tiles cleared while the wall stood (this pair included),
+    // and doubles when the wall goes with the level's last pair.
+    var dealt = s.dealtIds || 0;
+    var wallPairs = (s.wallPairs || 0) + ((before[a].id < dealt && before[b].id < dealt) ? 1 : 0);
+    var lastStand = wallsGone > 0 && s.total - (s.cleared + 2) === 0;
+    var wallBonus = wallsGone * wallBonusAt(s, wallPairs) * (lastStand ? 2 : 1);
 
     var n = copy(s);
     n.history = snapshot(s);
@@ -1155,6 +1233,7 @@
     n.selected = null;
     n.moves = s.moves + 1;
     n.cleared = s.cleared + 2;
+    n.wallPairs = wallPairs;
     n.streak = streak;
     n.score = s.score + scored.gain + wallBonus;
     var story = runStats(s);
@@ -1172,7 +1251,9 @@
         gain: scored.gain + wallBonus,
         pair: scored.pair,
         wallsGone: wallsGone,
+        wallIds: wallIds,
         wallBonus: wallBonus,
+        lastStand: lastStand,
         streak: streak,
         streakMult: scored.streakMult,
         rowsCleared: rowsCleared,
@@ -1344,6 +1425,7 @@
     n.score = Math.max(0, last.score - ((s.penalties || 0) - (last.penalties || 0)));
     n.streak = last.streak || 0; n.addsLeft = last.addsLeft;
     if (last.compactsLeft != null) n.compactsLeft = last.compactsLeft;
+    n.wallPairs = last.wallPairs || 0;
     n.undosLeft = s.undosLeft - 1;  // Infinity - 1 === Infinity
     n.history = h;
     n.selected = null;
@@ -1489,7 +1571,7 @@
 
   /* Goes up by one whenever the difficulty numbers (RAMP, TOOLS, tiles, walls) change,
      so run-end counts from different tunings are kept apart. */
-  var RULES_VERSION = 1;
+  var RULES_VERSION = 2;   // 2: four kinds of wall on the ramp from level 53, wall bonus that grows
 
   return {
     colsFor: colsFor, LEVELS: LEVELS, MAX_MASCOTS: MAX_MASCOTS,
@@ -1506,6 +1588,7 @@
     parsePuzzle: parsePuzzle, formatPuzzle: formatPuzzle,
     indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd, addBlock: addBlock, pairsOnBoard: pairsOnBoard, canCompact: canCompact,
     kindCount: kindCount, wallCount: wallCount, isWall: isWall, WALL: WALL,
+    WALL_V: WALL_V, WALL_KINDS: WALL_KINDS, wallKind: wallKind, wallKinds: wallKinds, settleWalls: settleWalls, wallBonusAt: wallBonusAt,
     RAMP: RAMP, TOOLS: TOOLS, PACK_FROM: PACK_FROM, rampAt: rampAt, toolsAt: toolsAt, stageOf: stageOf, tilesAt: tilesAt, widthAt: widthAt,
     RULES_VERSION: RULES_VERSION, runStats: runStats, retryLevel: retryLevel,
     GUIDE_STEPS: GUIDE_STEPS, guideTarget: guideTarget, guideDone: guideDone,

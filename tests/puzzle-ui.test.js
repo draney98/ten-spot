@@ -136,7 +136,13 @@ test('game over winds down with a sound before the card', function () {
 });
 
 test('walls are drawn, named, explained and announced', function () {
-  assert.ok(app.indexOf('if (v === L.WALL) return WALL_SVG;') !== -1);
+  assert.ok(app.indexOf('if (v < 0) return wallHTML(') !== -1);
+  ['row', 'col', 'either', 'both'].forEach(function (k) { assert.ok(app.indexOf('    ' + k + ": '<path") !== -1, k + ' wall icon'); });
+  assert.ok(app.indexOf('L.wallBonusAt(state)') !== -1);
+  assert.ok(app.indexOf("class=\"wall-pts\"") !== -1);
+  assert.ok(css.indexOf('.wall-pts') !== -1);
+  assert.ok(app.indexOf("'New: a '") !== -1);
+  assert.ok(html.indexOf('doubles if the wall lasts to the level') !== -1);
   assert.ok(app.indexOf("return cls + ' c-wall';") !== -1);
   assert.ok(app.indexOf("'Wall gone! +'") !== -1);
   assert.ok(app.indexOf('L.wallCount(state.diff, lv)') !== -1);
@@ -177,6 +183,11 @@ test('the guided first level has its pointer, Skip and blue ring', function () {
   assert.ok(app.indexOf("'numbermatch.guide'") !== -1);
   assert.ok(app.indexOf('function renderGuide()') !== -1);
   assert.ok(app.indexOf('L.guideTarget(s, step)') !== -1);
+});
+
+test('app.js and game-logic.js parse as scripts', function () {
+  new Function(app);
+  new Function(fs.readFileSync('game-logic.js', 'utf8'));
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');

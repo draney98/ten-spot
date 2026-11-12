@@ -412,8 +412,9 @@ h1.is-under { color: var(--h2i); }
 }
 #btnAdd.is-blocked { opacity: .55; }
 /* A wall: a dark brick block that can't be picked. */
-.c-wall { background: var(--grid); color: var(--muted); cursor: not-allowed; }
-.c-wall .wall-glyph { width: 80%; height: 80%; opacity: .75; }
+.c-wall { background: var(--grid); color: var(--ink); cursor: not-allowed; flex-direction: column; gap: 1px; }
+.c-wall .wall-glyph { width: 62%; height: 62%; }
+.c-wall .wall-pts { font-size: clamp(9px, 2.5vw, 12px); line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* The blank centre of an odd square board: empty, and paths pass through it. */
 .c-blank { background: transparent; border-color: transparent; box-shadow: none; pointer-events: none; }
 /* Add pressed too early on Normal or Hard: a red shake, like a wrong tile. */

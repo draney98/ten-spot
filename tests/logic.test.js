@@ -918,16 +918,109 @@ test('walls: a wall blocks the path between two tiles', function () {
 test('walls: clearing the rest of its row removes the wall and pays a wall bonus', function () {
   // 8 columns. Row 0: 1 1 W 3 3 5 5 7   Row 1: 9 11 13 15 9 11 13 7
   var vals = [1, 1, WL, 3, 3, 5, 5, 7, 9, 11, 13, 15, 9, 11, 13, 7];
-  var s = stateWith(vals, 'normal', { total: 15 });
+  var s = stateWith(vals, 'normal', { total: 15, dealtIds: 17, wallPairs: 0 });
   [[1, 2], [4, 5], [6, 7]].forEach(function (p) { s = L.select(L.select(s, p[0]).state, p[1]).state; });
+  assert.strictEqual(s.wallPairs, 3);
+  assert.strictEqual(L.wallBonusAt(s), Math.round((50 + 9) * L.pointMult('easy', 6)));
   var r = L.select(L.select(s, 8).state, 16);          // the last tile of row 0, paired straight down
   assert.strictEqual(r.event.type, 'match');
   assert.deepStrictEqual(r.event.rowsCleared, [0]);
   assert.strictEqual(r.event.wallsGone, 1);
-  assert.strictEqual(r.event.wallBonus, Math.round(50 * L.pointMult('easy', 6)));
+  assert.strictEqual(r.event.wallBonus, Math.round((50 + 16) * L.pointMult('easy', 6)));   // 4 pairs while it stood
+  assert.strictEqual(r.event.lastStand, false);
+  assert.strictEqual(L.undo(r.state).state.wallPairs, 3);   // Undo takes the count back
   var packed = L.compactBoard(r.state);
   assert.ok(packed.cells.every(function (c) { return !L.isWall(c); }), 'the wall left with its row');
 });
+/* ---------------- four kinds of wall ---------------- */
+var WC = L.WALL_V.col, WE = L.WALL_V.either, WB = L.WALL_V.both;
+function small(vals, extra) {   // a 3-wide board
+  var base = { cols: 3, total: vals.filter(function (v) { return v > 0; }).length, dealtIds: vals.length + 1, wallPairs: 0, addsLeft: 1 };
+  for (var k in (extra || {})) base[k] = extra[k];
+  return stateWith(vals, 'normal', base);
+}
+function pick(s, a, b) { return L.select(L.select(s, a).state, b); }
+
+test('wall kinds: each value has its kind, and every kind is a wall', function () {
+  assert.deepStrictEqual([L.WALL, WC, WE, WB].map(function (v) { return L.wallKind({ v: v }); }), ['row', 'col', 'either', 'both']);
+  assert.strictEqual(L.wallKind({ v: 3 }), null);
+  [L.WALL, WC, WE, WB].forEach(function (v) { assert.ok(L.isWall({ v: v })); assert.ok(!L.matches(v, v)); });
+});
+test('column wall: goes when its column is cleared and leaves an empty spot', function () {
+  // 1 W 1 / 3 5 3 / 7 5 7 : the wall's column holds the two 5s
+  var r = pick(small([1, WC, 1, 3, 5, 3, 7, 5, 7]), 5, 8);
+  assert.strictEqual(r.event.wallsGone, 1);
+  assert.deepStrictEqual(r.event.wallIds, [2]);
+  assert.deepStrictEqual(r.state.cells[1], { id: 2, v: L.BLANK, done: true });
+  assert.ok(L.canLink(r.state.cells, 0, 2, true, 3), 'paths now pass through the spot');
+});
+test('column wall: clearing its row does not remove it, and the row stays', function () {
+  // W 1 1 / 3 5 5 / 3 7 7
+  var r = pick(small([WC, 1, 1, 3, 5, 5, 3, 7, 7]), 2, 3);
+  assert.strictEqual(r.event.wallsGone, 0);
+  assert.deepStrictEqual(r.event.rowsCleared, []);
+  assert.strictEqual(L.compactBoard(r.state).cells.length, 9);
+});
+test('column wall: tiles added below count', function () {
+  // W 1 / 1 3 on a 2-wide board: the wall's column holds one 1
+  var s = stateWith([WC, 1, 1, 3], 'normal', { cols: 2, total: 3, dealtIds: 5, wallPairs: 0, addsLeft: 1 });
+  var r = pick(s, 2, 3);                       // both 1s: the column is empty, the wall goes
+  assert.strictEqual(r.event.wallsGone, 1);
+  var added = L.addNumbers(s).state;           // W 1 / 1 3 / 1 1 / 3 : a 1 has landed in the wall's column
+  var r2 = pick(added, 2, 3);
+  assert.strictEqual(r2.event.type, 'match');
+  assert.strictEqual(r2.event.wallsGone, 0);
+});
+test('row-or-column wall: goes by its row (with the row) or by its column (leaving a spot)', function () {
+  var byRow = pick(small([WE, 1, 1, 3, 5, 3, 7, 5, 7]), 2, 3);
+  assert.strictEqual(byRow.event.wallsGone, 1);
+  assert.deepStrictEqual(byRow.event.rowsCleared, [0]);
+  assert.strictEqual(L.compactBoard(byRow.state).cells.length, 6);
+  var byCol = pick(small([WE, 1, 1, 3, 5, 5, 3, 7, 7]), 4, 7);
+  assert.strictEqual(byCol.event.wallsGone, 1);
+  assert.ok(L.isBlank(byCol.state.cells[0]));
+});
+test('row-and-column wall: needs both', function () {
+  var s = small([WB, 1, 1, 3, 5, 5, 3, 7, 7]);
+  var row = pick(s, 2, 3);
+  assert.strictEqual(row.event.wallsGone, 0);
+  assert.strictEqual(L.compactBoard(row.state).cells.length, 9, 'the row waits for the wall');
+  var both = pick(row.state, 4, 7);
+  assert.strictEqual(both.event.wallsGone, 1);
+  assert.strictEqual(L.compactBoard(both.state).cells.length, 6, 'now the row goes too');
+  var col = pick(s, 4, 7);
+  assert.strictEqual(col.event.wallsGone, 0);
+});
+test('wall bonus: grows with dealt pairs, ignores added tiles, and doubles on the last pair', function () {
+  var m = L.pointMult('easy', 6);
+  assert.strictEqual(L.wallBonusAt({ diff: 'easy', level: 6, wallPairs: 10 }), Math.round(150 * m));
+  // W 1 1 on a 3-wide board: the only pair is the level's last pair
+  var last = pick(small([L.WALL, 1, 1]), 2, 3);
+  assert.strictEqual(last.event.lastStand, true);
+  assert.strictEqual(last.event.wallBonus, 2 * Math.round(51 * m));
+  assert.strictEqual(last.state.status, 'clear');
+  // a pair that uses an added tile does not grow the bonus
+  var s = small([1, 3, 1, 3], { dealtIds: 3 });   // ids 3 and 4 count as added
+  assert.strictEqual(pick(s, 2, 4).state.wallPairs, 0);
+  assert.strictEqual(pick(small([1, 3, 1, 3]), 2, 4).state.wallPairs, 1);
+});
+test('wall kinds on the ramp: row at 40, column at 53, row-or-column at 59, row-and-column at 65', function () {
+  assert.deepStrictEqual(L.wallKinds(39), []);
+  assert.deepStrictEqual(L.wallKinds(40), ['row']);
+  assert.deepStrictEqual(L.wallKinds(46), ['row', 'row']);
+  assert.deepStrictEqual(L.wallKinds(53), ['col']);
+  assert.deepStrictEqual(L.wallKinds(59), ['col', 'either']);
+  assert.deepStrictEqual(L.wallKinds(65), ['both', 'either']);
+  assert.deepStrictEqual(L.wallKinds(76), ['row', 'either', 'both']);
+  [53, 59, 65, 76].forEach(function (level) {
+    var s = L.dealPuzzle({ diff: 'easy', level: level, seed: 1234 + level });
+    var kinds = s.cells.filter(L.isWall).map(L.wallKind).sort();
+    assert.deepStrictEqual(kinds, L.wallKinds(level).slice().sort(), 'level ' + level);
+    assert.strictEqual(s.dealtIds, s.cells.length + 1);
+    assert.strictEqual(L.isBeatable(s), true);
+  });
+});
+
 test('walls: Add never copies a wall', function () {
   var s = stateWith([1, WL, 3, 5, 7, 9, 11, 13, 15], 'hard', { total: 8 });
   var r = L.addNumbers(s);
@@ -940,8 +1033,8 @@ test('walls: the board is clear when every tile is gone, even with a wall left',
   [[1, 2], [3, 4], [5, 6], [7, 8], [10, 11]].forEach(function (p) { s = L.select(L.select(s, p[0]).state, p[1]).state; if (s.status === 'playing') s = L.compactBoard(s); });
   assert.strictEqual(s.status, 'clear');
 });
-test('walls: 1 from level 40, 2 from 46, back to 1 at 53, 2 from 65, 3 from 76', function () {
-  assert.deepStrictEqual([1, 39, 40, 46, 53, 65, 76, 100].map(function (l) { return L.wallCount('easy', l); }), [0, 0, 1, 2, 1, 2, 3, 3]);
+test('walls: 1 from level 40, 2 from 46, back to 1 at 53, 2 from 59, 3 from 76', function () {
+  assert.deepStrictEqual([1, 39, 40, 46, 53, 58, 59, 65, 76, 100].map(function (l) { return L.wallCount('easy', l); }), [0, 0, 1, 2, 1, 1, 2, 2, 3, 3]);
 });
 test('walls: dealt boards get their walls and the blank centre where the square is full', function () {
   [1, 13, 37, 40, 46, 53, 76].forEach(function (level) {
