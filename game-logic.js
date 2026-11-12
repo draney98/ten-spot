@@ -1206,9 +1206,13 @@
     return false;
   }
 
-  /* CLEAN SWEEP. Right after an Add or a Pack, if every tile left can be paired off at once
-     using pairs that are legal right now (each tile used once), they all clear together for
-     a bonus. Clearing tiles only opens paths, so any full pairing of legal pairs works. */
+  /* CLEAN SWEEP. Right after an Add or a Pack, the game OFFERS to finish the board, but only when
+     the finish is plain to see:
+       1. the tiles left sit together with no gaps (no cleared spot, wall or blank between the
+          first tile and the last, in reading order), and
+       2. every tile can be paired with a tile it touches (each tile used once).
+     With no gaps, the only legal pairs are touching ones, so rule 2 is a full pairing of legal pairs.
+     The player can say no and play on. Saying yes clears them all together for a bonus. */
   var SWEEP_BUDGET = 20000;
   /** A full pairing of the board's tiles, as index pairs, or null. */
   function sweepPairs(s) {
@@ -1216,6 +1220,7 @@
     var cells = s.cells, live = [], adj = {};
     for (var i = 0; i < cells.length; i++) if (!cells[i].done && !isWall(cells[i])) { live.push(i); adj[i] = []; }
     if (!live.length || live.length % 2) return null;
+    if (live[live.length - 1] - live[0] + 1 !== live.length) return null;   // a gap among the tiles: no offer
     allPairs(cells, DIAG, s.rules, boardCols(s)).forEach(function (p) { adj[p[0]].push(p[1]); adj[p[1]].push(p[0]); });
     for (var k = 0; k < live.length; k++) if (!adj[live[k]].length) return null;
     var used = {}, out = [], steps = 0;
@@ -1246,6 +1251,13 @@
   }
   /** Clear the whole board at once if it can be swept. event.matches has each pair's match
       event (for drawing the lines); event.bonus is the sweep bonus; event.gain is everything. */
+  /** What the offer would do: { pairs: how many, bonus: sweep bonus points }, or null when there is no offer. */
+  function sweepOffer(s) {
+    var found = sweepPairs(s);
+    if (!found) return null;
+    return { pairs: found.length, bonus: Math.round(SCORE.sweep * found.length * pointMult(s.diff, s.level)) };
+  }
+
   function cleanSweep(s) {
     var found = sweepPairs(s);
     if (!found) return { state: s, event: null };
@@ -1467,6 +1479,6 @@
     kindCount: kindCount, wallCount: wallCount, isWall: isWall, WALL: WALL,
     RAMP: RAMP, TOOLS: TOOLS, PACK_FROM: PACK_FROM, rampAt: rampAt, toolsAt: toolsAt, stageOf: stageOf, tilesAt: tilesAt, widthAt: widthAt,
     RULES_VERSION: RULES_VERSION, runStats: runStats, retryLevel: retryLevel,
-    startLevel: startLevel, BLANK: BLANK, isBlank: isBlank, sweepPairs: sweepPairs, cleanSweep: cleanSweep
+    startLevel: startLevel, BLANK: BLANK, isBlank: isBlank, sweepPairs: sweepPairs, sweepOffer: sweepOffer, cleanSweep: cleanSweep
   };
 });

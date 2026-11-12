@@ -151,6 +151,9 @@ test('the ramp on screen: stage in the caption, Start at, milestones, sweep, fre
   assert.ok(app.indexOf("'Wider board: '") !== -1);
   assert.ok(app.indexOf("' reached!'") !== -1);
   assert.ok(app.indexOf('function trySweep(delay)') !== -1);
+  assert.ok(app.indexOf("'Finish the board?'") !== -1);
+  assert.ok(app.indexOf('L.sweepOffer(state)') !== -1);
+  assert.ok(html.indexOf('the game offers to finish the board for you') !== -1);
   assert.ok(app.indexOf("'numbermatch.best3.'") !== -1);
   assert.ok(app.indexOf("'That board code is from an older version of the game.'") !== -1);
 });

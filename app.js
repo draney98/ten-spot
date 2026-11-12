@@ -894,23 +894,39 @@
     trySweep(700);   // after the tiles have slid into place
   }
 
-  // Clean sweep: right after an Add or a Pack, if every tile can be paired off at once, clear them all.
+  // Clean sweep: right after an Add or a Pack, if the tiles left sit together with no gaps and every
+  // one has its match beside it, OFFER to finish the board. Nothing clears unless the player says yes.
+  // Saying no leaves the board alone; the offer comes back only after the next Add or Pack.
   function trySweep(delay) {
     later(function () {
-      if (state.status !== 'playing') return;
-      var r = L.cleanSweep(state);
-      if (!r.event) return;
-      r.event.matches.forEach(spawnFx);   // measure while the tiles are still in place
-      state = r.state;
-      ui.flash = [].concat.apply([], r.event.pairs);
-      ui.hint = []; ui.born = [];
-      ui.gain = r.event.gain;
-      ui.note = 'Clean sweep! +' + fmt(r.event.gain) + ', including a sweep bonus of +' + fmt(r.event.bonus) + '.';
-      later(function () { ui.flash = []; render(); }, 620);
-      saveBestIfHigher();
-      play('sweep');
+      if (state.status !== 'playing' || ui.confirm) return;
+      var offer = L.sweepOffer(state);
+      if (!offer) return;
+      ui.confirm = { yes: doSweep, returnFocus: document.activeElement };
+      $('confirmTitle').textContent = 'Finish the board?';
+      $('confirmText').textContent = 'Every tile left sits next to its match. Clear all ' + offer.pairs +
+        ' pairs at once for a clean sweep bonus of +' + fmt(offer.bonus) + '?';
+      $('confirmYes').textContent = 'Finish the board';
+      $('confirm').hidden = false;
+      ui.note = 'Every tile left sits next to its match.';
       render();
+      $('confirmYes').focus();
     }, delay);
+  }
+  function doSweep() {
+    if (state.status !== 'playing') return;
+    var r = L.cleanSweep(state);
+    if (!r.event) { render(); return; }
+    r.event.matches.forEach(spawnFx);   // measure while the tiles are still in place
+    state = r.state;
+    ui.flash = [].concat.apply([], r.event.pairs);
+    ui.hint = []; ui.born = [];
+    ui.gain = r.event.gain;
+    ui.note = 'Clean sweep! +' + fmt(r.event.gain) + ', including a sweep bonus of +' + fmt(r.event.bonus) + '.';
+    later(function () { ui.flash = []; render(); }, 620);
+    saveBestIfHigher();
+    play('sweep');
+    render();
   }
 
   function onAdd() {

@@ -979,6 +979,21 @@ test('clean sweep: nothing happens when a tile has no partner, or the pairing ca
   assert.ok(L.sweepPairs(stateWith([1, 2, 1, 2], 'normal')));
 });
 
+test('clean sweep: no offer when there is a gap among the tiles', function () {
+  // 8 columns: twins straight below, but one pair in the middle is already cleared
+  var row = [1, 3, 5, 7, 9, 11, 13, 15];
+  var s = stateWith(row.concat(row), 'normal');
+  assert.deepStrictEqual(L.sweepOffer(s), { pairs: 8, bonus: Math.round(25 * 8 * L.pointMult('easy', 6)) });
+  s.cells[3].done = true; s.cells[11].done = true;
+  assert.strictEqual(L.sweepPairs(s), null);
+  assert.strictEqual(L.sweepOffer(s), null);
+  assert.strictEqual(L.cleanSweep(s).event, null);
+  // tiles that sit together but start part-way along the board still get the offer
+  var t = stateWith([1, 1].concat(row).concat(row), 'normal');
+  t.cells[0].done = true; t.cells[1].done = true;
+  assert.ok(L.sweepOffer(t));
+});
+
 test('the rules version is a whole number', function () {
   assert.ok(Number.isInteger(L.RULES_VERSION) && L.RULES_VERSION >= 1);
 });
