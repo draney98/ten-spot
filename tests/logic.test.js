@@ -983,5 +983,61 @@ test('the rules version is a whole number', function () {
   assert.ok(Number.isInteger(L.RULES_VERSION) && L.RULES_VERSION >= 1);
 });
 
+test('a new game starts with an empty run story and remembers what it arrived with', function () {
+  var s = L.dealPuzzle({ diff: 'easy', level: 1, seed: 5 });
+  assert.deepStrictEqual(L.runStats(s), { streak: 0, sweeps: 0, walls: 0, mistakes: 0, hints: 0, undos: 0, retries: 0 });
+  assert.deepStrictEqual(s.entry, { score: 0, moves: 0, penalties: 0, run: L.runStats(s) });
+  assert.deepStrictEqual(L.runStats({}), L.runStats(s));   // an old saved game has no story: all zeros
+});
+
+test('the run story counts streak, hints, undos and mistakes', function () {
+  var s = L.dealPuzzle({ diff: 'easy', level: 1, seed: 5 });
+  var p = L.findPair(s.cells, true, s.rules, true, s.cols);
+  s = L.select(L.select(s, s.cells[p[0]].id).state, s.cells[p[1]].id).state;
+  assert.strictEqual(L.runStats(s).streak, 1);
+  s = L.hint(s).state;
+  assert.strictEqual(L.runStats(s).hints, 1);
+  s = L.undo(s).state;
+  var r = L.runStats(s);
+  assert.strictEqual(r.undos, 1);
+  assert.strictEqual(r.streak, 0);   // the undone pair no longer counts
+  assert.strictEqual(r.hints, 1);    // but the hint stays spent
+  var a = null, b = null;
+  for (var i = 0; i < s.cells.length && b === null; i++) for (var j = i + 1; j < s.cells.length; j++) {
+    if (!s.cells[i].done && !s.cells[j].done && !L.matches(s.cells[i].v, s.cells[j].v, s.rules)) { a = s.cells[i].id; b = s.cells[j].id; break; }
+  }
+  s = L.select(L.select(s, a).state, b).state;
+  assert.strictEqual(L.runStats(s).mistakes, 1);
+});
+
+test('the run story carries to the next level', function () {
+  var s = L.dealPuzzle({ diff: 'easy', level: 3, seed: 9, score: 500, run: { streak: 6, hints: 2 } });
+  assert.strictEqual(L.runStats(s).streak, 6);
+  s.status = 'clear';
+  var n = L.nextLevel(s, L.mulberry32(4)).state;
+  assert.strictEqual(n.level, 4);
+  assert.strictEqual(L.runStats(n).hints, 2);
+  assert.strictEqual(n.entry.score, 500);
+});
+
+test('trying a lost board again deals the same board with the score you arrived with', function () {
+  var s = L.dealPuzzle({ diff: 'easy', level: 5, seed: 77, score: 900, moves: 40, run: { streak: 4 } });
+  var first = JSON.stringify(s.opening);
+  assert.strictEqual(L.retryLevel(s).event, null);   // only after a loss
+  s = L.hint(s).state;
+  s.score = 1234; s.status = 'lose';
+  var r = L.retryLevel(s);
+  assert.strictEqual(r.event.type, 'retry');
+  assert.strictEqual(r.state.status, 'playing');
+  assert.strictEqual(r.state.level, 5);
+  assert.strictEqual(r.state.seed, s.seed);
+  assert.strictEqual(JSON.stringify(r.state.opening), first);
+  assert.strictEqual(r.state.score, 900);
+  assert.strictEqual(r.state.moves, 40);
+  assert.deepStrictEqual(L.runStats(r.state), { streak: 4, sweeps: 0, walls: 0, mistakes: 0, hints: 0, undos: 0, retries: 1 });
+  r.state.status = 'lose';
+  assert.strictEqual(L.runStats(L.retryLevel(r.state).state).retries, 2);
+});
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

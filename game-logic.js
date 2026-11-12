@@ -948,6 +948,28 @@
     return o;
   }
 
+  /* ---- run story: counted across the whole run, shown on the Game over card ----
+     streak = longest streak, sweeps = clean sweeps, walls = walls removed,
+     mistakes = wrong picks and Adds pressed too early, hints / undos = how many were used,
+     retries = times a lost board was tried again. */
+  var RUN_KEYS = ['streak', 'sweeps', 'walls', 'mistakes', 'hints', 'undos', 'retries'];
+  function runStats(s) {
+    var r = (s && s.run) || {}, o = {};
+    RUN_KEYS.forEach(function (k) { o[k] = (typeof r[k] === 'number' && r[k] > 0) ? r[k] : 0; });
+    return o;
+  }
+  function bumpRun(n, key, by) {
+    var r = runStats(n);
+    r[key] += (by == null ? 1 : by);
+    n.run = r;
+  }
+  /** What the player had on arriving at this level. "Try that board again" goes back to it. */
+  function markEntry(n) {
+    n.run = runStats(n);
+    n.entry = { score: n.score || 0, moves: n.moves || 0, penalties: n.penalties || 0, run: runStats(n) };
+    return n;
+  }
+
   function levelFields(diff, level, rng) {
     var T = toolsAt(level);
     var cols = widthAt(level);
@@ -1000,7 +1022,7 @@
     s.score = 0;
     s.penalties = 0;
     s.best = best ? copy(best) : { easy: 0, normal: 0, hard: 0 };
-    return s;
+    return markEntry(s);
   }
 
   /** First level of a start point: Easy 1, Normal 37, Hard 53. */
@@ -1015,7 +1037,8 @@
       s.score = spec.score || 0;
       s.penalties = spec.penalties || 0;
       s.best = spec.best ? copy(spec.best) : { easy: 0, normal: 0, hard: 0 };
-      return s;
+      if (spec.run) s.run = runStats({ run: spec.run });
+      return markEntry(s);
     }, function (s) { return s.refClear; });
   }
 
@@ -1023,7 +1046,7 @@
     var h = s.history.concat([{
       cells: s.cells, nextId: s.nextId, moves: s.moves, cleared: s.cleared, total: s.total,
       score: s.score, streak: s.streak, addsLeft: s.addsLeft, penalties: s.penalties || 0,
-      compactsLeft: s.compactsLeft
+      compactsLeft: s.compactsLeft, run: runStats(s)
     }]);
     return h.length > HISTORY_LIMIT ? h.slice(h.length - HISTORY_LIMIT) : h;
   }
@@ -1103,6 +1126,7 @@
       var would = pairScore(s, a, b, (s.streak || 0) + 1, 0).pair;
       penalty = Math.min(s.score, Math.round(would / 2));
       n.streak = 0;
+      bumpRun(n, 'mistakes');
     }
     n.score = s.score - penalty;
     n.penalties = (s.penalties || 0) + penalty;
@@ -1133,6 +1157,10 @@
     n.cleared = s.cleared + 2;
     n.streak = streak;
     n.score = s.score + scored.gain + wallBonus;
+    var story = runStats(s);
+    if (streak > story.streak) story.streak = streak;
+    story.walls += wallsGone;
+    n.run = story;
     finish(n);
 
     return {
@@ -1226,6 +1254,7 @@
     var n = copy(s);
     n.score = s.score + bonus;
     n.selected = null;
+    bumpRun(n, 'sweeps');
     var matches = [], gain = bonus;
     for (var i = 0; i < pairs.length; i++) {
       var r2 = select(select(n, pairs[i][0]).state, pairs[i][1]);
@@ -1254,6 +1283,7 @@
       n.score = s.score - penalty;
       n.penalties = (s.penalties || 0) + penalty;
       n.streak = 0;
+      bumpRun(n, 'mistakes');
       return { state: n, event: { type: 'addBlocked', pairs: pairs, max: max, penalty: penalty } };
     }
     if (block) return { state: s, event: null };
@@ -1309,6 +1339,11 @@
     var cost = Math.min(n.score, Math.round(SCORE.undoCost * pointMult(n.diff, n.level)));
     n.score -= cost;
     n.penalties = (n.penalties || 0) + cost;
+    // The story steps back with the board (streak, sweeps, walls), but what was spent stays spent.
+    var now = runStats(s), then = last.run ? runStats({ run: last.run }) : now;
+    now.streak = then.streak; now.sweeps = then.sweeps; now.walls = then.walls;
+    now.undos += 1;
+    n.run = now;
     return { state: n, event: { type: 'undo', cost: cost } };
   }
 
@@ -1335,6 +1370,7 @@
     n.streak = Math.max(0, (s.streak || 0) - 1);
     n.score = s.score - cost;
     n.penalties = (s.penalties || 0) + cost;
+    bumpRun(n, 'hints');
     return { state: n, event: { type: 'hint', ids: ids, cost: cost } };
   }
 
@@ -1344,7 +1380,20 @@
     var n = copy(s);
     var f = levelFields(s.diff, s.level + 1, rng, s.rules);
     for (var k in f) n[k] = f[k];
+    markEntry(n);
     return { state: n, event: { type: 'level', level: n.level } };
+  }
+
+  /** After status 'lose': deal the same board again (same level, same seed), with the score, moves
+      and story the player had on arriving at it. Counts as one retry. Bests carry on as normal. */
+  function retryLevel(s) {
+    if (s.status !== 'lose') return { state: s, event: null };
+    var e = s.entry || { score: 0, moves: 0, penalties: 0, run: runStats(null) };
+    var story = runStats({ run: e.run });
+    story.retries = runStats(s).retries + 1;
+    var n = dealPuzzle({ diff: s.diff, level: s.level, seed: s.seed, best: s.best,
+      score: e.score, moves: e.moves, penalties: e.penalties, run: story });
+    return { state: n, event: { type: 'retry', level: n.level } };
   }
 
   /** Called by the UI ~900 ms after a match: collapse fully-done rows. */
@@ -1417,7 +1466,7 @@
     indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd, addBlock: addBlock, pairsOnBoard: pairsOnBoard, canCompact: canCompact,
     kindCount: kindCount, wallCount: wallCount, isWall: isWall, WALL: WALL,
     RAMP: RAMP, TOOLS: TOOLS, PACK_FROM: PACK_FROM, rampAt: rampAt, toolsAt: toolsAt, stageOf: stageOf, tilesAt: tilesAt, widthAt: widthAt,
-    RULES_VERSION: RULES_VERSION,
+    RULES_VERSION: RULES_VERSION, runStats: runStats, retryLevel: retryLevel,
     startLevel: startLevel, BLANK: BLANK, isBlank: isBlank, sweepPairs: sweepPairs, cleanSweep: cleanSweep
   };
 });

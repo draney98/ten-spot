@@ -155,5 +155,17 @@ test('the ramp on screen: stage in the caption, Start at, milestones, sweep, fre
   assert.ok(app.indexOf("'That board code is from an older version of the game.'") !== -1);
 });
 
+test('the Game over card has the run summary, retry and share', function () {
+  ['id="endStats"', 'id="btnEndRetry"', 'id="btnEndShare"', 'id="endShare"', 'id="shareText"', 'id="btnShareCopy"'].forEach(function (id) {
+    assert.ok(html.indexOf(id) !== -1, id);
+  });
+  assert.ok(html.indexOf('Try that board again') !== -1);
+  assert.ok(css.indexOf('.end-stats') !== -1);
+  assert.ok(app.indexOf('retryLevel') !== -1);
+  assert.ok(app.indexOf('navigator.share') !== -1);
+  assert.ok(app.indexOf("'?board='") !== -1);
+  assert.ok(app.indexOf("get('board')") !== -1);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

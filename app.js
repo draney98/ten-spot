@@ -94,6 +94,7 @@
       and only if it was a run (not a board played from a puzzle code). */
   function noteRunEnd() {
     if (!S || !state || state.status !== 'lose' || state.fromCode) return;
+    if (L.runStats(state).retries > 0) return;   // this run was already counted, at its first loss
     store.set(KEY_ENDS, S.addRunEnd(store.get(KEY_ENDS), { start: state.diff, level: state.level, version: L.RULES_VERSION }));
     sendRunEnds();
   }
@@ -766,7 +767,8 @@
     if (s.status !== 'lose') stopWindDown();
     lastStatus = s.status;
     $('board').classList.toggle('ended', s.status !== 'playing');
-    if (s.status === 'playing') { ov.hidden = true; return; }
+    $('board').classList.toggle('lost', s.status === 'lose');
+    if (s.status === 'playing') { ov.hidden = true; ui.shareOpen = false; return; }
     var clear = s.status === 'clear';
     $('endKicker').hidden = clear;
     $('endKicker').textContent = clear ? '' : 'Out of moves on level ' + s.level;
@@ -775,10 +777,14 @@
     $('endNumber').textContent = clear ? '+' + fmt(s.bonus) : fmt(s.final);
     $('endDetail').textContent = clear
       ? clearDetail(s) + (stageUp ? '\nLevel ' + (s.level + 1) + ' starts ' + L.LEVELS[L.stageOf(s.level + 1)].label + '. You can now start a new game there.' : '')
-      : 'No adds left and no pairs to clear. You reached level ' + s.level + '.';
+      : 'No adds left and no pairs to clear.';
     $('endBest').hidden = clear;
     $('endBest').textContent = s.newBest ? 'New best score!' : 'Best: ' + fmt(s.best[s.diff] || 0);
-    $('btnEndPrimary').textContent = clear ? 'Next level' : 'Play again';
+    $('btnEndPrimary').textContent = clear ? 'Next level' : 'New game';
+    $('btnEndPrimary').classList.toggle('btn-primary', clear);
+    $('btnEndRetry').hidden = clear;
+    $('btnEndShare').hidden = clear;
+    renderRunSummary(s, clear);
     $('btnEndUndo').hidden = !(s.status === 'lose' && L.canUndo(s));
     if (ov.hidden) ov.hidden = false; // un-hiding restarts the fade-in animation
   }
@@ -951,6 +957,35 @@
     if (r.event.status === 'playing') trySweep(450);
   }
 
+  /** The run's story on the Game over card. */
+  function renderRunSummary(s, clear) {
+    var box = $('endStats');
+    box.hidden = clear;
+    $('endShare').hidden = clear || !ui.shareOpen;
+    if (clear) return;
+    var r = L.runStats(s);
+    var rows = [
+      ['Reached', 'Level ' + s.level + ' · ' + L.LEVELS[L.stageOf(s.level)].label],
+      ['Best streak', fmt(r.streak)],
+      ['Clean sweeps', fmt(r.sweeps)],
+      ['Walls removed', fmt(r.walls)],
+      ['Mistakes', fmt(r.mistakes)],
+      ['Hints used', fmt(r.hints)],
+      ['Undos used', fmt(r.undos)]
+    ];
+    if (r.retries > 0) rows.push(['Boards tried again', fmt(r.retries)]);
+    box.textContent = '';
+    rows.forEach(function (row) {
+      var dt = document.createElement('dt'), dd = document.createElement('dd');
+      dt.textContent = row[0]; dd.textContent = row[1];
+      box.appendChild(dt); box.appendChild(dd);
+    });
+    if (ui.shareOpen) {
+      var p = shareParts();
+      $('shareText').value = p.text + ' ' + p.url;
+    }
+  }
+
   function onUndo() {
     var r = L.undo(state);
     if (!r.event) return;
@@ -1067,7 +1102,7 @@
   }
 
   function onNextLevel() {
-    var carried = { score: state.score, moves: state.moves, penalties: state.penalties || 0, best: state.best, diff: state.diff, rules: state.rules, level: state.level + 1 };
+    var carried = { score: state.score, moves: state.moves, penalties: state.penalties || 0, best: state.best, diff: state.diff, rules: state.rules, level: state.level + 1, run: L.runStats(state) };
     var key = carried.diff + '|' + carried.rules + '|' + carried.level;
     var wasCode = !!state.fromCode;
     var prepared = upcoming && upcoming.key === key && upcoming.state;
@@ -1085,6 +1120,9 @@
       });
     }
     if (wasCode) state.fromCode = true;
+    // the run story carries on, and this is what "Try that board again" goes back to
+    state.run = carried.run;
+    state.entry = { score: state.score, moves: state.moves, penalties: state.penalties || 0, run: L.runStats(state) };
     ui.note = levelNote();
     if (L.stageOf(state.level) !== L.stageOf(state.level - 1)) play('stage');
     scheduleUpcoming();
@@ -1101,6 +1139,52 @@
     scheduleUpcoming();
     publishBoard();
     render();
+  }
+
+  /** Game over card: deal the board that beat you again, with the score you arrived with. */
+  function onRetry() {
+    if (state.status !== 'lose') return;
+    noteRunEnd();   // a run is counted once, at its first loss
+    var wasCode = !!state.fromCode;
+    var r = L.retryLevel(state);
+    if (!r.event) return;
+    resetAll();
+    state = r.state;
+    if (wasCode) state.fromCode = true;
+    ui.shareOpen = false;
+    ui.note = 'Same board, from the top.';
+    scheduleUpcoming();
+    publishBoard();
+    render();
+  }
+
+  /** What Share sends: the level and stage reached, the score, and a link to the board that ended the run. */
+  function shareParts() {
+    var s = state;
+    var link = window.location.origin + window.location.pathname + '?board=' +
+      encodeURIComponent(L.formatPuzzle({ diff: s.diff, level: s.level, seed: s.seed }));
+    var text = 'ten-spot: I reached level ' + s.level + ' (' + L.LEVELS[L.stageOf(s.level)].label + ') with ' +
+      fmt(s.final) + ' points. Try the board that beat me:';
+    return { text: text, url: link };
+  }
+  function showShareBox() { ui.shareOpen = true; render(); }
+  function onShare() {
+    if (state.status !== 'lose') return;
+    var p = shareParts();
+    if (navigator.share) {
+      navigator.share({ title: 'ten-spot', text: p.text, url: p.url }).catch(function (e) {
+        if (!e || e.name !== 'AbortError') showShareBox();   // closing the share sheet is not an error
+      });
+      return;
+    }
+    showShareBox();
+  }
+  function onShareCopy() {
+    var box = $('shareText');
+    function done(ok) { ui.note = ok ? 'Copied.' : 'Press and hold the message to copy it.'; render(); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(box.value).then(function () { done(true); }, function () { box.select(); done(false); });
+    } else { box.select(); done(false); }
   }
 
   function setTheme(dark) { ui.dark = dark; store.set(KEY_THEME, dark ? 'dark' : 'light'); render(); }
@@ -1230,6 +1314,9 @@
   });
   $('btnEndPrimary').addEventListener('click', function () { if (state.status === 'clear') onNextLevel(); else newGame(); });
   $('btnEndUndo').addEventListener('click', onUndo);
+  $('btnEndRetry').addEventListener('click', onRetry);
+  $('btnEndShare').addEventListener('click', onShare);
+  $('btnShareCopy').addEventListener('click', onShareCopy);
   document.querySelectorAll('[data-diff]').forEach(function (b) {
     b.addEventListener('click', function () { setDifficulty(b.dataset.diff); });
   });
@@ -1265,6 +1352,18 @@
   render();
   pullBests();
   sendRunEnds();
+
+  /* A shared link (?board=41-1a2b3c4d) deals that board. The code is taken off the address
+     so a reload goes back to the saved game. */
+  (function () {
+    var linked = null;
+    try { linked = new URLSearchParams(window.location.search).get('board'); } catch (e) { linked = null; }
+    if (!linked) return;
+    try { window.history.replaceState(null, '', window.location.pathname); } catch (e) { /* ignore */ }
+    var spec = L.parsePuzzle(linked);
+    if (!spec) { ui.note = 'That board link is not valid.'; render(); return; }
+    confirmReset('Play this board?', 'This link deals one board from its first deal.', 'Play this board', function () { startPuzzle(spec); });
+  })();
 
   /* ---------- 12. OPTIONAL TEST HOOK ----------
      Lets automated tests and screenshots set up exact boards.

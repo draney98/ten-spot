@@ -226,6 +226,19 @@ h1.is-under { color: var(--h2i); }
 .end-number { font-size: 44px; font-weight: 700; color: var(--strike); }
 .end-detail { font-size: 15px; line-height: 1.45; color: var(--muted); max-width: 300px; white-space: pre-line; }
 .end-best { font-size: 15px; font-weight: 700; }
+.end-stats {
+  margin: 4px 0 0; display: grid; grid-template-columns: auto auto; column-gap: 16px; row-gap: 2px;
+  font-size: 15px; line-height: 1.4; text-align: left;
+}
+.end-stats dt { color: var(--muted); }
+.end-stats dd { margin: 0; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.end-share { display: flex; gap: 8px; width: 100%; max-width: 340px; margin-top: 4px; }
+.end-share input {
+  flex: 1 1 auto; min-width: 0; min-height: 48px; padding: 0 10px; border: 1.5px solid var(--ink); border-radius: 6px;
+  background: transparent; color: var(--ink); font: inherit; font-size: 14px;
+}
+.sheet.ended.lost { min-height: 580px; }   /* room for the run summary */
+.sheet.ended.lost .overlay { justify-content: flex-start; overflow-y: auto; }
 .end-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 6px; }
 
 /* ---------- 8. MATCH EFFECTS LAYER ---------- */

@@ -112,9 +112,16 @@
       <span class="end-number" id="endNumber"></span>
       <span class="end-detail" id="endDetail"></span>
       <span class="end-best" id="endBest"></span>
+      <dl class="end-stats" id="endStats" hidden></dl>
       <div class="end-buttons">
+        <button type="button" class="btn btn-primary" id="btnEndRetry" hidden>Try that board again</button>
         <button type="button" class="btn btn-primary" id="btnEndPrimary">Next level</button>
+        <button type="button" class="btn" id="btnEndShare" hidden>Share</button>
         <button type="button" class="btn" id="btnEndUndo" hidden>Undo last move</button>
+      </div>
+      <div class="end-share" id="endShare" hidden>
+        <input type="text" id="shareText" readonly aria-label="Message to share">
+        <button type="button" class="btn" id="btnShareCopy">Copy</button>
       </div>
     </div>
   </section>
