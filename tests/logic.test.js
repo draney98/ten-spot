@@ -1123,6 +1123,26 @@ test('tile growth comes from TUNE', function () {
   assert.strictEqual(L.boardSize(100), 80);
 });
 
+test('carryOver: a level dealt ahead takes over the score, the story and the puzzle-code mark', function () {
+  var prev = L.dealPuzzle({ diff: 'easy', level: 4, seed: 21, score: 700, moves: 33, penalties: 5, run: { streak: 9, hints: 1 }, fromCode: true });
+  assert.strictEqual(prev.fromCode, true);
+  prev.score = 1500; prev.moves = 60; prev.best = { easy: 1500, normal: 0, hard: 0 };
+  var ahead = L.dealPuzzle({ diff: 'easy', level: 5, seed: 22 });
+  var next = L.carryOver(ahead, prev);
+  assert.strictEqual(next.level, 5);
+  assert.strictEqual(next.score, 1500);
+  assert.strictEqual(next.moves, 60);
+  assert.strictEqual(next.penalties, 5);
+  assert.deepStrictEqual(next.best, prev.best);
+  assert.strictEqual(L.runStats(next).streak, 9);
+  assert.strictEqual(next.fromCode, true);
+  assert.deepStrictEqual(next.entry, { score: 1500, moves: 60, penalties: 5, run: L.runStats(next) });
+  assert.strictEqual(ahead.score, 0, 'the dealt-ahead level is not changed');
+  assert.strictEqual(L.carryOver(ahead, L.dealPuzzle({ diff: 'easy', level: 4, seed: 21 })).fromCode, undefined);
+  prev.status = 'lose';
+  assert.strictEqual(L.retryLevel(prev).state.fromCode, true);   // a retry stays a puzzle-code board
+});
+
 test('the rules version is a whole number', function () {
   assert.ok(Number.isInteger(L.RULES_VERSION) && L.RULES_VERSION >= 1);
 });

@@ -378,10 +378,11 @@
 
   function holdPackRows(oldCount) {
     var grid = $('grid');
-    var oldRows = Math.ceil(oldCount / 9);
+    var w = state.cols;   // the board is 5 to 9 across
+    var oldRows = Math.ceil(oldCount / w);
     var live = state.cells.length;
-    if (oldRows <= Math.ceil(live / 9)) return;
-    var need = oldRows * 9 - live;
+    if (oldRows <= Math.ceil(live / w)) return;
+    var need = oldRows * w - live;
     for (var i = 0; i < need; i++) {
       var hold = document.createElement('div');
       hold.className = 'c c-pack-hold';
@@ -410,6 +411,7 @@
   function playPack(from, oldCount) {
     if (!motionOk()) return;
     var myTok = tok;
+    var w = state.cols;   // the board is 5 to 9 across
     var sample = state.cells.length ? nodes.get(state.cells[0].id) : null;
     if (!sample) return;
     var cellW = sample.getBoundingClientRect().width;
@@ -452,8 +454,8 @@
       return { x: r.left + r.width / 2 - fxBox.left, y: r.top + r.height / 2 - fxBox.top };
     }
     function shift(index, finalIndex) {
-      var dx = ((index % 9) - (finalIndex % 9)) * cellW;
-      var dy = (Math.floor(index / 9) - Math.floor(finalIndex / 9)) * cellH;
+      var dx = ((index % w) - (finalIndex % w)) * cellW;
+      var dy = (Math.floor(index / w) - Math.floor(finalIndex / w)) * cellH;
       return 'translate(' + dx + 'px,' + dy + 'px)';
     }
     var tracks = {};
@@ -496,11 +498,11 @@
         tail.push(el);
         return;
       }
-      var fromRow = Math.floor(start.index / 9);
-      var toRow = Math.floor(endIndex / 9);
+      var fromRow = Math.floor(start.index / w);
+      var toRow = Math.floor(endIndex / w);
       var endPt = centerOf(el);
       var startPt = {
-        x: endPt.x + ((start.index % 9) - (endIndex % 9)) * cellW,
+        x: endPt.x + ((start.index % w) - (endIndex % w)) * cellW,
         y: endPt.y + (fromRow - toRow) * cellH
       };
       var stroke;
@@ -523,8 +525,8 @@
       tracks[id].forEach(function (next, i) {
         // A wrap is one index, but a straight slide would cut across the row.
         // Run out to the right edge, then up into the row above.
-        if (cursor % 9 === 0 && Math.floor(next / 9) < Math.floor(cursor / 9)) {
-          frames.push({ transform: shift(Math.floor(cursor / 9) * 9 + 8, endIndex), offset: (i + 0.5) / nSteps });
+        if (cursor % w === 0 && Math.floor(next / w) < Math.floor(cursor / w)) {
+          frames.push({ transform: shift(Math.floor(cursor / w) * w + (w - 1), endIndex), offset: (i + 0.5) / nSteps });
         }
         cursor = next;
         frames.push({ transform: shift(cursor, endIndex), offset: (i + 1) / nSteps });
@@ -1195,27 +1197,13 @@
   }
 
   function onNextLevel() {
-    var carried = { score: state.score, moves: state.moves, penalties: state.penalties || 0, best: state.best, diff: state.diff, rules: state.rules, level: state.level + 1, run: L.runStats(state) };
-    var key = carried.diff + '|' + carried.rules + '|' + carried.level;
-    var wasCode = !!state.fromCode;
+    var prev = state;
+    var key = prev.diff + '|' + prev.rules + '|' + (prev.level + 1);
     var prepared = upcoming && upcoming.key === key && upcoming.state;
     resetAll();
-    if (prepared) {
-      state = prepared;
-      state.score = carried.score;
-      state.moves = carried.moves;
-      state.penalties = carried.penalties;
-      state.best = carried.best;
-    } else {
-      state = L.dealPuzzle({
-        diff: carried.diff, level: carried.level, rules: carried.rules, best: carried.best,
-        seed: L.randomSeed(), score: carried.score, moves: carried.moves, penalties: carried.penalties
-      });
-    }
-    if (wasCode) state.fromCode = true;
-    // the run story carries on, and this is what "Try that board again" goes back to
-    state.run = carried.run;
-    state.entry = { score: state.score, moves: state.moves, penalties: state.penalties || 0, run: L.runStats(state) };
+    // The next level is either the one dealt ahead of time or a fresh deal. Either way the rules
+    // carry the score, the run story and the rest over (see carryOver in game-logic.js).
+    state = L.carryOver(prepared || L.dealPuzzle({ diff: prev.diff, level: prev.level + 1, rules: prev.rules, seed: L.randomSeed() }), prev);
     ui.note = levelNote();
     if (L.stageOf(state.level) !== L.stageOf(state.level - 1)) play('stage');
     scheduleUpcoming();
@@ -1239,12 +1227,10 @@
   function onRetry() {
     if (state.status !== 'lose') return;
     noteRunEnd();   // a run is counted once, at its first loss
-    var wasCode = !!state.fromCode;
     var r = L.retryLevel(state);
     if (!r.event) return;
     resetAll();
     state = r.state;
-    if (wasCode) state.fromCode = true;
     ui.shareOpen = false;
     ui.note = 'Same board, from the top.';
     scheduleUpcoming();
@@ -1349,8 +1335,7 @@
     ui.puzzleError = '';
     noteRunEnd();
     resetAll();
-    state = L.dealPuzzle({ diff: L.stageOf(spec.level), level: spec.level, best: best, seed: spec.seed });
-    state.fromCode = true;   // a board from a puzzle code is not a run: its loss is not counted
+    state = L.dealPuzzle({ diff: L.stageOf(spec.level), level: spec.level, best: best, seed: spec.seed, fromCode: true });
     scheduleUpcoming();
     publishBoard();
     render();

@@ -185,6 +185,13 @@ test('the guided first level has its pointer, Skip and blue ring', function () {
   assert.ok(app.indexOf('L.guideTarget(s, step)') !== -1);
 });
 
+test('the page never writes game fields itself, and Pack does not assume a 9-wide board', function () {
+  var writes = app.match(/\bstate\.[a-zA-Z]+ = /g) || [];
+  assert.deepStrictEqual(writes.filter(function (w) { return w !== 'state.best = '; }), []);
+  var pack = app.slice(app.indexOf('function holdPackRows'), app.indexOf('function playPack') + 6000);
+  assert.strictEqual(/[%\/*] 9\b/.test(pack), false);
+});
+
 test('app.js and game-logic.js parse as scripts', function () {
   new Function(app);
   new Function(fs.readFileSync('game-logic.js', 'utf8'));

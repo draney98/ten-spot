@@ -1108,6 +1108,7 @@
       s.penalties = spec.penalties || 0;
       s.best = spec.best ? copy(spec.best) : { easy: 0, normal: 0, hard: 0 };
       if (spec.run) s.run = runStats({ run: spec.run });
+      if (spec.fromCode) s.fromCode = true;   // dealt from a puzzle code: not a run, so its loss is not counted
       return markEntry(s);
     }, function (s) { return s.refClear; });
   }
@@ -1484,6 +1485,20 @@
     return { state: n, event: { type: 'level', level: n.level } };
   }
 
+  /** A level dealt ahead of time (see the UI's scheduleUpcoming) takes over from the level just cleared:
+      score, moves, penalties, bests, the run story and "from a puzzle code" all carry on.
+      Returns a new state; `next` is not changed. */
+  function carryOver(next, prev) {
+    var n = copy(next);
+    n.score = prev.score;
+    n.moves = prev.moves;
+    n.penalties = prev.penalties || 0;
+    n.best = copy(prev.best);
+    n.run = runStats(prev);
+    if (prev.fromCode) n.fromCode = true; else delete n.fromCode;
+    return markEntry(n);
+  }
+
   /** After status 'lose': deal the same board again (same level, same seed), with the score, moves
       and story the player had on arriving at it. Counts as one retry. Bests carry on as normal. */
   function retryLevel(s) {
@@ -1492,7 +1507,7 @@
     var story = runStats({ run: e.run });
     story.retries = runStats(s).retries + 1;
     var n = dealPuzzle({ diff: s.diff, level: s.level, seed: s.seed, best: s.best,
-      score: e.score, moves: e.moves, penalties: e.penalties, run: story });
+      score: e.score, moves: e.moves, penalties: e.penalties, run: story, fromCode: !!s.fromCode });
     return { state: n, event: { type: 'retry', level: n.level } };
   }
 
@@ -1597,7 +1612,7 @@
     TUNE: TUNE,
     WALL_V: WALL_V, WALL_KINDS: WALL_KINDS, wallKind: wallKind, wallKinds: wallKinds, settleWalls: settleWalls, wallBonusAt: wallBonusAt,
     RAMP: RAMP, TOOLS: TOOLS, PACK_FROM: PACK_FROM, rampAt: rampAt, toolsAt: toolsAt, stageOf: stageOf, tilesAt: tilesAt, widthAt: widthAt,
-    RULES_VERSION: RULES_VERSION, runStats: runStats, retryLevel: retryLevel,
+    RULES_VERSION: RULES_VERSION, runStats: runStats, retryLevel: retryLevel, carryOver: carryOver,
     GUIDE_STEPS: GUIDE_STEPS, guideTarget: guideTarget, guideDone: guideDone,
     startLevel: startLevel, BLANK: BLANK, isBlank: isBlank, sweepPairs: sweepPairs, sweepOffer: sweepOffer, cleanSweep: cleanSweep
   };

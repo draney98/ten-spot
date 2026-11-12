@@ -38,7 +38,7 @@ test('styles keep the score code readable on the paper theme', function () {
 });
 
 test('saveBestIfHigher still writes localStorage and app.js calls putBests', function () {
-  assert.ok(app.indexOf('numbermatch.best.') !== -1);
+  assert.ok(app.indexOf("'numbermatch.best3.'") !== -1);   // bests started fresh with the ramp
   assert.ok(app.indexOf('numbermatch.player') !== -1);
   assert.ok(app.indexOf('putBests') !== -1);
   assert.ok(app.indexOf('mergeBests') !== -1);

@@ -1,0 +1,12 @@
+{
+  "name": "ten-spot",
+  "private": true,
+  "description": "ten-spot: a pair-matching climb. Static game plus a small score server.",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "test": "node tests/run.js",
+    "start": "node server/index.js",
+    "sim": "node tools/sim.js"
+  }
+}
