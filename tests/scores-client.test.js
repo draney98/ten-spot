@@ -133,6 +133,31 @@ test('flushRunEnds sends oldest first and keeps what could not be sent', functio
   });
 });
 
+test('a run id is kept with a waiting run end, and a bad one is dropped', function () {
+  var text = client.addRunEnd(null, { start: 'easy', level: 12, version: 2, run: 'abc123def456' });
+  text = client.addRunEnd(text, { start: 'easy', level: 13, version: 2, run: 'NOT OK' });
+  assert.deepStrictEqual(client.readRunEnds(text), [
+    { start: 'easy', level: 12, version: 2, run: 'abc123def456' },
+    { start: 'easy', level: 13, version: 2 }
+  ]);
+});
+
+test('putBests sends the rules version and run id with the bests', function () {
+  var body = null;
+  return client.putBests('https://scores.example', '2345-6789-abcd-efgh', { easy: 10, normal: 0, hard: 0 }, function (url, opts) {
+    body = JSON.parse(opts.body);
+    return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve({}); } });
+  }, { version: 2, run: 'abc123def456' }).then(function () {
+    assert.deepStrictEqual(body, { easy: 10, normal: 0, hard: 0, version: 2, run: 'abc123def456' });
+    return client.putBests('https://scores.example', '2345-6789-abcd-efgh', { easy: 10 }, function (url, opts) {
+      body = JSON.parse(opts.body);
+      return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve({}); } });
+    });
+  }).then(function () {
+    assert.deepStrictEqual(body, { easy: 10 }, 'nothing extra when there is nothing to say');
+  });
+});
+
 setTimeout(function () {
   Promise.all(pending).then(function () {
     console.log(passed + ' passed, ' + failed + ' failed');

@@ -192,6 +192,22 @@
     return buf[0];
   }
 
+  /** A run id: 12 letters and digits, made once when a run starts and kept through every level,
+      retry and saved game. It tells runs apart on the score server; it says nothing about the player. */
+  function newRunId() {
+    var buf = new Uint32Array(12), out = '';
+    crypto.getRandomValues(buf);
+    for (var i = 0; i < 12; i++) out += '0123456789abcdefghijklmnopqrstuvwxyz'[buf[i] % 36];
+    return out;
+  }
+  /** The same state with a run id, making one if it has none (a game saved before run ids). */
+  function withRunId(s) {
+    if (s.runId) return s;
+    var n = copy(s);
+    n.runId = newRunId();
+    return n;
+  }
+
   function seekSeed(seed, build, ok) {
     var s = seed >>> 0;
     for (var i = 0; i < 32; i++) {
@@ -1109,6 +1125,7 @@
       s.best = spec.best ? copy(spec.best) : { easy: 0, normal: 0, hard: 0 };
       if (spec.run) s.run = runStats({ run: spec.run });
       if (spec.fromCode) s.fromCode = true;   // dealt from a puzzle code: not a run, so its loss is not counted
+      if (spec.runId) s.runId = spec.runId;
       return markEntry(s);
     }, function (s) { return s.refClear; });
   }
@@ -1496,6 +1513,7 @@
     n.best = copy(prev.best);
     n.run = runStats(prev);
     if (prev.fromCode) n.fromCode = true; else delete n.fromCode;
+    if (prev.runId) n.runId = prev.runId; else delete n.runId;
     return markEntry(n);
   }
 
@@ -1507,7 +1525,7 @@
     var story = runStats({ run: e.run });
     story.retries = runStats(s).retries + 1;
     var n = dealPuzzle({ diff: s.diff, level: s.level, seed: s.seed, best: s.best,
-      score: e.score, moves: e.moves, penalties: e.penalties, run: story, fromCode: !!s.fromCode });
+      score: e.score, moves: e.moves, penalties: e.penalties, run: story, fromCode: !!s.fromCode, runId: s.runId });
     return { state: n, event: { type: 'retry', level: n.level } };
   }
 
@@ -1605,7 +1623,7 @@
     shadeOf: shadeOf, sameShade: sameShade, mixedShade: mixedShade,
     newGame: newGame, dealPuzzle: dealPuzzle, select: select, addNumbers: addNumbers, packBoard: packBoard, undo: undo, hint: hint,
     nextLevel: nextLevel, compactBoard: compactBoard,
-    mulberry32: mulberry32, nextSeed: nextSeed, randomSeed: randomSeed, seekSeed: seekSeed,
+    mulberry32: mulberry32, nextSeed: nextSeed, randomSeed: randomSeed, seekSeed: seekSeed, newRunId: newRunId, withRunId: withRunId,
     parsePuzzle: parsePuzzle, formatPuzzle: formatPuzzle,
     indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd, addBlock: addBlock, pairsOnBoard: pairsOnBoard, canCompact: canCompact,
     kindCount: kindCount, wallCount: wallCount, isWall: isWall, WALL: WALL,

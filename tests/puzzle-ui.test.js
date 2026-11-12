@@ -192,6 +192,17 @@ test('the page never writes game fields itself, and Pack does not assume a 9-wid
   assert.strictEqual(/[%\/*] 9\b/.test(pack), false);
 });
 
+test('the score server address is written only in config.js', function () {
+  var tuner = fs.readFileSync('tools/tuner.html', 'utf8');
+  [['app.js', app], ['index.html', html], ['tools/tuner.html', tuner], ['scores-client.js', fs.readFileSync('scores-client.js', 'utf8')]].forEach(function (f) {
+    assert.strictEqual(f[1].indexOf('onrender.com'), -1, f[0] + ' has the address typed in');
+  });
+  assert.ok(app.indexOf('window.TENSPOT_CONFIG') !== -1);
+  assert.ok(tuner.indexOf('<script src="../config.js"></script>') !== -1);
+  assert.ok(app.indexOf('run: state.runId') !== -1, 'run ends carry the run id');
+  assert.ok(app.indexOf('{ version: L.RULES_VERSION, run: state.runId }') !== -1, 'bests carry the rules version and run id');
+});
+
 test('app.js and game-logic.js parse as scripts', function () {
   new Function(app);
   new Function(fs.readFileSync('game-logic.js', 'utf8'));

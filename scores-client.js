@@ -4,6 +4,7 @@
   else root.NumberMatchScores = api;
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
+  var RUN_ID = /^[0-9a-z]{8,32}$/;   // a run id from game-logic.js newRunId
   var FIELDS = ['easy', 'normal', 'hard'];
 
   function normalizeCode(input) {
@@ -52,10 +53,16 @@
     return send(base, 'GET', '/v1/players/' + id, null, fetchFn);
   }
 
-  function putBests(base, code, bests, fetchFn) {
+  /** Raise bests on a score code. `about`, optional: { version, run }, the rules version and run id
+      the bests were made under; the server logs them with any best that goes up. */
+  function putBests(base, code, bests, fetchFn, about) {
     var id = normalizeCode(code);
     if (!id) return invalid();
-    return send(base, 'PUT', '/v1/players/' + id, bests, fetchFn);
+    var body = {};
+    for (var k in bests) if (Object.prototype.hasOwnProperty.call(bests, k)) body[k] = bests[k];
+    if (about && Number.isInteger(about.version)) body.version = about.version;
+    if (about && typeof about.run === 'string' && RUN_ID.test(about.run)) body.run = about.run;
+    return send(base, 'PUT', '/v1/players/' + id, body, fetchFn);
   }
 
   function createPlayer(base, fetchFn) {
@@ -83,6 +90,12 @@
   var STARTS = ['easy', 'normal', 'hard'];
   var MAX_WAITING = 50;
 
+  /** A run end to keep: start point, level and rules version, plus the run id when there is a good one. */
+  function cleanRun(r) {
+    var o = { start: r.start, level: r.level, version: r.version };
+    if (typeof r.run === 'string' && RUN_ID.test(r.run)) o.run = r.run;
+    return o;
+  }
   function goodRun(r) {
     return !!r && STARTS.indexOf(r.start) !== -1 &&
       Number.isInteger(r.level) && r.level >= 1 && r.level <= 999 &&
@@ -94,13 +107,13 @@
     var list;
     try { list = JSON.parse(text || '[]'); } catch (e) { return []; }
     if (!Array.isArray(list)) return [];
-    return list.filter(goodRun).map(function (r) { return { start: r.start, level: r.level, version: r.version }; });
+    return list.filter(goodRun).map(cleanRun);
   }
 
   /** Add one run end to the waiting list. Returns the new list as text. Keeps the newest 50. */
   function addRunEnd(text, run) {
     var list = readRunEnds(text);
-    if (goodRun(run)) list.push({ start: run.start, level: run.level, version: run.version });
+    if (goodRun(run)) list.push(cleanRun(run));
     if (list.length > MAX_WAITING) list = list.slice(list.length - MAX_WAITING);
     return JSON.stringify(list);
   }

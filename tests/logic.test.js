@@ -1143,6 +1143,25 @@ test('carryOver: a level dealt ahead takes over the score, the story and the puz
   assert.strictEqual(L.retryLevel(prev).state.fromCode, true);   // a retry stays a puzzle-code board
 });
 
+test('run ids: made fresh, kept through next level, retry and an old save', function () {
+  var a = L.newRunId(), b = L.newRunId();
+  assert.ok(/^[0-9a-z]{12}$/.test(a), a);
+  assert.notStrictEqual(a, b);
+  var s = L.dealPuzzle({ diff: 'easy', level: 3, seed: 8, runId: a });
+  assert.strictEqual(s.runId, a);
+  assert.strictEqual(L.dealPuzzle({ diff: 'easy', level: 3, seed: 8 }).runId, undefined, 'the bot and tuner deal without one');
+  s.status = 'clear';
+  var next = L.carryOver(L.dealPuzzle({ diff: 'easy', level: 4, seed: 9 }), s);
+  assert.strictEqual(next.runId, a);
+  next.status = 'lose';
+  assert.strictEqual(L.retryLevel(next).state.runId, a);
+  var old = L.dealPuzzle({ diff: 'easy', level: 3, seed: 8 });
+  var mended = L.withRunId(old);
+  assert.ok(/^[0-9a-z]{12}$/.test(mended.runId));
+  assert.strictEqual(old.runId, undefined, 'withRunId does not change its argument');
+  assert.strictEqual(L.withRunId(s), s, 'a state with a run id is returned as it is');
+});
+
 test('the rules version is a whole number', function () {
   assert.ok(Number.isInteger(L.RULES_VERSION) && L.RULES_VERSION >= 1);
 });

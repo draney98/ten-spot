@@ -45,7 +45,7 @@
   function unlocked(diff) { return reached() >= L.startLevel(diff); }
   var SV = window.NumberMatchSave;
   var S = window.NumberMatchScores;
-  var SCORES_API = (window.NM_SCORES_API || '').replace(/\/$/, '');
+  var SCORES_API = ((window.TENSPOT_CONFIG && window.TENSPOT_CONFIG.scoresApi) || '').replace(/\/$/, '');   // see config.js
 
   function loadBest() {
     var b = { easy: 0, normal: 0, hard: 0 };
@@ -96,14 +96,16 @@
   function noteRunEnd() {
     if (!S || !state || state.status !== 'lose' || state.fromCode) return;
     if (L.runStats(state).retries > 0) return;   // this run was already counted, at its first loss
-    store.set(KEY_ENDS, S.addRunEnd(store.get(KEY_ENDS), { start: state.diff, level: state.level, version: L.RULES_VERSION }));
+    store.set(KEY_ENDS, S.addRunEnd(store.get(KEY_ENDS), { start: state.diff, level: state.level, version: L.RULES_VERSION, run: state.runId }));
     sendRunEnds();
   }
 
   function pushBests() {
     var code = store.get(KEY_PLAYER);
     if (!S || !S.shouldSync(SCORES_API, code)) return;
-    S.putBests(SCORES_API, code, loadBest(), fetch).then(function (res) {
+    // The run id says which run made the best. (If an earlier push failed, a best from an earlier run
+    // can go up now and be logged with this run's id. Rare, and only the log is affected.)
+    S.putBests(SCORES_API, code, loadBest(), fetch, { version: L.RULES_VERSION, run: state.runId }).then(function (res) {
       if (res.ok) adoptBests(res.body);
       else { ui.scoreError = scoreError(res); render(); }
     });
@@ -155,8 +157,8 @@
   var restored = SV ? SV.unpack(store.get(KEY_SAVE)) : null;
   var startDiff = store.get(KEY_DIFF);
   if (['easy', 'normal', 'hard'].indexOf(startDiff) === -1 || !unlocked(startDiff)) startDiff = 'easy';
-  var state = restored ? restored.state
-    : L.dealPuzzle({ diff: startDiff, level: L.startLevel(startDiff), best: loadBest(), seed: L.randomSeed() });
+  var state = restored ? L.withRunId(restored.state)   // a game saved before run ids gets one now
+    : L.dealPuzzle({ diff: startDiff, level: L.startLevel(startDiff), best: loadBest(), seed: L.randomSeed(), runId: L.newRunId() });
   if (restored) {   // bests have their own keys; keep whichever is higher
     var storedBest = loadBest();
     state.best = state.best || {};
@@ -1216,7 +1218,7 @@
     resetAll();
     diff = diff || state.diff;
     if (!unlocked(diff)) diff = 'easy';
-    state = L.dealPuzzle({ diff: diff, level: L.startLevel(diff), best: state.best, seed: L.randomSeed() });
+    state = L.dealPuzzle({ diff: diff, level: L.startLevel(diff), best: state.best, seed: L.randomSeed(), runId: L.newRunId() });
     startGuide();
     scheduleUpcoming();
     publishBoard();
@@ -1335,7 +1337,7 @@
     ui.puzzleError = '';
     noteRunEnd();
     resetAll();
-    state = L.dealPuzzle({ diff: L.stageOf(spec.level), level: spec.level, best: best, seed: spec.seed, fromCode: true });
+    state = L.dealPuzzle({ diff: L.stageOf(spec.level), level: spec.level, best: best, seed: spec.seed, fromCode: true, runId: L.newRunId() });
     scheduleUpcoming();
     publishBoard();
     render();

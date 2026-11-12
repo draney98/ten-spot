@@ -129,6 +129,7 @@ textarea { width: 100%; min-height: 150px; padding: 8px; border: 1.5px solid var
   </section>
 </div>
 
+<script src="../config.js"></script>
 <script src="../game-logic.js"></script>
 <script src="tuner-core.js"></script>
 <script>
@@ -139,7 +140,7 @@ textarea { width: 100%; min-height: 150px; padding: 8px; border: 1.5px solid var
   var GAME = T.readConfig(L);                       // the game's own numbers, for Reset
   var cfg = JSON.parse(JSON.stringify(GAME));       // the numbers being edited
   var KEY = 'tenspot.tuner.runs';
-  var SCORES = 'https://ten-spot-scores.onrender.com';
+  var SCORES = ((window.TENSPOT_CONFIG && window.TENSPOT_CONFIG.scoresApi) || '').replace(/\/$/, '');   // see config.js
   var saved = loadSaved(), latest = null, real = null, running = null, shown = {};
 
   function loadSaved() { try { var a = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
@@ -369,6 +370,7 @@ textarea { width: 100%; min-height: 150px; padding: 8px; border: 1.5px solid var
   function drawAll() { drawResult(); drawCompare(); if (latest) drawChart(); }
 
   $('loadReal').addEventListener('click', function () {
+    if (!SCORES) { $('realNote').textContent = 'No score server is set in config.js.'; return; }
     $('realNote').textContent = 'Loading…';
     fetch(SCORES + '/v1/runs?version=' + L.RULES_VERSION).then(function (res) { return res.json(); }).then(function (body) {
       real = T.realReach(body && body.runs, $('startAt').value);

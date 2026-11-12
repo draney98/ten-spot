@@ -15,8 +15,10 @@ var app = fs.readFileSync('app.js', 'utf8');
 
 test('the page loads the score client and points it at the score service', function () {
   assert.ok(html.indexOf('scores-client.js') !== -1);
-  assert.ok(html.indexOf('window.NM_SCORES_API') !== -1);
-  assert.ok(html.indexOf("window.NM_SCORES_API = 'https://ten-spot-scores.onrender.com'") !== -1);
+  assert.ok(html.indexOf('<script src="config.js?v=__V__"></script>') !== -1);
+  assert.ok(html.indexOf('config.js') < html.indexOf('app.js'), 'config.js loads before app.js');
+  var config = fs.readFileSync('config.js', 'utf8');
+  assert.ok(config.indexOf("scoresApi: 'https://ten-spot-scores.onrender.com'") !== -1);
   var clientAt = html.indexOf('scores-client.js');
   var appAt = html.indexOf('app.js');
   assert.ok(clientAt !== -1 && clientAt < appAt);

@@ -21,6 +21,7 @@ and the score server uses only what ships with Node 22.
 | `save.js` | Turns a game into text for browser storage and back. |
 | `scores-client.js` | Talks to the score server: bests, shared boards, run ends. |
 | `index.html`, `styles.css` | The page and its looks. |
+| `config.js` | Settings shared by the game and the tuner: the score server's address. |
 | `server/` | The score server: `scores.js` (SQLite), `http.js` (routes), `limits.js` (posting limits), `migrations.js` (numbered database changes), `index.js` (start-up). |
 | `tools/` | `tuner.html` and `tuner-core.js` (configurator and bot), `sim.js` (the bot from the command line). |
 | `tests/` | Plain node scripts, one per area. `run.js` runs them all. |
