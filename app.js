@@ -39,6 +39,7 @@
   var KEY_SAVE = 'numbermatch.save1';   // the game in progress (see save.js)
   var KEY_DIFF = 'numbermatch.diff';    // where the last run started: easy|normal|hard
   var KEY_REACHED = 'numbermatch.reached';   // highest level reached on this device (unlocks Start at Normal / Hard)
+  var KEY_GUIDE = 'numbermatch.guide';   // 'done' once the first-level pointers have been seen or skipped
   var KEY_ENDS = 'numbermatch.ends';   // run ends waiting to be sent to the score server (see scores-client.js)
   function reached() { return Math.max(1, Number(store.get(KEY_REACHED)) || 1); }
   function unlocked(diff) { return reached() >= L.startLevel(diff); }
@@ -172,6 +173,7 @@
     flash: [],     // cell ids playing the match "pop"
     bad: [],       // cell ids playing the "shake"
     hint: [],      // cell ids circled as a hint
+    guideIds: [],  // cell ids ringed by the first-level pointer
     born: [],      // cell ids just added (fade-in)
     gain: 0,       // last points earned, shown in the score tag
     streakMult: 0, // multiplier that goes with a positive score tag
@@ -327,6 +329,7 @@
     if (c.id === state.selected) cls += ' c-sel';
     if (ui.flash.indexOf(c.id) >= 0) cls += ' c-flash';
     if (ui.hint.indexOf(c.id) >= 0) cls += ' c-hint';
+    if (ui.guideIds.indexOf(c.id) >= 0 && !c.done && c.id !== state.selected) cls += ' c-guide';
     if (ui.bad.indexOf(c.id) >= 0) cls += ' c-bad';
     if (ui.born.indexOf(c.id) >= 0) cls += ' c-born';
     return cls;
@@ -637,8 +640,51 @@
     });
   }
 
+  /* ---------- GUIDED FIRST LEVEL ----------
+     On a first visit, level 1 shows one pointer at a time above the board, with a blue ring on
+     what it points at. Each pointer goes when the player does what it says. Skip ends them.
+     They show once per device (KEY_GUIDE), and never to someone who has been past level 1. */
+  var GUIDE_TEXT = {
+    match: 'Tap two tiles with the same mascot.',
+    twin: 'An outline and its solid twin match too.',
+    reach: "A pair doesn't have to touch. It can reach across crossed-out spots, around the end of a row, or on a diagonal.",
+    add: 'No pairs left. Press Add: it copies the tiles that are left onto the bottom.'
+  };
+  var guide = { on: false, step: 0 };
+  function guideWanted() {
+    return store.get(KEY_GUIDE) !== 'done' && reached() <= 1 &&
+      state.level === 1 && state.diff === 'easy' && !state.fromCode;
+  }
+  function startGuide() { guide.on = guideWanted(); guide.step = 0; }
+  function endGuide() { guide.on = false; store.set(KEY_GUIDE, 'done'); }
+  /** Called with every match while the pointers are on: move to the next pointer if this match did what the current one said. */
+  function guideSaw(ev) {
+    if (!guide.on || guide.step >= L.GUIDE_STEPS.length) return;
+    if (L.guideDone(L.GUIDE_STEPS[guide.step], ev)) guide.step++;
+  }
+  function renderGuide() {
+    var s = state, box = $('guide'), text = '', ids = [], ringAdd = false;
+    if (guide.on && (s.level !== 1 || s.status === 'clear')) endGuide();   // level 1 is behind them
+    if (guide.on && s.status === 'playing') {
+      if (L.pairsOnBoard(s) === 0 && s.addsLeft > 0) { text = GUIDE_TEXT.add; ringAdd = true; }
+      else if (guide.step < L.GUIDE_STEPS.length) {
+        var step = L.GUIDE_STEPS[guide.step];
+        ids = L.guideTarget(s, step) || [];
+        text = GUIDE_TEXT[step] + (ids.length ? ' Try the two with the blue ring.' : '');
+      }
+    }
+    ui.guideIds = ids;
+    box.hidden = !text;
+    $('btnAdd').classList.toggle('is-guide', ringAdd);
+    if (text) {
+      drawText($('guideText'), text);
+      if ($('guideSr').textContent !== text) $('guideSr').textContent = text;
+    }
+  }
+
   function render() {
     var s = state;
+    renderGuide();   // first: it decides which tiles get the blue ring
     var stageLabel = L.LEVELS[L.stageOf(s.level)].label;
     var mult = Math.round(L.pointMult(s.diff, s.level) * 10) / 10;
     var left = L.remaining(s);
@@ -853,6 +899,7 @@
       play('bad');
     } else if (ev.type === 'match') {
       clearPackMotion();
+      guideSaw(ev);
       var myTok = ++tok;
       spawnFx(ev);                 // measure BEFORE anything moves
       ui.flash = ev.ids.slice();
@@ -1152,6 +1199,7 @@
     diff = diff || state.diff;
     if (!unlocked(diff)) diff = 'easy';
     state = L.dealPuzzle({ diff: diff, level: L.startLevel(diff), best: state.best, seed: L.randomSeed() });
+    startGuide();
     scheduleUpcoming();
     publishBoard();
     render();
@@ -1331,6 +1379,7 @@
   $('btnEndPrimary').addEventListener('click', function () { if (state.status === 'clear') onNextLevel(); else newGame(); });
   $('btnEndUndo').addEventListener('click', onUndo);
   $('btnEndRetry').addEventListener('click', onRetry);
+  $('guideSkip').addEventListener('click', function () { endGuide(); render(); });
   $('btnEndShare').addEventListener('click', onShare);
   $('btnShareCopy').addEventListener('click', onShareCopy);
   document.querySelectorAll('[data-diff]').forEach(function (b) {
@@ -1363,6 +1412,7 @@
     if (ui.saveFailed && state.status === 'playing') { e.preventDefault(); e.returnValue = ''; }
   });
 
+  startGuide();
   scheduleUpcoming();
   if (!ui.boardCode) publishBoard();   // a restored game already has its board code
   render();

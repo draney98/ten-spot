@@ -170,5 +170,14 @@ test('the Game over card has the run summary, retry and share', function () {
   assert.ok(app.indexOf("get('board')") !== -1);
 });
 
+test('the guided first level has its pointer, Skip and blue ring', function () {
+  ['id="guide"', 'id="guideText"', 'id="guideSkip"'].forEach(function (id) { assert.ok(html.indexOf(id) !== -1, id); });
+  assert.ok(css.indexOf('.c-guide') !== -1);
+  assert.ok(css.indexOf('#btnAdd.is-guide') !== -1);
+  assert.ok(app.indexOf("'numbermatch.guide'") !== -1);
+  assert.ok(app.indexOf('function renderGuide()') !== -1);
+  assert.ok(app.indexOf('L.guideTarget(s, step)') !== -1);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

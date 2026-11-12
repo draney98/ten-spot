@@ -994,6 +994,34 @@ test('clean sweep: no offer when there is a gap among the tiles', function () {
   assert.ok(L.sweepOffer(t));
 });
 
+test('guided first level: the pointer picks a pair that fits each step', function () {
+  // 8 columns. Values: 1 and 2 are the same mascot (outline and solid twin); 3 is another mascot.
+  var s = stateWith([1, 1, 2, 3, 5, 7, 9, 3], 'normal');
+  var ids = L.guideTarget(s, 'match');
+  assert.deepStrictEqual(ids, [1, 2]);                      // two the same, side by side
+  var twin = L.guideTarget(s, 'twin');
+  assert.ok(twin && L.mixedShade(s.cells[twin[0] - 1].v, s.cells[twin[1] - 1].v));
+  assert.strictEqual(L.guideTarget(s, 'reach'), null);      // nothing reaches yet
+  s.cells[4].done = s.cells[5].done = s.cells[6].done = true;   // now the two 3s reach across cleared spots
+  assert.deepStrictEqual(L.guideTarget(s, 'reach'), [4, 8]);
+  s.status = 'lose';
+  assert.strictEqual(L.guideTarget(s, 'match'), null);
+});
+
+test('guided first level: a match only finishes the step it fits', function () {
+  var side = { type: 'match', same: true, kind: 'row', gaps: 0 };
+  var twin = { type: 'match', same: false, kind: 'row', gaps: 0 };
+  var far = { type: 'match', same: true, kind: 'diag', gaps: 0 };
+  assert.deepStrictEqual(L.GUIDE_STEPS, ['match', 'twin', 'reach']);
+  assert.strictEqual(L.guideDone('match', side), true);
+  assert.strictEqual(L.guideDone('twin', side), false);
+  assert.strictEqual(L.guideDone('twin', twin), true);
+  assert.strictEqual(L.guideDone('reach', twin), false);
+  assert.strictEqual(L.guideDone('reach', far), true);
+  assert.strictEqual(L.guideDone('reach', { type: 'match', same: true, kind: 'row', gaps: 2 }), true);
+  assert.strictEqual(L.guideDone('match', { type: 'bad' }), false);
+});
+
 test('the rules version is a whole number', function () {
   assert.ok(Number.isInteger(L.RULES_VERSION) && L.RULES_VERSION >= 1);
 });

@@ -1458,6 +1458,35 @@
   }
   function canAdd(s) { return addBlock(s) === null; }
 
+  /* ---- guided first level: which pair to point at, and whether a match did what the pointer said ----
+     steps: 'match' = any pair (best: two the same, side by side),
+            'twin'  = an outline with its solid twin,
+            'reach' = a pair that is not side by side in one row (across cleared spots, a row end, a column or a diagonal). */
+  var GUIDE_STEPS = ['match', 'twin', 'reach'];
+  function guideFits(step, same, kind, gaps) {
+    if (step === 'twin') return !same;
+    if (step === 'reach') return kind !== 'row' || gaps > 0;
+    return true;
+  }
+  /** The two cell ids to circle for a step, or null when no pair on the board fits it. */
+  function guideTarget(s, step) {
+    if (s.status !== 'playing') return null;
+    var cells = s.cells, w = boardCols(s), best = null, bestRank = -1;
+    allPairs(cells, DIAG, s.rules, w).forEach(function (p) {
+      var li = linkInfo(cells, p[0], p[1], w), same = tilesSame(cells[p[0]], cells[p[1]]);
+      if (!guideFits(step, same, li.kind, li.gaps)) return;
+      var plain = li.kind === 'row' && li.gaps === 0;
+      // 'match' likes the plainest pair; 'twin' likes one that touches; 'reach' takes the first that fits
+      var rank = step === 'match' ? (same ? 2 : 0) + (plain ? 1 : 0) : step === 'twin' ? (plain ? 1 : 0) : 0;
+      if (rank > bestRank) { bestRank = rank; best = p; }
+    });
+    return best ? [cells[best[0]].id, cells[best[1]].id] : null;
+  }
+  /** Did this match event do what the step's pointer described? */
+  function guideDone(step, ev) {
+    return !!ev && ev.type === 'match' && guideFits(step, !!ev.same, ev.kind, ev.gaps);
+  }
+
   /* Goes up by one whenever the difficulty numbers (RAMP, TOOLS, tiles, walls) change,
      so run-end counts from different tunings are kept apart. */
   var RULES_VERSION = 1;
@@ -1479,6 +1508,7 @@
     kindCount: kindCount, wallCount: wallCount, isWall: isWall, WALL: WALL,
     RAMP: RAMP, TOOLS: TOOLS, PACK_FROM: PACK_FROM, rampAt: rampAt, toolsAt: toolsAt, stageOf: stageOf, tilesAt: tilesAt, widthAt: widthAt,
     RULES_VERSION: RULES_VERSION, runStats: runStats, retryLevel: retryLevel,
+    GUIDE_STEPS: GUIDE_STEPS, guideTarget: guideTarget, guideDone: guideDone,
     startLevel: startLevel, BLANK: BLANK, isBlank: isBlank, sweepPairs: sweepPairs, sweepOffer: sweepOffer, cleanSweep: cleanSweep
   };
 });

@@ -101,6 +101,11 @@
 
   <!-- ============ BOARD (a sheet from the pad) ============ -->
   <section class="a-board sheet" id="board" aria-label="Game board">
+    <div class="guide" id="guide" hidden>
+      <p class="drawn" id="guideText" data-text="" aria-hidden="true"></p>
+      <p class="sr-only" id="guideSr" role="status" aria-live="polite"></p>
+      <button type="button" class="guide-skip" id="guideSkip">Skip</button>
+    </div>
     <div class="board-inner" id="boardInner">
       <div class="grid9" id="grid"></div>          <!-- cells are created by the game script -->
       <div class="fx" id="fx" aria-hidden="true"></div>  <!-- match effects go here -->
