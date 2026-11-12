@@ -384,6 +384,8 @@ h1.is-under { color: var(--h2i); }
 /* A wall: a dark brick block that can't be picked. */
 .c-wall { background: var(--grid); color: var(--muted); cursor: not-allowed; }
 .c-wall .wall-glyph { width: 80%; height: 80%; opacity: .75; }
+/* The blank centre of an odd square board: empty, and paths pass through it. */
+.c-blank { background: transparent; border-color: transparent; box-shadow: none; pointer-events: none; }
 /* Add pressed too early on Normal or Hard: a red shake, like a wrong tile. */
 #btnAdd.is-wrong { animation: nmShake .36s ease; box-shadow: 0 0 0 2px var(--strike); }
 

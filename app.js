@@ -32,12 +32,15 @@
     el.setAttribute('aria-label', label == null ? text : label);
     if (el.firstChild) el.textContent = '';
   }
-  var KEY_BEST = 'numbermatch.best2.';   // + easy|normal|hard. Old bests are not copied over.
+  var KEY_BEST = 'numbermatch.best3.';   // + easy|normal|hard (where the run started). Fresh with the ramp.
   var KEY_THEME = 'numbermatch.theme';  // 'light'|'dark'
   var KEY_SOUND = 'numbermatch.sound';  // 'on'|'off'; missing means off
   var KEY_PLAYER = 'numbermatch.player';
   var KEY_SAVE = 'numbermatch.save1';   // the game in progress (see save.js)
-  var KEY_DIFF = 'numbermatch.diff';    // last difficulty played
+  var KEY_DIFF = 'numbermatch.diff';    // where the last run started: easy|normal|hard
+  var KEY_REACHED = 'numbermatch.reached';   // highest level reached on this device (unlocks Start at Normal / Hard)
+  function reached() { return Math.max(1, Number(store.get(KEY_REACHED)) || 1); }
+  function unlocked(diff) { return reached() >= L.startLevel(diff); }
   var SV = window.NumberMatchSave;
   var S = window.NumberMatchScores;
   var SCORES_API = (window.NM_SCORES_API || '').replace(/\/$/, '');
@@ -124,9 +127,9 @@
   // Pick up where the player left off: the saved game if there is a good one, else a new board at the last difficulty.
   var restored = SV ? SV.unpack(store.get(KEY_SAVE)) : null;
   var startDiff = store.get(KEY_DIFF);
-  if (['easy', 'normal', 'hard'].indexOf(startDiff) === -1) startDiff = 'normal';
+  if (['easy', 'normal', 'hard'].indexOf(startDiff) === -1 || !unlocked(startDiff)) startDiff = 'easy';
   var state = restored ? restored.state
-    : L.dealPuzzle({ diff: startDiff, level: 1, best: loadBest(), seed: L.randomSeed() });
+    : L.dealPuzzle({ diff: startDiff, level: L.startLevel(startDiff), best: loadBest(), seed: L.randomSeed() });
   if (restored) {   // bests have their own keys; keep whichever is higher
     var storedBest = loadBest();
     state.best = state.best || {};
@@ -161,6 +164,7 @@
     if (!SV) return;
     var ok = store.set(KEY_SAVE, SV.pack(state, { settingsOpen: ui.settingsOpen, boardCode: ui.boardCode, note: ui.note }));
     store.set(KEY_DIFF, state.diff);
+    if (state.level > reached()) store.set(KEY_REACHED, String(state.level));
     ui.saveFailed = !ok;
     var el = document.getElementById('saveError');
     if (el) el.hidden = ok;
@@ -203,6 +207,12 @@
     else if (name === 'row') { blip(1180, 0.02, 0.04, t); blip(1480, 0.028, 0.04, t + 0.05); }
     else if (name === 'clear') { blip(880, 0.028, 0.04, t); blip(1320, 0.036, 0.045, t + 0.08); }
     else if (name === 'bad') blip(180, 0.04, 0.05, t);
+    else if (name === 'stage') {   // reached Normal or Hard: three rising notes
+      blip(523, 0.09, 0.04, t); blip(659, 0.09, 0.04, t + 0.12); blip(784, 0.22, 0.045, t + 0.24);
+    }
+    else if (name === 'sweep') {   // clean sweep: a quick run up
+      for (var k = 0; k < 6; k++) blip(880 + k * 120, 0.03, 0.035, t + k * 0.05);
+    }
     else if (name === 'end') {   // game over: four soft falling notes
       blip(523, 0.16, 0.04, t); blip(440, 0.16, 0.04, t + 0.2);
       blip(349, 0.18, 0.04, t + 0.4); blip(262, 0.4, 0.045, t + 0.62);
@@ -231,8 +241,8 @@
 
   /* ---------- 4. GRIDIRON MASCOTS ---------- */
   // Gridiron mascots (SEC). Value v -> mascot L.mascotOf(v) (1..8); odd = outline, even = solid.
-  // A board with k mascots uses MASCOTS[1..k]. Easy starts with 4 and adds one every 5 levels, Normal starts
-  // with 5 and adds one every 4, Hard starts with 6 and adds one every 3 (LEVELS.kinds in game-logic.js). h = pencil colour.
+  // A board with k mascots uses MASCOTS[1..k]. The ramp starts with 3 and reaches 7 at level 31
+  // (RAMP in game-logic.js). h = pencil colour.
   // Icons: Game Icons (game-icons.net, CC BY 3.0) and Material Design Icons (Apache 2.0); src = set:name.
   // s = the icon as published, fitted to 24x24. o = the same shape with an even inner border cut out.
   // Both are FILLED paths (fill-rule evenodd, no stroke). Copy exactly; do not redraw.
@@ -269,6 +279,7 @@
     'd="M2 3h9v5H2zM13 3h9v5h-9zM2 10h4v5H2zM8 10h8v5H8zM18 10h4v5h-4zM2 17h9v4H2zM13 17h9v4h-9z"/></svg>';
   function cellInnerHTML(v) {
     if (v === L.WALL) return WALL_SVG;
+    if (v === L.BLANK) return '';   // the blank centre spot of an odd square board
     var M = MASCOTS[L.mascotOf(v)], filled = L.isSolid(v);
     return '<svg class="glyph mascot" viewBox="0 0 24 24" aria-hidden="true">' +
       '<path fill="currentColor" fill-rule="evenodd" d="' + (filled ? M.s : M.o) + '"/></svg>';
@@ -277,12 +288,14 @@
   function family(v) { return MASCOTS[L.mascotOf(v)].h; }
   function cellName(v) {
     if (v === L.WALL) return 'Wall, cannot be cleared';
+    if (v === L.BLANK) return 'Empty spot';
     return MASCOTS[L.mascotOf(v)].name + (L.isSolid(v) ? ', solid' : ', outline');
   }
 
   function cellClass(c) {
     var cls = 'c';
     if (c.v === L.WALL) return cls + ' c-wall';
+    if (c.v === L.BLANK) return cls + ' c-blank';
     cls += ' c-tile h' + family(c.v);
     if (c.done) cls += ' c-done';
     if (c.id === state.selected) cls += ' c-sel';
@@ -581,18 +594,15 @@
   var lim = function (n) { return isFinite(n) ? String(n) : '∞'; }; // ∞
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
-  // Diagonals are allowed on every difficulty, so they are not listed here.
-  function diffInfo(diff) {
-    var D = L.LEVELS[diff];
-    return [
-      D.adds + ' adds per level, dropping to ' + D.minAdds,
-      isFinite(D.hints) ? (D.hints ? D.hints + ' hints' : 'no hints') : 'unlimited hints',
-      isFinite(D.undos) ? plural(D.undos, 'undo', 'undos') : 'unlimited undo',
-      isFinite(D.compacts) ? plural(D.compacts, 'pack', 'packs') : 'unlimited packs',
-      '×' + D.mult + ' points, +20% each level',
-      L.colsFor(diff) + ' columns',
-      'more mascots sooner on harder games'
-    ].join(', ') + '. Changing difficulty starts a new game.';
+  // Settings: where a run starts. Normal and Hard unlock once this device has reached them.
+  function startInfo() {
+    var n = L.startLevel('normal'), h = L.startLevel('hard');
+    var lines = ['Every game climbs one ramp: Easy to level ' + (n - 1) + ', Normal from ' + n + ', Hard from ' + h +
+      '. Boards grow, mascots and walls arrive, and your buttons shrink as you go.'];
+    if (!unlocked('normal')) lines.push('Reach level ' + n + ' to start at Normal.');
+    else if (!unlocked('hard')) lines.push('Reach level ' + h + ' to start at Hard.');
+    lines.push('Changing where you start begins a new game.');
+    return lines.join(' ');
   }
 
   function setPressed(selector, attr, value) {
@@ -603,7 +613,7 @@
 
   function render() {
     var s = state;
-    var D = L.LEVELS[s.diff];
+    var stageLabel = L.LEVELS[L.stageOf(s.level)].label;
     var mult = Math.round(L.pointMult(s.diff, s.level) * 10) / 10;
     var left = L.remaining(s);
 
@@ -620,9 +630,14 @@
     $('btnScoreForget').hidden = !player;
     $('scoreSyncError').textContent = ui.scoreError || '';
     setPressed('[data-diff]', 'data-diff', s.diff);
+    document.querySelectorAll('[data-diff]').forEach(function (b) {
+      var open = unlocked(b.dataset.diff);
+      b.disabled = !open;
+      b.title = open ? '' : 'Reach level ' + L.startLevel(b.dataset.diff) + ' first';
+    });
     setPressed('[data-theme]', 'data-theme', ui.dark ? 'dark' : 'light');
     setPressed('[data-sound]', 'data-sound', ui.sound ? 'on' : 'off');
-    $('diffInfo').textContent = diffInfo(s.diff);
+    $('diffInfo').textContent = startInfo();
     $('grid').style.setProperty('--cols', String(s.cols || L.colsFor(s.diff)));
 
     // while settings (or a confirmation) are open, the board and its controls are switched off
@@ -643,7 +658,7 @@
     document.querySelectorAll('.stat:not(.stat-best)').forEach(paintStanding);
     var record = s.best[s.diff] || 0;
     document.querySelector('.stat-best').classList.toggle('is-passed', s.score > record || !!s.newBest);
-    var capText = 'Level ' + s.level + ' on ' + D.label + ', ×' + mult.toFixed(1) + ', ';
+    var capText = 'Level ' + s.level + ' · ' + stageLabel + ', ×' + mult.toFixed(1) + ', ';
     var capCode = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, seed: s.seed });
     drawText($('captionText'), capText);
     drawText($('captionCode'), capCode);
@@ -675,16 +690,17 @@
     $('btnCompact').disabled = !L.canCompact(s);
     var addWhy = L.addBlock(s);
     // Easy: greyed out until few enough pairs are left. Normal and Hard: it can be pressed, but too early is a mistake.
-    var addGrey = addWhy === 'tooManyPairs' && s.diff === 'easy';
+    var addGrey = addWhy === 'tooManyPairs' && !L.toolsAt(s.level).mistake;
     $('btnAdd').disabled = (addWhy === 'noAdds' || addWhy === 'notPlaying' || addGrey);
     $('btnAdd').classList.toggle('is-blocked', addGrey);
     $('btnAdd').setAttribute('aria-disabled', $('btnAdd').disabled ? 'true' : 'false');
     $('undoCount').textContent = lim(s.undosLeft) + ' left';
     $('hintCount').textContent = lim(s.hintsLeft) + ' left';
-    $('compactCount').textContent = lim(s.compactsLeft) + ' left';
+    var packLocked = s.level < L.PACK_FROM;
+    $('compactCount').textContent = packLocked ? 'at level ' + L.PACK_FROM : lim(s.compactsLeft) + ' left';
     $('btnUndo').setAttribute('aria-label', 'Undo, ' + lim(s.undosLeft) + ' left');
     $('btnHint').setAttribute('aria-label', 'Hint, ' + lim(s.hintsLeft) + ' left');
-    $('btnCompact').setAttribute('aria-label', 'Pack, ' + lim(s.compactsLeft) + ' left');
+    $('btnCompact').setAttribute('aria-label', packLocked ? 'Pack, unlocks at level ' + L.PACK_FROM : 'Pack, ' + lim(s.compactsLeft) + ' left');
     $('addMain').textContent = 'Add';
     $('addSub').textContent = (addWhy === 'tooManyPairs')
       ? 'Clear pairs first'
@@ -729,9 +745,12 @@
     var clear = s.status === 'clear';
     $('endKicker').hidden = clear;
     $('endKicker').textContent = clear ? '' : 'Out of moves on level ' + s.level;
-    $('endTitle').textContent = clear ? 'Level ' + s.level + ' clear!' : 'Game over';
+    var stageUp = clear && L.stageOf(s.level + 1) !== L.stageOf(s.level);
+    $('endTitle').textContent = !clear ? 'Game over' : stageUp ? L.LEVELS[L.stageOf(s.level + 1)].label + ' reached!' : 'Level ' + s.level + ' clear!';
     $('endNumber').textContent = clear ? '+' + fmt(s.bonus) : fmt(s.final);
-    $('endDetail').textContent = clear ? clearDetail(s) : 'No adds left and no pairs to clear. You reached level ' + s.level + '.';
+    $('endDetail').textContent = clear
+      ? clearDetail(s) + (stageUp ? '\nLevel ' + (s.level + 1) + ' starts ' + L.LEVELS[L.stageOf(s.level + 1)].label + '. You can now start a new game there.' : '')
+      : 'No adds left and no pairs to clear. You reached level ' + s.level + '.';
     $('endBest').hidden = clear;
     $('endBest').textContent = s.newBest ? 'New best score!' : 'Best: ' + fmt(s.best[s.diff] || 0);
     $('btnEndPrimary').textContent = clear ? 'Next level' : 'Play again';
@@ -743,11 +762,11 @@
      New game, a difficulty change, and a tile-style change that switches
      rule set all start over. If a game is under way, ask first. */
   function gameInProgress() {
-    var D = L.LEVELS[state.diff];
+    var T = L.toolsAt(state.level);
     return state.status === 'playing' &&
-      (state.moves > 0 || state.level > 1 || state.score > 0 || (state.penalties || 0) > 0 ||
-       (isFinite(D.hints) && state.hintsLeft < D.hints) ||
-       (isFinite(D.compacts) && state.compactsLeft < D.compacts));
+      (state.moves > 0 || state.level > L.startLevel(state.diff) || state.score > 0 || (state.penalties || 0) > 0 ||
+       (isFinite(T.hints) && state.hintsLeft < T.hints) ||
+       (isFinite(T.packs) && state.compactsLeft < T.packs));
   }
   function progressLine() {
     return 'You’re on level ' + state.level + ' with ' + plural(state.score, 'point', 'points') + '.';
@@ -841,6 +860,26 @@
     play('click');
     render();
     playPack(from, oldCount);
+    trySweep(700);   // after the tiles have slid into place
+  }
+
+  // Clean sweep: right after an Add or a Pack, if every tile can be paired off at once, clear them all.
+  function trySweep(delay) {
+    later(function () {
+      if (state.status !== 'playing') return;
+      var r = L.cleanSweep(state);
+      if (!r.event) return;
+      r.event.matches.forEach(spawnFx);   // measure while the tiles are still in place
+      state = r.state;
+      ui.flash = [].concat.apply([], r.event.pairs);
+      ui.hint = []; ui.born = [];
+      ui.gain = r.event.gain;
+      ui.note = 'Clean sweep! +' + fmt(r.event.gain) + ', including a sweep bonus of +' + fmt(r.event.bonus) + '.';
+      later(function () { ui.flash = []; render(); }, 620);
+      saveBestIfHigher();
+      play('sweep');
+      render();
+    }, delay);
   }
 
   function onAdd() {
@@ -849,12 +888,13 @@
     if (r.event && r.event.type === 'addBlocked') {
       state = r.state;
       ui.hint = [];
-      if (state.diff === 'easy') {
+      if (!L.toolsAt(state.level).mistake) {
         ui.note = 'Add unlocks at ' + r.event.max + ' pair' + (r.event.max === 1 ? '' : 's') +
           ' or fewer. ' + r.event.pairs + ' left to find.';
       } else {
         // Normal says how many matches are left; Hard only says that there are some.
-        var lead = state.diff === 'normal' ? plural(r.event.pairs, 'match', 'matches') + ' left.' : 'Matches are left.';
+        // While a pair is still allowed, say how many are left; once none is allowed, only that some are.
+        var lead = r.event.max > 0 ? plural(r.event.pairs, 'match', 'matches') + ' left.' : 'Matches are left.';
         ui.note = lead + ' Clear them before adding' +
           (r.event.penalty ? ': −' + fmt(r.event.penalty) + ', streak lost.' : '. Streak lost.');
         if (r.event.penalty) {
@@ -883,6 +923,7 @@
     if (r.event.status !== 'playing') saveBestIfHigher();
     play('click');   // game over plays its own sound
     render();
+    if (r.event.status === 'playing') trySweep(450);
   }
 
   function onUndo() {
@@ -947,16 +988,31 @@
   }
   // The caption already shows the level, difficulty and multiplier, and the Add button shows the adds,
   // so the start-of-level note only says what is new. '' means the normal prompt.
+  // Milestones: one line for each thing that changes on this level (see RAMP and TOOLS).
   function levelNote() {
-    var now = L.mascots(state.level, state.diff);
-    var before = state.level > 1 ? L.mascots(state.level - 1, state.diff) : now;
+    var lv = state.level;
+    if (lv <= 1) return '';
     var parts = [];
+    var stage = L.stageOf(lv);
+    if (stage !== L.stageOf(lv - 1)) parts.push(L.LEVELS[stage].label + ' starts here.');
+    if (L.widthAt(lv) > L.widthAt(lv - 1)) parts.push('Wider board: ' + L.widthAt(lv) + ' across.');
+    var now = L.mascots(lv), before = L.mascots(lv - 1);
     if (now > before && MASCOTS[now]) parts.push('New mascot: ' + MASCOTS[now].name + '.');
-    var walls = L.wallCount(state.diff, state.level);
-    var wallsBefore = state.level > 1 ? L.wallCount(state.diff, state.level - 1) : 0;
-    if (walls > wallsBefore) {
-      parts.push(wallsBefore ? 'Another wall.' : "A wall! It can't be cleared and blocks the way. Clear the rest of its row and it goes too.");
-    }
+    var walls = L.wallCount(state.diff, lv), wallsBefore = L.wallCount(state.diff, lv - 1);
+    var firstWall = walls > 0 && !L.RAMP.some(function (r) { return r.from < lv && r.walls > 0; });
+    if (firstWall) parts.push("A wall! It can't be cleared and blocks the way. Clear the rest of its row and it goes too.");
+    else if (walls > wallsBefore) parts.push(walls === 2 ? 'Two walls now.' : walls + ' walls now.');
+    else if (walls < wallsBefore) parts.push('One wall fewer.');
+    var adds = L.addsFor(state.diff, lv), addsBefore = L.addsFor(state.diff, lv - 1);
+    if (adds < addsBefore) parts.push('Adds: ' + adds + ' a level from now.');
+    var T = L.toolsAt(lv), P = L.toolsAt(lv - 1);
+    function count(n, one, many) { return isFinite(n) ? (n ? plural(n, one, many) : 'no ' + many) : 'unlimited ' + many; }
+    if (lv === L.PACK_FROM) parts.push('Pack unlocked: it slides the tiles together.');
+    else if (T.packs !== P.packs) parts.push('Packs: ' + count(T.packs, 'pack', 'packs') + ' a level.');
+    if (T.hints !== P.hints) parts.push('Hints: ' + count(T.hints, 'hint', 'hints') + ' a level.');
+    if (T.undos !== P.undos) parts.push('Undo: ' + count(T.undos, 'undo', 'undos') + ' a level.');
+    if (T.addAt !== P.addAt) parts.push(T.addAt ? 'Add now waits until ' + plural(T.addAt, 'pair', 'pairs') + ' or fewer are left.' : 'Add now waits until no pairs are left.');
+    if (T.mistake && !P.mistake) parts.push('Pressing Add too soon now counts as a wrong pick.');
     return parts.join(' ');
   }
 
@@ -1003,6 +1059,7 @@
       });
     }
     ui.note = levelNote();
+    if (L.stageOf(state.level) !== L.stageOf(state.level - 1)) play('stage');
     scheduleUpcoming();
     publishBoard();
     render();
@@ -1010,7 +1067,9 @@
 
   function newGame(diff) {
     resetAll();
-    state = L.dealPuzzle({ diff: diff || state.diff, level: 1, best: state.best, seed: L.randomSeed() });
+    diff = diff || state.diff;
+    if (!unlocked(diff)) diff = 'easy';
+    state = L.dealPuzzle({ diff: diff, level: L.startLevel(diff), best: state.best, seed: L.randomSeed() });
     scheduleUpcoming();
     publishBoard();
     render();
@@ -1019,14 +1078,14 @@
   function setTheme(dark) { ui.dark = dark; store.set(KEY_THEME, dark ? 'dark' : 'light'); render(); }
 
   function setDifficulty(diff) {
-    if (diff === state.diff) return;
+    if (diff === state.diff || !unlocked(diff)) return;
     var label = L.LEVELS[diff].label;
-    confirmReset('Switch to ' + label + '?', 'Changing difficulty starts a new game.', 'Switch to ' + label,
+    confirmReset('Start at ' + label + '?', 'This starts a new game at level ' + L.startLevel(diff) + '.', 'Start at ' + label,
       function () { ui.settingsOpen = false; newGame(diff); });
   }
 
   function askNewGame() {
-    confirmReset('Start a new game?', 'A new game starts over at level 1.', 'Start new game',
+    confirmReset('Start a new game?', 'A new game starts over at level ' + L.startLevel(state.diff) + '.', 'Start new game',
       function () { ui.settingsOpen = false; newGame(); });
   }
 
@@ -1069,6 +1128,11 @@
   $('btnTheme').addEventListener('click', function () { setTheme(!ui.dark); });
   $('btnSettings').addEventListener('click', function () { ui.settingsOpen = !ui.settingsOpen; render(); });
   function startPuzzle(spec) {
+    if (spec && spec.old) {
+      ui.puzzleError = 'That board code is from an older version of the game.';
+      render();
+      return;
+    }
     if (!spec || spec.mode !== 'teams') {
       ui.puzzleError = 'That puzzle code is not valid.';
       render();
@@ -1078,7 +1142,7 @@
     ui.settingsOpen = false;
     ui.puzzleError = '';
     resetAll();
-    state = L.dealPuzzle({ diff: spec.diff, level: spec.level, best: best, seed: spec.seed });
+    state = L.dealPuzzle({ diff: L.stageOf(spec.level), level: spec.level, best: best, seed: spec.seed });
     scheduleUpcoming();
     publishBoard();
     render();

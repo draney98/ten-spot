@@ -17,6 +17,11 @@ function formatCode(raw) {
   return raw.slice(0, 4) + '-' + raw.slice(4, 8) + '-' + raw.slice(8, 12) + '-' + raw.slice(12, 16);
 }
 
+/* Bests started fresh with the ramp (Nov 2026): they live in ramp_easy / ramp_normal / ramp_hard.
+   The old easy / normal / hard columns are kept in the database but no longer read or written.
+   The API still says easy / normal / hard (the start point of a run). */
+var COLS = 'code, ramp_easy AS easy, ramp_normal AS normal, ramp_hard AS hard';
+
 function rowFrom(record) {
   if (!record) return null;
   return { code: formatCode(record.code), easy: record.easy, normal: record.normal, hard: record.hard };
@@ -34,6 +39,10 @@ function openScores(path) {
     'created_at TEXT NOT NULL,' +
     'updated_at TEXT NOT NULL)'
   );
+  var have = db.prepare('PRAGMA table_info(players)').all().map(function (c) { return c.name; });
+  ['ramp_easy', 'ramp_normal', 'ramp_hard'].forEach(function (col) {
+    if (have.indexOf(col) === -1) db.exec('ALTER TABLE players ADD COLUMN ' + col + ' INTEGER NOT NULL DEFAULT 0');
+  });
   db.exec(
     'CREATE TABLE IF NOT EXISTS boards (' +
     'code TEXT PRIMARY KEY,' +
@@ -58,14 +67,14 @@ function createPlayer(db) {
 function getPlayer(db, code) {
   var raw = normalizeCode(code);
   if (!raw) return null;
-  return rowFrom(db.prepare('SELECT code, easy, normal, hard FROM players WHERE code = ?').get(raw));
+  return rowFrom(db.prepare('SELECT ' + COLS + ' FROM players WHERE code = ?').get(raw));
 }
 
 function raiseBests(db, code, patch) {
   var raw = normalizeCode(code);
   if (!raw) throw new Error('invalid code');
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('invalid score');
-  var current = db.prepare('SELECT code, easy, normal, hard FROM players WHERE code = ?').get(raw);
+  var current = db.prepare('SELECT ' + COLS + ' FROM players WHERE code = ?').get(raw);
   if (!current) return null;
   var next = { easy: current.easy, normal: current.normal, hard: current.hard };
   for (var i = 0; i < FIELDS.length; i++) {
@@ -75,7 +84,7 @@ function raiseBests(db, code, patch) {
     if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > MAX_SCORE) throw new Error('invalid score');
     if (n > next[key]) next[key] = n;
   }
-  db.prepare('UPDATE players SET easy = ?, normal = ?, hard = ?, updated_at = ? WHERE code = ?')
+  db.prepare('UPDATE players SET ramp_easy = ?, ramp_normal = ?, ramp_hard = ?, updated_at = ? WHERE code = ?')
     .run(next.easy, next.normal, next.hard, new Date().toISOString(), raw);
   return getPlayer(db, raw);
 }
@@ -149,7 +158,7 @@ function getBoard(db, code) {
 function saveBoard(db, body, codes) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('invalid board');
   if (!BOARD_DIFFS[body.diff] || !BOARD_MODES[body.mode]) throw new Error('invalid board');
-  if (typeof body.level !== 'number' || !Number.isInteger(body.level) || body.level < 1 || body.level > 99) throw new Error('invalid board');
+  if (typeof body.level !== 'number' || !Number.isInteger(body.level) || body.level < 1 || body.level > 999) throw new Error('invalid board');
   if (typeof body.seed !== 'number' || !Number.isInteger(body.seed) || body.seed < 0 || body.seed > 0xffffffff) throw new Error('invalid board');
   if (!Array.isArray(body.cells) || body.cells.length < 1 || body.cells.length > 400) throw new Error('invalid board');
   var key = boardKey(body);

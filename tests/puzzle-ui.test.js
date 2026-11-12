@@ -122,11 +122,11 @@ test('the start-of-level note only names a new mascot', function () {
   assert.ok(app.indexOf("'New mascot: ' + MASCOTS[now].name") !== -1);
   assert.ok(app.indexOf("' tiles, ' + L.mascots(") === -1, 'old note removed');
 });
-test('Add is greyed out only on Easy; on Normal and Hard too early is a mistake', function () {
-  assert.ok(app.indexOf("var addGrey = addWhy === 'tooManyPairs' && s.diff === 'easy';") !== -1);
+test('Add is greyed out before level 30; from 30 too early is a mistake', function () {
+  assert.ok(app.indexOf("var addGrey = addWhy === 'tooManyPairs' && !L.toolsAt(s.level).mistake;") !== -1);
   assert.ok(app.indexOf("'Matches are left.'") !== -1);
   assert.ok(css.indexOf('#btnAdd.is-wrong') !== -1);
-  assert.ok(html.indexOf('On Normal and Hard, pressing Add too soon counts as a wrong pick.') !== -1);
+  assert.ok(html.indexOf('from level 30, pressing it too soon counts as a wrong pick') !== -1);
 });
 test('game over winds down with a sound before the card', function () {
   assert.ok(app.indexOf('function startWindDown()') !== -1);
@@ -139,9 +139,20 @@ test('walls are drawn, named, explained and announced', function () {
   assert.ok(app.indexOf('if (v === L.WALL) return WALL_SVG;') !== -1);
   assert.ok(app.indexOf("return cls + ' c-wall';") !== -1);
   assert.ok(app.indexOf("'Wall gone! +'") !== -1);
-  assert.ok(app.indexOf('L.wallCount(state.diff, state.level)') !== -1);
+  assert.ok(app.indexOf('L.wallCount(state.diff, lv)') !== -1);
   assert.ok(css.indexOf('.c-wall {') !== -1);
-  assert.ok(html.indexOf('a brick wall blocks the way') !== -1);
+  assert.ok(html.indexOf('brick walls appear') !== -1);
+});
+
+test('the ramp on screen: stage in the caption, Start at, milestones, sweep, fresh bests', function () {
+  assert.ok(app.indexOf("'Level ' + s.level + ' · ' + stageLabel") !== -1);
+  assert.ok(html.indexOf('<h2 class="set-title">Start at</h2>') !== -1);
+  assert.ok(app.indexOf('function unlocked(diff)') !== -1);
+  assert.ok(app.indexOf("'Wider board: '") !== -1);
+  assert.ok(app.indexOf("' reached!'") !== -1);
+  assert.ok(app.indexOf('function trySweep(delay)') !== -1);
+  assert.ok(app.indexOf("'numbermatch.best3.'") !== -1);
+  assert.ok(app.indexOf("'That board code is from an older version of the game.'") !== -1);
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');

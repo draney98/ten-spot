@@ -111,5 +111,22 @@ test('an invalid board is rejected', function () {
   assert.throws(function () { scores.saveBoard(db, { diff: 'nope', level: 1, mode: 'num', seed: 1, cells: [{ v: 1 }] }); }, /invalid board/);
 });
 
+test('an old database keeps its old bests aside and starts ramp bests at zero', function () {
+  var file = path.join(os.tmpdir(), 'ten-spot-old-' + process.pid + '.db');
+  try { fs.unlinkSync(file); } catch (e) { /* none */ }
+  var { DatabaseSync } = require('node:sqlite');
+  var old = new DatabaseSync(file);
+  old.exec('CREATE TABLE players (code TEXT PRIMARY KEY, easy INTEGER NOT NULL DEFAULT 0, normal INTEGER NOT NULL DEFAULT 0, hard INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
+  old.prepare("INSERT INTO players VALUES ('23456789abcdefgh', 10, 20, 30, 'x', 'x')").run();
+  old.close();
+  var db = scores.openScores(file);
+  var row = scores.getPlayer(db, '23456789abcdefgh');
+  assert.deepStrictEqual([row.easy, row.normal, row.hard], [0, 0, 0]);
+  assert.strictEqual(scores.raiseBests(db, row.code, { normal: 5 }).normal, 5);
+  assert.strictEqual(db.prepare('SELECT normal FROM players').get().normal, 20);   // old column untouched
+  db.close();
+  try { fs.unlinkSync(file); } catch (e) { /* ignore */ }
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

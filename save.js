@@ -9,7 +9,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var VERSION = 1;
+  var VERSION = 2;   // 2 = the ramp (Nov 2026); an older save starts a new run
   var KEEP_HISTORY = 50;   // undo steps kept in a save
   var DIFFS = ['easy', 'normal', 'hard'];
   var STATUSES = ['playing', 'clear', 'lose'];

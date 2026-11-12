@@ -10,13 +10,13 @@ function test(name, fn) {
   catch (e) { failed++; console.log('FAIL  ' + name + '\n      ' + e.message); }
 }
 
-test('Easy: unlimited hints, undos and packs survive a save', function () {
-  var s = L.dealPuzzle({ diff: 'easy', level: 1, seed: 12345 });
+test('unlimited hints and packs survive a save', function () {
+  var s = L.dealPuzzle({ diff: 'easy', level: 10, seed: 12345 });   // Pack unlocks at level 10
   assert.strictEqual(s.hintsLeft, Infinity);
   var back = SV.unpack(SV.pack(s, { settingsOpen: true, boardCode: 'abc-123' }));
   assert.ok(back);
   assert.strictEqual(back.state.hintsLeft, Infinity);
-  assert.strictEqual(back.state.undosLeft, Infinity);
+  assert.strictEqual(back.state.undosLeft, 5);
   assert.strictEqual(back.state.compactsLeft, Infinity);
   assert.strictEqual(back.extras.settingsOpen, true);
   assert.strictEqual(back.extras.boardCode, 'abc-123');

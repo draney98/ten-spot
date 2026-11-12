@@ -26,16 +26,72 @@
   function width(cols) { return cols || 9; }
   function boardCols(s) { return (s && s.cols) || colsFor(s && s.diff); }
 
-  /** Difficulty settings. Infinity means "unlimited". */
+  /* THE RAMP. One run climbs from level 1 for as long as you last. Nothing depends on a
+     difficulty setting any more: every rule comes from the level.
+     Each row is true FROM its level on, until the next row. Tuned with tools/sim.js:
+     about 10% of runs reach level 71 and 1-2% reach level 81. */
+  var RAMP = [
+    { from: 1,  kinds: 3, adds: 6, walls: 0 },
+    { from: 11, kinds: 3, adds: 5, walls: 0 },
+    { from: 15, kinds: 4, adds: 5, walls: 0 },
+    { from: 19, kinds: 5, adds: 5, walls: 0 },
+    { from: 23, kinds: 6, adds: 5, walls: 0 },
+    { from: 27, kinds: 6, adds: 4, walls: 0 },
+    { from: 31, kinds: 7, adds: 4, walls: 0 },
+    { from: 40, kinds: 7, adds: 4, walls: 1 },
+    { from: 46, kinds: 7, adds: 4, walls: 2 },
+    { from: 53, kinds: 7, adds: 4, walls: 1 },   // the board goes 9 wide here, so one wall goes away
+    { from: 59, kinds: 7, adds: 3, walls: 1 },
+    { from: 65, kinds: 7, adds: 3, walls: 2 },
+    { from: 76, kinds: 7, adds: 3, walls: 3 }
+  ];
+  /* The buttons you have. Infinity means unlimited. Undo is never unlimited: with unlimited
+     undo any board can be won by stepping back and trying again (tools/sim.js style bot:
+     level 70 losses 20% -> 7%), while 1-10 undos only forgive slips. Easy 5, Normal 3, Hard 1. addAt = Add works once this many pairs
+     or fewer are left. mistake = pressing Add sooner costs points and the streak
+     (otherwise the button is just greyed out). Each row lands away from the RAMP rows. */
+  var TOOLS = [
+    { from: 1,  hints: Infinity, undos: 5,        packs: 0,        addAt: 2, mistake: false },
+    { from: 10, hints: Infinity, undos: 5,        packs: Infinity, addAt: 2, mistake: false },
+    { from: 20, hints: 5,        undos: 5,        packs: Infinity, addAt: 2, mistake: false },
+    { from: 30, hints: 3,        undos: 5,        packs: 3,        addAt: 1, mistake: true },
+    { from: 37, hints: 3,        undos: 3,        packs: 3,        addAt: 1, mistake: true },   // Normal: 3 undos
+    { from: 45, hints: 1,        undos: 3,        packs: 3,        addAt: 1, mistake: true },
+    { from: 53, hints: 1,        undos: 1,        packs: 3,        addAt: 1, mistake: true },   // Hard: 1 undo (a wall goes away here too)
+    { from: 55, hints: 0,        undos: 1,        packs: 3,        addAt: 0, mistake: true },
+    { from: 62, hints: 0,        undos: 1,        packs: 2,        addAt: 0, mistake: true }
+  ];
+  /* Stage names. A run can start at Easy (level 1), or at Normal / Hard once the player
+     has reached them. `diff` in the game state is the start point (bests are kept per start). */
   var LEVELS = {
-    easy:   { label: 'Easy',   adds: 8, minAdds: 1, hints: Infinity, undos: Infinity, compacts: Infinity, diag: true,  mult: 1, maxPairsToAdd: 2,
-              board: { start: 16, grow: 4 }, kinds: { pairs: { start: 4, every: 5 } }, walls: { from: 4, every: 4, max: 1, addsEach: 0 } },
-    normal: { label: 'Normal', adds: 5, minAdds: 2, hints: 3,        undos: 5,        compacts: 3,        diag: true,  mult: 1.5, maxPairsToAdd: 1,
-              board: { start: 20, grow: 6 }, kinds: { pairs: { start: 5, every: 4 } }, walls: { from: 3, every: 3, max: 1, addsEach: 1 } },
-    hard:   { label: 'Hard',   adds: 4, minAdds: 1, hints: 0,        undos: 1,        compacts: 1,        diag: true,  mult: 2.5, maxPairsToAdd: 0,
-              board: { start: 24, grow: 8 }, kinds: { pairs: { start: 6, every: 3 } }, walls: { from: 3, every: 3, max: 1, addsEach: 1 } }
+    easy:   { label: 'Easy',   start: 1 },
+    normal: { label: 'Normal', start: 37 },
+    hard:   { label: 'Hard',   start: 53 }
   };
-  // `diag` is kept as a switch so a future mode can turn diagonals off. Every difficulty allows them today.
+  var DIAG = true;   // every level allows diagonal pairs
+  var PACK_FROM = 10;
+
+  function rowFor(table, level) {
+    var lv = Math.max(1, level || 1), row = table[0];
+    for (var i = 0; i < table.length; i++) if (table[i].from <= lv) row = table[i];
+    return row;
+  }
+  function rampAt(level) { return rowFor(RAMP, level); }
+  function toolsAt(level) { return rowFor(TOOLS, level); }
+  /** 'easy' (levels 1-36), 'normal' (37-52) or 'hard' (53 on). */
+  function stageOf(level) {
+    var lv = level || 1;
+    return lv >= LEVELS.hard.start ? 'hard' : lv >= LEVELS.normal.start ? 'normal' : 'easy';
+  }
+  /** Tiles rise by 2 every 2 levels, from 12 at level 1 to 80 at level 69. */
+  function tilesAt(level) { return Math.min(80, 10 + 2 * Math.ceil(Math.max(1, level || 1) / 2)); }
+  /** The board is as wide as it needs to be to hold the tiles and walls as a square:
+      5 x 5, 6 x 6 ... 9 x 9 (odd squares keep the centre spot blank). Never wider than 9. */
+  function widthAt(level) {
+    var need = tilesAt(level) + rampAt(level).walls;
+    for (var w = 5; w <= 9; w++) if (w * w - (w % 2) >= need) return w;
+    return 9;
+  }
 
   /** Gridiron. Value v belongs to mascot Math.ceil(v / 2):
       odd v = outline, even v = solid twin. Any two tiles of the
@@ -58,6 +114,7 @@
     streakMax: 2,      // ...up to x2
     row: 30,           // row bonus = 30 x (rows emptied by this pair)^2
     wall: 50,          // + 50 for each wall that leaves with its row (x mult)
+    sweep: 25,         // clean sweep: + 25 per pair (x mult), on top of each pair's own points
     levelPerLevel: 100,// level bonus = 100 x level ...
     parAdd: 200,       // ... + 200 for each match under par
     hintCost: 25,      // points, x mult
@@ -68,44 +125,17 @@
      BOARDS
      ------------------------------------------------------------------ */
 
-  /** How many tiles a level starts with. Boards grow every level: by LEVELS[diff].board.grow
-      up to level 10, then by 2 a level, and never past 100 tiles (bigger boards are slow to
-      deal and check on phones). Every number here is even, so tiles always come in pairs. */
-  var BOARD_FAST_LEVELS = 10, BOARD_SLOW_GROW = 2, BOARD_MAX = 100;
-  function boardSize(level, diff) {
-    var b = (LEVELS[diff] || LEVELS.normal).board;
-    var lv = Math.max(1, level || 1);
-    var fast = Math.min(lv, BOARD_FAST_LEVELS) - 1;
-    var slow = Math.max(0, lv - BOARD_FAST_LEVELS);
-    return Math.min(BOARD_MAX, b.start + b.grow * fast + BOARD_SLOW_GROW * slow);
-  }
+  /** How many tiles a level starts with (see tilesAt). The diff argument is ignored. */
+  function boardSize(level, diff) { return tilesAt(level); }
 
-  /** Gridiron: mascots in play. Easy starts at 4 and adds one every 5 levels, Normal 5 every 4, Hard 6 every 3, up to 8. */
+  /** Gridiron: mascots in play on a level (see RAMP). */
   function mascots(level, diff) {
     return kindCount(diff, level, 'pairs');
   }
   function mascotOf(v) { return Math.ceil(v / 2); }   // 1..8
   function isSolid(v) { return v % 2 === 0; }
 
-  /** Pull one mascot down to a single pair. Spare pairs go to the fullest other mascot. */
-  function plantStrand(counts, rng) {
-    var victims = [];
-    for (var i = 0; i < counts.length; i++) if (counts[i] > 1) victims.push(i);
-    if (!victims.length) return;
-    var v = victims[Math.floor(rng() * victims.length)];
-    while (counts[v] > 1) {
-      var dest = -1;
-      for (var k = 0; k < counts.length; k++) {
-        if (k === v) continue;
-        if (dest < 0 || counts[k] > counts[dest]) dest = k;
-      }
-      counts[v]--;
-      counts[dest]++;
-    }
-  }
-
-  /** Gridiron board: an even share of pairs per mascot (Hard then leaves one mascot
-      with a single pair). Each pair prefers one version (3/8 both outline,
+  /** Gridiron board: an even share of pairs per mascot. Each pair prefers one version (3/8 both outline,
       3/8 both solid, 1/4 one of each). Shuffle. */
   function pairsBoard(level, rng, diff) {
     var fams = mascots(level, diff);
@@ -117,7 +147,6 @@
     for (var f = 0; f < fams; f++) { counts.push(base); order.push(f); }
     shuffle(order, rng);
     for (var e = 0; e < extra; e++) counts[order[e]]++;
-    if (diff === 'hard') plantStrand(counts, rng);
     var vals = [];
     for (var m = 0; m < fams; m++) {
       var outline = 2 * m + 1, solid = 2 * m + 2;
@@ -167,26 +196,27 @@
     throw new Error('no beatable board');
   }
 
+  /** A board code is the level and the seed, e.g. "41-1a2b3c4d".
+      Returns null if it isn't a code, or { old: true } for a code from before the ramp. */
   function parsePuzzle(text) {
-    var m = /^(easy|normal|hard)-(\d+)-teams-([0-9a-f]{8})$/.exec(String(text || '').trim().toLowerCase());
+    var t = String(text || '').trim().toLowerCase();
+    if (/^(easy|normal|hard)-\d+-teams-[0-9a-f]{8}$/.test(t)) return { old: true };
+    var m = /^(\d+)-([0-9a-f]{8})$/.exec(t);
     if (!m) return null;
-    var level = Number(m[2]);
-    if (level < 1 || level > 99) return null;
-    return { diff: m[1], level: level, mode: 'teams', seed: parseInt(m[3], 16) };
+    var level = Number(m[1]);
+    if (level < 1 || level > 999) return null;
+    return { diff: stageOf(level), level: level, mode: 'teams', seed: parseInt(m[2], 16) };
   }
 
   function formatPuzzle(spec) {
     var hex = (spec.seed >>> 0).toString(16);
     while (hex.length < 8) hex = '0' + hex;
-    return spec.diff + '-' + spec.level + '-teams-' + hex;
+    return spec.level + '-' + hex;
   }
 
-  /** How many mascots a difficulty uses on a level. */
+  /** How many mascots a level uses (see RAMP). The diff argument is ignored. */
   function kindCount(diff, level) {
-    var table = (LEVELS[diff] && LEVELS[diff].kinds) || LEVELS.normal.kinds;
-    var spec = table.pairs;
-    var steps = Math.max(0, (level || 1) - 1);
-    return Math.min(MAX_MASCOTS, spec.start + Math.floor(steps / spec.every));
+    return Math.min(MAX_MASCOTS, rampAt(level).kinds);
   }
 
   function makeBoard(level, rng, rules, diff) {
@@ -197,16 +227,14 @@
      RULE HELPERS
      ------------------------------------------------------------------ */
 
-  /** Adds allowed on a level: starts at LEVELS[diff].adds and drops by 1
-      every 2 levels, never below LEVELS[diff].minAdds. */
+  /** Adds allowed on a level (see RAMP). The diff argument is ignored. */
   function addsFor(diff, level) {
-    var L = LEVELS[diff];
-    return Math.max(L.minAdds, L.adds - Math.floor((level - 1) / 2));
+    return rampAt(level).adds;
   }
 
-  /** Point multiplier: difficulty multiplier, +20% per level above 1. */
+  /** Point multiplier: x1 on level 1, +0.1 a level (x4.6 at 37, x6.2 at 53, x7.9 at 70). */
   function pointMult(diff, level) {
-    return LEVELS[diff].mult * (1 + 0.2 * (level - 1));
+    return Math.round((1 + 0.1 * ((level || 1) - 1)) * 10) / 10;
   }
 
   /** Same mascot. The rules argument is ignored; every deal is Gridiron. */
@@ -229,12 +257,20 @@
     }
     return tile;
   }
-  /** How many walls a level is dealt with. LEVELS[diff].walls: from = first level with a wall,
-      every = levels between each extra wall, max = most walls, addsEach = extra adds per wall. */
+  /** How many walls a level is dealt with (see RAMP). The diff argument is ignored. */
   function wallCount(diff, level) {
-    var W = (LEVELS[diff] || LEVELS.normal).walls;
-    if (!W || level < W.from) return 0;
-    return Math.min(W.max, 1 + Math.floor((level - W.from) / W.every));
+    return rampAt(level).walls;
+  }
+  /** On an odd square that is exactly full (5 x 5, 7 x 7, 9 x 9) the centre spot is blank:
+      an empty spot that starts cleared, so paths pass through it. v = BLANK (0). */
+  var BLANK = 0;
+  function isBlank(c) { return c.v === BLANK && c.done; }
+  function placeBlank(vals, cols) {
+    var w = width(cols);
+    if (w % 2 === 0 || vals.length !== w * w - 1) return vals;
+    var out = vals.slice();
+    out.splice((w * w - 1) / 2, 0, { v: BLANK, done: true });
+    return out;
   }
   /** Put `count` walls into the tile list, each in a different row and never in the last row. */
   function placeWalls(vals, count, cols, rng) {
@@ -521,7 +557,7 @@
     if (key === beatCacheKey) return beatCacheVal;
     var val;
     if ((state.addsLeft || 0) <= 0) {
-      val = canClear(state.cells, LEVELS[state.diff].diag, state.rules, null, boardCols(state)) !== false;
+      val = canClear(state.cells, DIAG, state.rules, null, boardCols(state)) !== false;
     } else {
       inBeatable++;
       try {
@@ -557,7 +593,7 @@
       if (seen[key]) return false;
       seen[key] = true;
 
-      var diag = LEVELS[s.diff].diag;
+      var diag = DIAG;
       var pairs = allPairs(s.cells, diag, s.rules, boardCols(s));
       for (var p = 0; p < pairs.length; p++) {
         var i = pairs[p][0], j = pairs[p][1];
@@ -843,7 +879,7 @@
     var w = width(cols);
     var deadline = Date.now() + budgetMs;
     var cells = values.map(function (v, i) {
-      return { id: i + 1, v: (v && typeof v === 'object') ? v.v : v, done: false };
+      return { id: i + 1, v: (v && typeof v === 'object') ? v.v : v, done: !!(v && typeof v === 'object' && v.done) };
     });
     var board = linkBoard(cells, diag, rules, w);
     var adds = 0, matches = 0, guard = 0;
@@ -913,20 +949,20 @@
   }
 
   function levelFields(diff, level, rng) {
-    var L = LEVELS[diff];
-    var cols = colsFor(diff);
+    var T = toolsAt(level);
+    var cols = widthAt(level);
     var tiles = pairsBoard(level, rng || Math.random, diff);
     var walls = wallCount(diff, level);
-    var vals = placeWalls(tiles, walls, cols, rng || Math.random);
-    var addsThisLevel = addsFor(diff, level) + walls * (L.walls ? L.walls.addsEach : 0);   // Normal and Hard: a wall brings one extra add
-    var play = tidyPlay(vals, L.diag, 'pairs', addsThisLevel, null, cols);
+    var vals = placeBlank(placeWalls(tiles, walls, cols, rng || Math.random), cols);
+    var addsThisLevel = addsFor(diff, level);
+    var play = tidyPlay(vals, DIAG, 'pairs', addsThisLevel, null, cols);
     return {
       level: level,
       rules: 'pairs',
       cols: cols,
       cells: vals.map(function (tile, i) {
         var v = (tile && typeof tile === 'object') ? tile.v : tile;
-        var cell = { id: i + 1, v: v, done: false };
+        var cell = { id: i + 1, v: v, done: !!(tile && typeof tile === 'object' && tile.done) };
         if (tile && typeof tile === 'object' && typeof tile.solid === 'boolean') cell.solid = tile.solid;
         return cell;
       }),
@@ -938,9 +974,9 @@
       cleared: 0,
       total: tiles.length,   // tiles only; walls are never cleared
       addsLeft: addsThisLevel,
-      hintsLeft: L.hints,
-      undosLeft: L.undos,
-      compactsLeft: L.compacts,
+      hintsLeft: T.hints,
+      undosLeft: T.undos,
+      compactsLeft: T.packs,
       history: [],
       status: 'playing',
       bonus: 0,
@@ -949,6 +985,7 @@
       opening: vals.map(function (tile) {
         var v = (tile && typeof tile === 'object') ? tile.v : tile;
         var tile0 = { v: v };
+        if (tile && typeof tile === 'object' && tile.done) tile0.done = true;
         if (tile && typeof tile === 'object' && typeof tile.solid === 'boolean') tile0.solid = tile.solid;
         return tile0;
       })
@@ -957,7 +994,7 @@
 
   /** Every deal is Gridiron. A rules argument is ignored. */
   function newGame(diff, best, rng) {
-    var s = levelFields(diff, 1, rng);
+    var s = levelFields(diff, startLevel(diff), rng);
     s.diff = diff;
     s.moves = 0;
     s.score = 0;
@@ -966,9 +1003,12 @@
     return s;
   }
 
+  /** First level of a start point: Easy 1, Normal 37, Hard 53. */
+  function startLevel(diff) { return (LEVELS[diff] || LEVELS.easy).start; }
+
   function dealPuzzle(spec) {
     return seekSeed(spec.seed, function (seed) {
-      var s = levelFields(spec.diff, spec.level || 1, mulberry32(seed));
+      var s = levelFields(spec.diff, spec.level || startLevel(spec.diff), mulberry32(seed));
       s.diff = spec.diff;
       s.seed = seed;
       s.moves = spec.moves || 0;
@@ -1000,7 +1040,7 @@
       red instead. canClear can keep the level going when the only remaining
       pair appears after a finished row collapses. */
   function finish(n) {
-    var diag = LEVELS[n.diff].diag;
+    var diag = DIAG;
     var w = boardCols(n);
     if (n.total - n.cleared === 0) {
       n.status = 'clear';
@@ -1051,7 +1091,7 @@
     var pi = indexOfId(s.cells, s.selected);
     var a = Math.min(pi, idx), b = Math.max(pi, idx);
     var okValue = matches(s.cells[a].v, s.cells[b].v, s.rules);
-    var okPath = canLink(s.cells, a, b, LEVELS[s.diff].diag, boardCols(s));
+    var okPath = canLink(s.cells, a, b, DIAG, boardCols(s));
     if (okValue && okPath) return applyMatch(s, a, b);
 
     n = copy(s);
@@ -1138,17 +1178,76 @@
     return false;
   }
 
+  /* CLEAN SWEEP. Right after an Add or a Pack, if every tile left can be paired off at once
+     using pairs that are legal right now (each tile used once), they all clear together for
+     a bonus. Clearing tiles only opens paths, so any full pairing of legal pairs works. */
+  var SWEEP_BUDGET = 20000;
+  /** A full pairing of the board's tiles, as index pairs, or null. */
+  function sweepPairs(s) {
+    if (s.status !== 'playing') return null;
+    var cells = s.cells, live = [], adj = {};
+    for (var i = 0; i < cells.length; i++) if (!cells[i].done && !isWall(cells[i])) { live.push(i); adj[i] = []; }
+    if (!live.length || live.length % 2) return null;
+    allPairs(cells, DIAG, s.rules, boardCols(s)).forEach(function (p) { adj[p[0]].push(p[1]); adj[p[1]].push(p[0]); });
+    for (var k = 0; k < live.length; k++) if (!adj[live[k]].length) return null;
+    var used = {}, out = [], steps = 0;
+    function go() {
+      if (++steps > SWEEP_BUDGET) return false;
+      var pick = -1, fewest = Infinity;
+      for (var a = 0; a < live.length; a++) {
+        var x = live[a];
+        if (used[x]) continue;
+        var free = 0;
+        for (var b = 0; b < adj[x].length; b++) if (!used[adj[x][b]]) free++;
+        if (!free) return false;
+        if (free < fewest) { fewest = free; pick = x; }
+      }
+      if (pick < 0) return true;
+      used[pick] = true;
+      for (var c = 0; c < adj[pick].length; c++) {
+        var y = adj[pick][c];
+        if (used[y]) continue;
+        used[y] = true; out.push([pick, y]);
+        if (go()) return true;
+        out.pop(); used[y] = false;
+      }
+      used[pick] = false;
+      return false;
+    }
+    return go() ? out : null;
+  }
+  /** Clear the whole board at once if it can be swept. event.matches has each pair's match
+      event (for drawing the lines); event.bonus is the sweep bonus; event.gain is everything. */
+  function cleanSweep(s) {
+    var found = sweepPairs(s);
+    if (!found) return { state: s, event: null };
+    var pairs = found.map(function (p) { return [s.cells[p[0]].id, s.cells[p[1]].id]; });
+    var bonus = Math.round(SCORE.sweep * pairs.length * pointMult(s.diff, s.level));
+    var n = copy(s);
+    n.score = s.score + bonus;
+    n.selected = null;
+    var matches = [], gain = bonus;
+    for (var i = 0; i < pairs.length; i++) {
+      var r2 = select(select(n, pairs[i][0]).state, pairs[i][1]);
+      if (!r2.event || r2.event.type !== 'match') return { state: s, event: null };   // should not happen
+      n = r2.state;
+      matches.push(r2.event);
+      gain += r2.event.gain;
+    }
+    return { state: n, event: { type: 'sweep', pairs: pairs, matches: matches, bonus: bonus, gain: gain, status: n.status, newBest: n.newBest } };
+  }
+
   /** Copy every not-done value, in order, onto the end of the board. */
   function addNumbers(s) {
     var block = addBlock(s);
     if (block === 'tooManyPairs') {
-      var pairs = pairsOnBoard(s), max = LEVELS[s.diff].maxPairsToAdd;
-      // Easy: the button is greyed out, so this only happens if it is called anyway. Nothing changes.
-      if (s.diff === 'easy') return { state: s, event: { type: 'addBlocked', pairs: pairs, max: max, penalty: 0 } };
-      // Normal and Hard: pressing Add too early is a mistake, like picking two tiles that don't match.
+      var pairs = pairsOnBoard(s), max = toolsAt(s.level).addAt;
+      // Before level 30 the button is greyed out, so this only happens if it is called anyway. Nothing changes.
+      if (!toolsAt(s.level).mistake) return { state: s, event: { type: 'addBlocked', pairs: pairs, max: max, penalty: 0 } };
+      // From level 30: pressing Add too early is a mistake, like picking two tiles that don't match.
       // It costs half of what the best pair on the board (the one Hint would show) would have scored,
       // and the streak goes back to zero. No rows are added and no add is used.
-      var p = findPair(s.cells, LEVELS[s.diff].diag, s.rules, true, boardCols(s));
+      var p = findPair(s.cells, DIAG, s.rules, true, boardCols(s));
       var would = p ? pairScore(s, p[0], p[1], (s.streak || 0) + 1, 0).pair : 0;
       var penalty = Math.min(s.score, Math.round(would / 2));
       var n = copy(s);
@@ -1217,7 +1316,7 @@
       With no adds left, prefer a pair that still leaves the board clearable. */
   function hint(s) {
     if (s.status !== 'playing' || s.hintsLeft <= 0) return { state: s, event: null };
-    var diag = LEVELS[s.diff].diag;
+    var diag = DIAG;
     var w = boardCols(s);
     var ids = null;
     if (s.addsLeft <= 0) {
@@ -1284,7 +1383,7 @@
   function canHint(s) { return s.status === 'playing' && s.hintsLeft > 0 && remaining(s) > 0; }
   /** How many legal pairs are on the board right now. */
   function pairsOnBoard(s) {
-    return allPairs(s.cells, LEVELS[s.diff].diag, s.rules, boardCols(s)).length;
+    return allPairs(s.cells, DIAG, s.rules, boardCols(s)).length;
   }
 
   /** Why Add is not allowed right now.
@@ -1293,7 +1392,7 @@
   function addBlock(s) {
     if (s.status !== 'playing' || remaining(s) <= 0) return 'notPlaying';
     if (s.addsLeft <= 0) return 'noAdds';
-    if (pairsOnBoard(s) > LEVELS[s.diff].maxPairsToAdd) return 'tooManyPairs';
+    if (pairsOnBoard(s) > toolsAt(s.level).addAt) return 'tooManyPairs';
     return null;
   }
   function canAdd(s) { return addBlock(s) === null; }
@@ -1312,6 +1411,8 @@
     mulberry32: mulberry32, nextSeed: nextSeed, randomSeed: randomSeed, seekSeed: seekSeed,
     parsePuzzle: parsePuzzle, formatPuzzle: formatPuzzle,
     indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd, addBlock: addBlock, pairsOnBoard: pairsOnBoard, canCompact: canCompact,
-    kindCount: kindCount, wallCount: wallCount, isWall: isWall, WALL: WALL
+    kindCount: kindCount, wallCount: wallCount, isWall: isWall, WALL: WALL,
+    RAMP: RAMP, TOOLS: TOOLS, PACK_FROM: PACK_FROM, rampAt: rampAt, toolsAt: toolsAt, stageOf: stageOf, tilesAt: tilesAt, widthAt: widthAt,
+    startLevel: startLevel, BLANK: BLANK, isBlank: isBlank, sweepPairs: sweepPairs, cleanSweep: cleanSweep
   };
 });

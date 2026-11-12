@@ -23,8 +23,18 @@ function scripted(seq) {
   return function () { return i < seq.length ? seq[i++] : 0.999; };
 }
 // A state with a custom board (level 1, given difficulty).
+// Old fixtures were written per difficulty. On the ramp the point multiplier comes from the
+// level, so each old difficulty maps to the level with its old multiplier (x1, x1.5, x2.5)
+// and keeps its old width. Tools follow that level (see L.TOOLS).
+var FIXTURE = { easy: { level: 1, cols: 7 }, normal: { level: 6, cols: 8 }, hard: { level: 16, cols: 9 } };
 function stateWith(values, diff, extra) {
-  var s = L.newGame(diff || 'normal');
+  var f = FIXTURE[diff || 'normal'];
+  var s = L.newGame('easy');
+  s.diff = diff || 'normal';
+  s.level = f.level;
+  s.cols = f.cols;
+  var T = L.toolsAt(f.level);
+  s.hintsLeft = T.hints; s.undosLeft = T.undos; s.compactsLeft = T.packs;
   s.cells = board(values);
   s.nextId = values.length + 1;
   s.total = values.length;
@@ -34,21 +44,15 @@ function stateWith(values, diff, extra) {
 var X = 0; // filler value used in canLink tests (value doesn't matter there)
 
 /* ---------------- boards ---------------- */
-test('boards grow every level, more slowly after level 10, and stop at 100 tiles', function () {
-  function size(diff) { return function (level) { return L.boardSize(level, diff); }; }
-  assert.deepStrictEqual([1, 2, 5, 10, 11, 15, 40].map(size('easy')),   [16, 20, 32, 52, 54, 62, 100]);
-  assert.deepStrictEqual([1, 2, 5, 10, 11, 15, 40].map(size('normal')), [20, 26, 44, 74, 76, 84, 100]);
-  assert.deepStrictEqual([1, 2, 5, 10, 11, 15, 40].map(size('hard')),   [24, 32, 56, 96, 98, 100, 100]);
-  for (var level = 1; level <= 60; level++) {
-    ['easy', 'normal', 'hard'].forEach(function (diff) {
-      assert.strictEqual(L.boardSize(level, diff) % 2, 0, diff + ' level ' + level + ' is odd');
-    });
-  }
+test('ramp: tiles rise by 2 every 2 levels from 12 to 80, and are always even', function () {
+  assert.deepStrictEqual([1, 2, 3, 13, 14, 15, 37, 69, 70, 120].map(function (l) { return L.boardSize(l); }), [12, 12, 14, 24, 24, 26, 48, 80, 80, 80]);
+  for (var level = 1; level <= 120; level++) assert.strictEqual(L.boardSize(level) % 2, 0, 'level ' + level);
 });
-test('easy is 7 columns, normal 8, and hard 9', function () {
-  assert.strictEqual(L.newGame('easy').cols, 7);
-  assert.strictEqual(L.newGame('normal').cols, 8);
-  assert.strictEqual(L.newGame('hard').cols, 9);
+test('ramp: the board widens to hold its tiles and walls as a square', function () {
+  assert.deepStrictEqual([1, 14, 15, 26, 27, 38, 39, 52, 53, 80].map(L.widthAt), [5, 5, 6, 6, 7, 7, 8, 8, 9, 9]);
+  assert.strictEqual(L.newGame('easy').cols, 5);
+  assert.strictEqual(L.newGame('normal').cols, 7);   // Normal starts at level 37
+  assert.strictEqual(L.newGame('hard').cols, 9);     // Hard starts at level 53
 });
 
 /* ---------------- matching ---------------- */
@@ -118,16 +122,12 @@ test('a fully-done partial last row is removed too', function () {
 });
 
 /* ---------------- difficulty ---------------- */
-test('adds per level drop by one every two levels to a minimum', function () {
-  assert.deepStrictEqual([1,2,3,4,5,6,7,8,9,10].map(function (l) { return L.addsFor('normal', l); }), [5,5,4,4,3,3,2,2,2,2]);
-  assert.deepStrictEqual([1,3,5,7,9,11].map(function (l) { return L.addsFor('easy', l); }), [8,7,6,5,4,3]);
-  assert.strictEqual(L.addsFor('easy', 99), 1);
-  assert.deepStrictEqual([1,2,3,4].map(function (l) { return L.addsFor('hard', l); }), [4,4,3,3]);
-  assert.strictEqual(L.addsFor('hard', 99), 1);
+test('ramp: adds per level', function () {
+  assert.deepStrictEqual([1, 10, 11, 26, 27, 58, 59, 100].map(function (l) { return L.addsFor('easy', l); }), [6, 6, 5, 5, 4, 4, 3, 3]);
+  assert.strictEqual(L.addsFor('hard', 1), 6, 'the difficulty no longer matters');
 });
-test('point multiplier', function () {
-  assert.strictEqual(L.pointMult('normal', 1), 1.5);
-  assert.ok(Math.abs(L.pointMult('hard', 3) - 3.5) < 1e-9);
+test('point multiplier grows 0.1 a level', function () {
+  assert.deepStrictEqual([1, 6, 16, 37, 53, 70].map(function (l) { return L.pointMult('easy', l); }), [1, 1.5, 2.5, 4.6, 6.2, 7.9]);
 });
 
 /* ---------------- actions ---------------- */
@@ -179,41 +179,46 @@ test('add numbers appends copies of active values and spends an add', function (
   var s = stateWith([1,2,3], 'normal');
   var r = L.addNumbers(s);
   assert.deepStrictEqual(r.state.cells.map(function (c) { return c.v; }), [1,2,3,1,2,3]);
-  assert.strictEqual(r.state.addsLeft, 4);
+  assert.strictEqual(r.state.addsLeft, s.addsLeft - 1);
   assert.strictEqual(r.state.total, 6);
   assert.deepStrictEqual(r.event.ids, [4,5,6]);
 });
 test('undo restores the board, costs an undo, refunds an add', function () {
-  var s = stateWith([1,2,3], 'normal');
+  var s = stateWith([1,2,3], 'normal', { level: 30, undosLeft: 5 });
+  var adds = s.addsLeft;
   s = L.addNumbers(s).state;
   var r = L.undo(s);
   assert.strictEqual(r.state.cells.length, 3);
-  assert.strictEqual(r.state.addsLeft, 5);
+  assert.strictEqual(r.state.addsLeft, adds);
   assert.strictEqual(r.state.undosLeft, 4);
 });
-test('unlimited undo stays unlimited', function () {
+test('undo is never unlimited: Easy levels start with 5', function () {
   var s = L.addNumbers(stateWith([1,2,3], 'easy')).state;
-  assert.strictEqual(L.undo(s).state.undosLeft, Infinity);
+  assert.strictEqual(s.undosLeft, 5);
+  assert.strictEqual(L.undo(s).state.undosLeft, 4);
 });
 test('hint returns a legal pair and costs a hint', function () {
-  var r = L.hint(stateWith([1, 1, 3], 'normal'));
+  var r = L.hint(stateWith([1, 1, 3], 'normal', { hintsLeft: 3 }));
   assert.strictEqual(r.event.type, 'hint');
   assert.strictEqual(r.state.hintsLeft, 2);
   assert.deepStrictEqual(r.event.ids, [1, 2]);
 });
-test('hard mode has no hints', function () {
-  assert.strictEqual(L.hint(L.newGame('hard')).event, null);
+test('from level 55 there are no hints', function () {
+  assert.strictEqual(L.newGame('hard').hintsLeft, 1);          // level 53
+  var s = L.dealPuzzle({ diff: 'hard', level: 55, seed: 3 });
+  assert.strictEqual(s.hintsLeft, 0);
+  assert.strictEqual(L.hint(s).event, null);
 });
 test('clearing the last pair clears the level with a bonus', function () {
   var s = stateWith([1, 2], 'normal', { par: 3 });
   var r = L.select(L.select(s, 1).state, 2);
   assert.strictEqual(r.state.status, 'clear');
-  // 1 match used, par 3, 2 under par: 1.5 * (100 + 400) = 750. Pair is mixed, plus one row.
-  assert.strictEqual(r.state.bonus, 750);
+  // Level 6 (x1.5): 1 match used, par 3, 2 under par: 1.5 * (100 x 6 + 400) = 1500. Pair is mixed, plus one row.
+  assert.strictEqual(r.state.bonus, 1500);
   assert.strictEqual(r.event.gain, 60);
-  assert.strictEqual(r.state.score, 810);
+  assert.strictEqual(r.state.score, 1560);
   assert.ok(r.state.newBest);
-  assert.strictEqual(r.state.best.normal, 810);
+  assert.strictEqual(r.state.best.normal, 1560);
 });
 test('no adds and no pairs left = game over', function () {
   var s = stateWith([1,1,2,3], 'normal', { addsLeft: 0 });
@@ -223,15 +228,13 @@ test('no adds and no pairs left = game over', function () {
   assert.strictEqual(r.state.final, 30);
 });
 test('next level deals a bigger board, keeps score, resets adds', function () {
-  var s = L.select(L.select(stateWith([1, 2], 'normal'), 1).state, 2).state;
+  var s = L.select(L.select(stateWith([1, 2], 'normal', { level: 10 }), 1).state, 2).state;
   var n = L.nextLevel(s, Math.random).state;
-  assert.strictEqual(n.level, 2);
-  assert.strictEqual(n.cells.length, 26);
+  assert.strictEqual(n.level, 11);
+  assert.strictEqual(n.cells.length, 22);
   assert.strictEqual(n.score, s.score);
   assert.strictEqual(n.addsLeft, 5);
   assert.strictEqual(n.status, 'playing');
-  var n3 = L.nextLevel(Object.assign({}, n, { status: 'clear' }), Math.random).state;
-  assert.strictEqual(n3.addsLeft, 5);   // 4 for level 3, plus 1 for its wall
 });
 test('actions never mutate the state they were given', function () {
   var s = L.newGame('normal');
@@ -260,15 +263,15 @@ test('pairs: same mascot matches (outline+solid or identical), different mascot 
   assert.ok(!L.matches(2, 3, 'pairs'));  // mascot 1 vs mascot 2
   assert.ok(!L.matches(1, 9, 'pairs'));  // sums to 10 but different mascots
 });
-test('normal starts with 5 mascots and adds one every 4 levels, up to 8', function () {
-  assert.deepStrictEqual([1, 4, 5, 8, 9, 13, 30].map(function (level) { return L.mascots(level, 'normal'); }), [5, 5, 6, 6, 7, 8, 8]);
+test('ramp: mascots 3 at level 1, then 4, 5, 6 and 7 at levels 15, 19, 23 and 31', function () {
+  assert.deepStrictEqual([1, 14, 15, 19, 23, 30, 31, 100].map(function (l) { return L.mascots(l); }), [3, 3, 4, 5, 6, 6, 7, 7]);
 });
-test('easy starts with 4 and adds one every 5 levels; hard starts with 6 and adds one every 3', function () {
-  assert.deepStrictEqual([1, 5, 6, 11, 16].map(function (level) { return L.mascots(level, 'easy'); }), [4, 4, 5, 6, 7]);
-  assert.deepStrictEqual([1, 3, 4, 7, 10].map(function (level) { return L.mascots(level, 'hard'); }), [6, 6, 7, 8, 8]);
+test('ramp: stages are Easy to 36, Normal 37-52, Hard from 53', function () {
+  assert.deepStrictEqual([1, 36, 37, 52, 53, 99].map(L.stageOf), ['easy', 'easy', 'normal', 'normal', 'hard', 'hard']);
+  assert.deepStrictEqual(['easy', 'normal', 'hard'].map(L.startLevel), [1, 37, 53]);
 });
-test('pairs: normal boards are 20, 26, 44, 68 tiles on levels 1, 2, 5, 9 and use only the allowed mascots', function () {
-  [[1,20,5],[2,26,5],[5,44,6],[9,68,7]].forEach(function (t) {
+test('pairs: boards have the ramp size and use only the allowed mascots', function () {
+  [[1,12,3],[15,26,4],[31,42,7],[69,80,7]].forEach(function (t) {
     var b = L.pairsBoard(t[0], Math.random);
     assert.strictEqual(b.length, t[1]);
     b.forEach(function (v) { assert.ok(v >= 1 && v <= 2 * t[2], 'value ' + v + ' on level ' + t[0]); });
@@ -281,9 +284,9 @@ test('pairs: prefer both outline or both solid', function () {
     L.pairsBoard(1, constant(x)).forEach(function (v) { if (v % 2) outline++; else solid++; });
     return [outline, solid];
   }
-  assert.deepStrictEqual(shades(0), [20, 0]);
-  assert.deepStrictEqual(shades(0.5), [0, 20]);
-  assert.deepStrictEqual(shades(0.8), [10, 10]);
+  assert.deepStrictEqual(shades(0), [12, 0]);
+  assert.deepStrictEqual(shades(0.5), [0, 12]);
+  assert.deepStrictEqual(shades(0.8), [6, 6]);
 });
 function mascotTiles(board) {
   var count = {};
@@ -306,23 +309,19 @@ test('pairs: easy and normal deal every mascot, and counts differ by at most one
     });
   });
 });
-test('pairs: hard deals every mascot and leaves exactly one with a single pair', function () {
-  [1, 3, 5, 8].forEach(function (level) {
-    var fams = L.mascots(level, 'hard');
-    var count = mascotTiles(L.pairsBoard(level, Math.random, 'hard'));
-    var singles = 0;
-    for (var m = 1; m <= fams; m++) {
-      assert.ok(count[m] > 0, 'level ' + level + ' missing mascot ' + m);
-      assert.strictEqual(count[m] % 2, 0);
-      if (count[m] === 2) singles++;
-    }
-    assert.strictEqual(singles, 1, 'level ' + level + ' singles');
+test('pairs: every mascot gets an even share of pairs', function () {
+  [1, 15, 31, 69].forEach(function (level) {
+    var fams = L.mascots(level);
+    var count = mascotTiles(L.pairsBoard(level, Math.random));
+    var counts = [];
+    for (var m = 1; m <= fams; m++) { assert.ok(count[m] > 0, 'level ' + level + ' missing mascot ' + m); assert.strictEqual(count[m] % 2, 0); counts.push(count[m]); }
+    assert.ok(Math.max.apply(null, counts) - Math.min.apply(null, counts) <= 2, 'level ' + level);
   });
 });
 test('pairs: new game, select, hint and next level keep the Gridiron rules', function () {
-  var s = L.newGame('normal', null, Math.random, 'pairs');
+  var s = L.newGame('easy', null, Math.random, 'pairs');
   assert.strictEqual(s.rules, 'pairs');
-  assert.strictEqual(s.cells.length, 20);
+  assert.strictEqual(s.cells.length, 12);
   s.cells = board([1, 2, 3, 6]); s.total = 4; s.nextId = 5;   // longhorn outline+solid, paw outline, helmet solid
   var h = L.hint(s);
   assert.deepStrictEqual(h.event.ids, [1, 2]);
@@ -334,7 +333,7 @@ test('pairs: new game, select, hint and next level keep the Gridiron rules', fun
   assert.strictEqual(cleared.status, 'clear');
   var next = L.nextLevel(cleared, Math.random).state;
   assert.strictEqual(next.rules, 'pairs');
-  assert.strictEqual(next.cells.length, 26);
+  assert.strictEqual(next.cells.length, 18);   // level 7
 });
 test('Gridiron is the only ruleset', function () {
   assert.strictEqual(L.newGame('normal').rules, 'pairs');
@@ -365,12 +364,12 @@ test('add copies a stored shade flag onto the new tiles', function () {
   assert.strictEqual(added[1].solid, false);
 });
 test('the next level deals a larger Gridiron board', function () {
-  var dealt = L.nextLevel(stateWith([1, 1], 'easy', { status: 'clear', level: 1 }), scripted([0.01, 0])).state;
-  assert.strictEqual(dealt.level, 2);
-  assert.strictEqual(dealt.cells.length, 20);
+  var dealt = L.nextLevel(stateWith([1, 1], 'easy', { status: 'clear', level: 2 }), scripted([0.01, 0])).state;
+  assert.strictEqual(dealt.level, 3);
+  assert.strictEqual(dealt.cells.length, 14);
   assert.strictEqual(dealt.rules, 'pairs');
-  assert.strictEqual(dealt.cols, 7);
-  dealt.cells.forEach(function (c) { assert.ok(c.v >= 1 && c.v <= 8); });
+  assert.strictEqual(dealt.cols, 5);
+  dealt.cells.forEach(function (c) { assert.ok(c.v >= 1 && c.v <= 6); });
 });
 test('an outline and a solid tile score normal points', function () {
   var r = L.select(L.select(stateWith([1, 2, 5], 'easy', { score: 100 }), 1).state, 2);
@@ -458,17 +457,15 @@ test('seekSeed skips a rejected seed', function () {
   assert.strictEqual(board.seed, L.nextSeed(1));
 });
 
-test('parsePuzzle accepts only a Gridiron puzzle code', function () {
+test('board codes are the level and the seed; old codes are recognised', function () {
   assert.strictEqual(L.parsePuzzle('nope'), null);
-  assert.strictEqual(L.parsePuzzle('normal-0-teams-00a1b2c3'), null);
-  assert.strictEqual(L.parsePuzzle('normal-1-teams-00a1b2c'), null);
-  assert.strictEqual(L.parsePuzzle('normal-1-icons-00a1b2c3'), null);
-  assert.strictEqual(L.parsePuzzle('normal-1-num-00a1b2c3'), null);
-  assert.strictEqual(L.parsePuzzle('normal-1-tiles-00a1b2c3'), null);
-  assert.deepStrictEqual(L.parsePuzzle(' NORMAL-1-TEAMS-00A1B2C3 '), {
-    diff: 'normal', level: 1, mode: 'teams', seed: 0x00a1b2c3
-  });
-  assert.strictEqual(L.formatPuzzle({ diff: 'normal', level: 1, seed: 0x00a1b2c3 }), 'normal-1-teams-00a1b2c3');
+  assert.strictEqual(L.parsePuzzle('0-00a1b2c3'), null);
+  assert.strictEqual(L.parsePuzzle('41-00a1b2c'), null);
+  assert.deepStrictEqual(L.parsePuzzle(' 41-00A1B2C3 '), { diff: 'normal', level: 41, mode: 'teams', seed: 0x00a1b2c3 });
+  assert.strictEqual(L.parsePuzzle('3-00a1b2c3').diff, 'easy');
+  assert.strictEqual(L.parsePuzzle('60-00a1b2c3').diff, 'hard');
+  assert.deepStrictEqual(L.parsePuzzle('normal-1-teams-00a1b2c3'), { old: true });
+  assert.strictEqual(L.formatPuzzle({ diff: 'normal', level: 41, seed: 0x00a1b2c3 }), '41-00a1b2c3');
 });
 
 test('a dealt board remembers its opening tiles', function () {
@@ -478,32 +475,26 @@ test('a dealt board remembers its opening tiles', function () {
   assert.ok(!s.opening[0].id);
 });
 
-test('each difficulty deals a beatable Gridiron board at its width', function () {
+test('each start point deals a beatable Gridiron board at its width', function () {
   ['easy', 'normal', 'hard'].forEach(function (diff) {
-    var s = L.dealPuzzle({ diff: diff, level: 1, seed: 5 });
-    assert.strictEqual(s.cols, L.colsFor(diff));
+    var s = L.dealPuzzle({ diff: diff, seed: 5 });
+    assert.strictEqual(s.level, L.startLevel(diff));
+    assert.strictEqual(s.cols, L.widthAt(s.level));
     assert.strictEqual(s.rules, 'pairs');
-    assert.strictEqual(s.cells.length, { easy: 16, normal: 20, hard: 24 }[diff]);
+    assert.strictEqual(s.total, L.boardSize(s.level));
     assert.strictEqual(L.isBeatable(s), true);
-    assert.strictEqual(s.seed, 5);
   });
 });
 
 test('the same puzzle code deals the same cells', function () {
-  var first = L.dealPuzzle({ diff: 'normal', level: 2, seed: 1, score: 40, moves: 3, penalties: 2, best: { easy: 0, normal: 9, hard: 0 } });
+  var first = L.dealPuzzle({ diff: 'normal', level: 41, seed: 1, score: 40, moves: 3, penalties: 2, best: { easy: 0, normal: 9, hard: 0 } });
   assert.strictEqual(L.isBeatable(first), true);
   assert.strictEqual(first.score, 40);
   assert.strictEqual(first.best.normal, 9);
   assert.strictEqual(first.cols, 8);
-  var again = L.dealPuzzle({ diff: 'normal', level: 2, seed: first.seed });
+  var again = L.dealPuzzle({ diff: 'normal', level: 41, seed: first.seed });
   assert.deepStrictEqual(again.cells.map(function (c) { return c.v; }), first.cells.map(function (c) { return c.v; }));
   assert.strictEqual(again.seed, first.seed);
-  var hard = L.dealPuzzle({ diff: 'hard', level: 1, seed: 9 });
-  var easy = L.dealPuzzle({ diff: 'easy', level: 1, seed: 9 });
-  assert.strictEqual(hard.cols, 9);
-  assert.strictEqual(easy.cols, 7);
-  assert.strictEqual(L.isBeatable(hard), true);
-  assert.strictEqual(L.isBeatable(easy), true);
 });
 
 /* ---------------- dead boards (pairs) ---------------- */
@@ -673,14 +664,14 @@ test('10 two rows emptied at once pay 180', function () {
 test('11 finishing under par pays the level bonus and the par bonus', function () {
   var r = L.select(L.select(stateWith([1, 1], 'normal', { par: 3, addsLeft: 5 }), 1).state, 2);
   assert.strictEqual(r.state.status, 'clear');
-  assert.strictEqual(r.state.bonus, 750); // 1 match, 2 under par: 1.5 * (100 + 400)
+  assert.strictEqual(r.state.bonus, 1500); // level 6, 1 match, 2 under par: 1.5 * (600 + 400)
 });
 test('12 using more matches than par pays only the level part', function () {
   var r = L.select(L.select(stateWith([1, 1], 'normal', { par: 0, addsLeft: 2 }), 1).state, 2);
-  assert.strictEqual(r.state.bonus, 150); // 1 match, par 0: 1.5 * 100
+  assert.strictEqual(r.state.bonus, 900); // level 6, par 0: 1.5 * 600
 });
 test('13 a hint costs 38 points, a hint count, and one streak step', function () {
-  var r = L.hint(stateWith([1, 1, 2], 'normal', { score: 100, streak: 2 }));
+  var r = L.hint(stateWith([1, 1, 2], 'normal', { score: 100, streak: 2, hintsLeft: 3 }));
   assert.strictEqual(r.event.cost, 38);
   assert.strictEqual(r.state.score, 62);
   assert.strictEqual(r.state.hintsLeft, 2);
@@ -822,10 +813,18 @@ test('compact drops cleared tiles, spends one, and undo puts the gaps back', fun
   assert.ok(back.event.cost > 0);
 });
 
-test('a level starts with the difficulty compact limit', function () {
-  assert.strictEqual(L.newGame('easy', null, L.mulberry32(1)).compactsLeft, Infinity);
-  assert.strictEqual(L.newGame('normal', null, L.mulberry32(1)).compactsLeft, 3);
-  assert.strictEqual(L.newGame('hard', null, L.mulberry32(1)).compactsLeft, 1);
+test('buttons follow the level: Pack from 10; Undo 5 / 3 / 1 for Easy / Normal / Hard; Hint and Pack shrink', function () {
+  function tools(level) { var s = L.dealPuzzle({ diff: 'easy', level: level, seed: 2 }); return [s.hintsLeft, s.undosLeft, s.compactsLeft]; }
+  assert.deepStrictEqual(tools(1), [Infinity, 5, 0]);
+  assert.deepStrictEqual(tools(10), [Infinity, 5, Infinity]);
+  assert.deepStrictEqual(tools(20), [5, 5, Infinity]);
+  assert.deepStrictEqual(tools(30), [3, 5, 3]);
+  assert.deepStrictEqual(tools(37), [3, 3, 3]);
+  assert.deepStrictEqual(tools(45), [1, 3, 3]);
+  assert.deepStrictEqual(tools(53), [1, 1, 3]);
+  assert.deepStrictEqual(tools(55), [0, 1, 3]);
+  assert.deepStrictEqual(tools(62), [0, 1, 2]);
+  assert.strictEqual(L.PACK_FROM, 10);
 });
 
 test('FIX1 easy: 3 pairs blocks Add, 2 pairs allows it', function () {
@@ -843,18 +842,14 @@ test('FIX1 easy: 3 pairs blocks Add, 2 pairs allows it', function () {
   assert.strictEqual(L.canAdd(two), true);
   assert.notStrictEqual(L.addNumbers(two).event.type, 'addBlocked');
 });
-test('FIX1 normal: 2 pairs blocks Add, 1 pair allows it', function () {
-  var two = stateWith([1, 2, 3, 4, 5], 'normal');
+test('Add limit: 2 pairs or fewer before level 30, 1 from 30, none from 55', function () {
+  assert.strictEqual(L.canAdd(stateWith([1, 2, 3, 4, 5], 'normal', { level: 29 })), true);
+  var two = stateWith([1, 2, 3, 4, 5], 'normal', { level: 30 });
   assert.strictEqual(L.canAdd(two), false);
   assert.strictEqual(L.addNumbers(two).event.type, 'addBlocked');
-  var one = stateWith([1, 2, 5], 'normal');
-  assert.strictEqual(L.canAdd(one), true);
-});
-test('FIX1 hard: any pair blocks Add, none allows it', function () {
-  var one = stateWith([1, 2, 5], 'hard');
-  assert.strictEqual(L.canAdd(one), false);
-  assert.strictEqual(L.addNumbers(one).event.type, 'addBlocked');
-  var none = stateWith([1, 5, 9], 'hard');
+  assert.strictEqual(L.canAdd(stateWith([1, 2, 5], 'normal', { level: 30 })), true);
+  assert.strictEqual(L.canAdd(stateWith([1, 2, 5], 'normal', { level: 55 })), false);
+  var none = stateWith([1, 5, 9], 'hard', { level: 55 });
   assert.strictEqual(L.pairsOnBoard(none), 0);
   assert.strictEqual(L.canAdd(none), true);
 });
@@ -867,8 +862,8 @@ test('FIX1 a blocked Add on Easy changes nothing', function () {
   assert.strictEqual(r.state.streak, 3);
   assert.strictEqual(r.state.history.length, s.history.length);
 });
-test('Add too early on Normal is a mistake: points lost, streak lost, nothing added', function () {
-  var s = stateWith([1, 2, 3, 4, 5], 'normal', { streak: 3, score: 500, penalties: 10 });
+test('Add too early from level 30 is a mistake: points lost, streak lost, nothing added', function () {
+  var s = stateWith([1, 2, 3, 4, 5], 'normal', { level: 30, streak: 3, score: 500, penalties: 10 });
   var r = L.addNumbers(s);
   assert.strictEqual(r.event.type, 'addBlocked');
   assert.strictEqual(r.event.pairs, 2);
@@ -881,15 +876,15 @@ test('Add too early on Normal is a mistake: points lost, streak lost, nothing ad
   assert.strictEqual(r.state.history.length, s.history.length);
   assert.strictEqual(s.score, 500);                           // the old state is untouched
 });
-test('Add too early on Hard is a mistake, and never takes the score below zero', function () {
-  var s = stateWith([1, 2, 5], 'hard', { streak: 2, score: 3 });
+test('an early Add never takes the score below zero', function () {
+  var s = stateWith([1, 2, 5], 'hard', { level: 55, streak: 2, score: 3 });
   var r = L.addNumbers(s);
   assert.strictEqual(r.event.type, 'addBlocked');
   assert.ok(r.event.penalty <= 3);
   assert.strictEqual(r.state.score, 3 - r.event.penalty);
   assert.ok(r.state.score >= 0);
   assert.strictEqual(r.state.streak, 0);
-  var zero = L.addNumbers(stateWith([1, 2, 5], 'hard', { score: 0 }));
+  var zero = L.addNumbers(stateWith([1, 2, 5], 'hard', { level: 55, score: 0 }));
   assert.strictEqual(zero.event.penalty, 0);
   assert.strictEqual(zero.state.score, 0);
 });
@@ -921,7 +916,7 @@ test('walls: a wall blocks the path between two tiles', function () {
   assert.deepStrictEqual(L.allPairs(s.cells, true, 'pairs', 8), []);
 });
 test('walls: clearing the rest of its row removes the wall and pays a wall bonus', function () {
-  // 8 columns on Normal. Row 0: 1 1 W 3 3 5 5 7   Row 1: 9 11 13 15 9 11 13 7
+  // 8 columns. Row 0: 1 1 W 3 3 5 5 7   Row 1: 9 11 13 15 9 11 13 7
   var vals = [1, 1, WL, 3, 3, 5, 5, 7, 9, 11, 13, 15, 9, 11, 13, 7];
   var s = stateWith(vals, 'normal', { total: 15 });
   [[1, 2], [4, 5], [6, 7]].forEach(function (p) { s = L.select(L.select(s, p[0]).state, p[1]).state; });
@@ -929,7 +924,7 @@ test('walls: clearing the rest of its row removes the wall and pays a wall bonus
   assert.strictEqual(r.event.type, 'match');
   assert.deepStrictEqual(r.event.rowsCleared, [0]);
   assert.strictEqual(r.event.wallsGone, 1);
-  assert.strictEqual(r.event.wallBonus, Math.round(50 * L.pointMult('normal', 1)));
+  assert.strictEqual(r.event.wallBonus, Math.round(50 * L.pointMult('easy', 6)));
   var packed = L.compactBoard(r.state);
   assert.ok(packed.cells.every(function (c) { return !L.isWall(c); }), 'the wall left with its row');
 });
@@ -945,26 +940,43 @@ test('walls: the board is clear when every tile is gone, even with a wall left',
   [[1, 2], [3, 4], [5, 6], [7, 8], [10, 11]].forEach(function (p) { s = L.select(L.select(s, p[0]).state, p[1]).state; if (s.status === 'playing') s = L.compactBoard(s); });
   assert.strictEqual(s.status, 'clear');
 });
-test('walls: schedule per difficulty', function () {
-  assert.deepStrictEqual([1, 2, 3, 4, 9, 30].map(function (l) { return L.wallCount('easy', l); }), [0, 0, 0, 1, 1, 1]);
-  assert.deepStrictEqual([1, 2, 3, 6, 30].map(function (l) { return L.wallCount('normal', l); }), [0, 0, 1, 1, 1]);
-  assert.deepStrictEqual([1, 2, 3, 6, 30].map(function (l) { return L.wallCount('hard', l); }), [0, 0, 1, 1, 1]);
+test('walls: 1 from level 40, 2 from 46, back to 1 at 53, 2 from 65, 3 from 76', function () {
+  assert.deepStrictEqual([1, 39, 40, 46, 53, 65, 76, 100].map(function (l) { return L.wallCount('easy', l); }), [0, 0, 1, 2, 1, 2, 3, 3]);
 });
-test('walls: dealt boards get their wall, never in the last row, and Normal/Hard get one extra add', function () {
-  ['easy', 'normal', 'hard'].forEach(function (diff) {
-    [1, 3, 4, 8, 12].forEach(function (level) {
-      var s = L.dealPuzzle({ diff: diff, level: level, seed: 100 + level });
-      var walls = s.cells.map(function (c, i) { return L.isWall(c) ? i : -1; }).filter(function (i) { return i >= 0; });
-      var want = L.wallCount(diff, level);
-      assert.strictEqual(walls.length, want, diff + ' level ' + level);
-      assert.strictEqual(s.total, s.cells.length - want);
-      var lastRow = Math.floor((s.cells.length - 1) / s.cols);
-      walls.forEach(function (i) { assert.ok(Math.floor(i / s.cols) < lastRow, diff + ' level ' + level + ' wall in last row'); });
-      var extra = diff === 'easy' ? 0 : want;
-      assert.strictEqual(s.addsLeft, L.addsFor(diff, level) + extra, diff + ' level ' + level + ' adds');
-      assert.strictEqual(L.isBeatable(s), true);
-    });
+test('walls: dealt boards get their walls and the blank centre where the square is full', function () {
+  [1, 13, 37, 40, 46, 53, 76].forEach(function (level) {
+    var s = L.dealPuzzle({ diff: 'easy', level: level, seed: 100 + level });
+    var walls = s.cells.filter(L.isWall).length, blanks = s.cells.filter(L.isBlank).length;
+    assert.strictEqual(walls, L.wallCount('easy', level), 'level ' + level);
+    assert.strictEqual(s.total, s.cells.length - walls - blanks);
+    assert.strictEqual(s.addsLeft, L.addsFor('easy', level), 'level ' + level + ' adds');
+    var w = s.cols, full = s.cells.length === w * w && w % 2 === 1;
+    assert.strictEqual(blanks, full ? 1 : 0, 'level ' + level + ' blank');
+    if (blanks) assert.ok(L.isBlank(s.cells[(w * w - 1) / 2]), 'blank in the centre');
+    assert.strictEqual(L.isBeatable(s), true);
   });
+});
+
+/* ---------------- clean sweep ---------------- */
+test('clean sweep: every tile with its twin straight below clears the board at once, with a bonus', function () {
+  // 8 columns: row 0 = 1 3 5 7 9 11 13 15, row 1 the same
+  var row = [1, 3, 5, 7, 9, 11, 13, 15];
+  var s = stateWith(row.concat(row), 'normal', { score: 100 });
+  assert.ok(L.sweepPairs(s));
+  var r = L.cleanSweep(s);
+  assert.strictEqual(r.event.type, 'sweep');
+  assert.strictEqual(r.event.pairs.length, 8);
+  assert.strictEqual(r.event.matches.length, 8);
+  assert.strictEqual(r.event.bonus, Math.round(25 * 8 * L.pointMult('easy', 6)));
+  assert.strictEqual(r.state.status, 'clear');
+  assert.strictEqual(r.state.cleared, 16);
+  assert.ok(r.state.score > 100 + r.event.bonus);
+});
+test('clean sweep: nothing happens when a tile has no partner, or the pairing cannot cover the board', function () {
+  assert.strictEqual(L.cleanSweep(stateWith([1, 1, 3], 'normal')).event, null);
+  assert.strictEqual(L.cleanSweep(stateWith([1, 1, 3, 5], 'normal')).event, null);
+  // 1 2 1 2 in a row: (1,2) and (1,2) pair off; a sweep exists
+  assert.ok(L.sweepPairs(stateWith([1, 2, 1, 2], 'normal')));
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
