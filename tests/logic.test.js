@@ -979,5 +979,9 @@ test('clean sweep: nothing happens when a tile has no partner, or the pairing ca
   assert.ok(L.sweepPairs(stateWith([1, 2, 1, 2], 'normal')));
 });
 
+test('the rules version is a whole number', function () {
+  assert.ok(Number.isInteger(L.RULES_VERSION) && L.RULES_VERSION >= 1);
+});
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

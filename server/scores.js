@@ -52,7 +52,37 @@ function openScores(path) {
     'mode TEXT NOT NULL,' +
     'seed INTEGER NOT NULL)'
   );
+  db.exec(
+    'CREATE TABLE IF NOT EXISTS run_ends (' +
+    'version INTEGER NOT NULL,' +
+    'start TEXT NOT NULL,' +
+    'level INTEGER NOT NULL,' +
+    'n INTEGER NOT NULL DEFAULT 0,' +
+    'PRIMARY KEY (version, start, level))'
+  );
   return db;
+}
+
+/* Run ends: how many runs ended (Game over) on each level. Nothing about the player is stored:
+   only the rules version, where the run started (easy / normal / hard) and the level it ended on. */
+function isCount(n, max) { return typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= max; }
+
+function countRunEnd(db, body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('invalid run');
+  if (FIELDS.indexOf(body.start) === -1) throw new Error('invalid run');
+  if (!isCount(body.level, 999) || !isCount(body.version, 9999)) throw new Error('invalid run');
+  db.prepare('INSERT INTO run_ends (version, start, level, n) VALUES (?, ?, ?, 1) ' +
+    'ON CONFLICT (version, start, level) DO UPDATE SET n = n + 1').run(body.version, body.start, body.level);
+  return { ok: true };
+}
+
+/** Counts, lowest level first. Pass a version to get only that version. */
+function runEnds(db, version) {
+  var sql = 'SELECT version, start, level, n FROM run_ends';
+  var rows = (version == null)
+    ? db.prepare(sql + ' ORDER BY version, start, level').all()
+    : db.prepare(sql + ' WHERE version = ? ORDER BY start, level').all(version);
+  return rows.map(function (r) { return { version: r.version, start: r.start, level: r.level, n: r.n }; });
 }
 
 function createPlayer(db) {
@@ -195,5 +225,7 @@ module.exports = {
   normalizeBoardCode: normalizeBoardCode,
   formatBoardCode: formatBoardCode,
   getBoard: getBoard,
-  saveBoard: saveBoard
+  saveBoard: saveBoard,
+  countRunEnd: countRunEnd,
+  runEnds: runEnds
 };

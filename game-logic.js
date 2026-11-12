@@ -1397,6 +1397,10 @@
   }
   function canAdd(s) { return addBlock(s) === null; }
 
+  /* Goes up by one whenever the difficulty numbers (RAMP, TOOLS, tiles, walls) change,
+     so run-end counts from different tunings are kept apart. */
+  var RULES_VERSION = 1;
+
   return {
     colsFor: colsFor, LEVELS: LEVELS, MAX_MASCOTS: MAX_MASCOTS,
     pairsBoard: pairsBoard, boardSize: boardSize, makeBoard: makeBoard,
@@ -1413,6 +1417,7 @@
     indexOfId: indexOfId, remaining: remaining, wrapStroke: wrapStroke, canUndo: canUndo, canHint: canHint, canAdd: canAdd, addBlock: addBlock, pairsOnBoard: pairsOnBoard, canCompact: canCompact,
     kindCount: kindCount, wallCount: wallCount, isWall: isWall, WALL: WALL,
     RAMP: RAMP, TOOLS: TOOLS, PACK_FROM: PACK_FROM, rampAt: rampAt, toolsAt: toolsAt, stageOf: stageOf, tilesAt: tilesAt, widthAt: widthAt,
+    RULES_VERSION: RULES_VERSION,
     startLevel: startLevel, BLANK: BLANK, isBlank: isBlank, sweepPairs: sweepPairs, cleanSweep: cleanSweep
   };
 });

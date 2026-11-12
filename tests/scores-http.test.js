@@ -124,6 +124,26 @@ listen(server).then(function (port) {
       test('an unknown board code is 404', function () {
         assert.strictEqual(res.status, 404);
       });
+      return call(port, 'POST', '/v1/runs', { version: 1, start: 'easy', level: 41 }, 'https://ten-spot.example');
+    })
+    .then(function (res) {
+      test('a run end is counted', function () {
+        assert.strictEqual(res.status, 201);
+        assert.deepStrictEqual(res.json, { ok: true });
+      });
+      return call(port, 'POST', '/v1/runs', { version: 1, start: 'nope', level: 41 }, 'https://ten-spot.example');
+    })
+    .then(function (res) {
+      test('a bad run end is 400', function () {
+        assert.strictEqual(res.status, 400);
+      });
+      return call(port, 'GET', '/v1/runs?version=1', null, 'https://ten-spot.example');
+    })
+    .then(function (res) {
+      test('the run end counts can be read back', function () {
+        assert.strictEqual(res.status, 200);
+        assert.deepStrictEqual(res.json, { runs: [{ version: 1, start: 'easy', level: 41, n: 1 }] });
+      });
       return call(port, 'PUT', '/v1/players/2345-6789-abcd-efgh', 'x'.repeat(8193), 'https://ten-spot.example');
     })
     .then(function (res) {

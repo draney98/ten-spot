@@ -61,6 +61,25 @@ function createScoresServer(opts) {
       });
       return;
     }
+    if (req.method === 'POST' && url.pathname === '/v1/runs') {
+      readBody(req).then(function (text) {
+        var body;
+        try { body = JSON.parse(text || '{}'); }
+        catch (e) { return send(req, res, 400, { error: 'invalid json' }, origin); }
+        try { scores.countRunEnd(db, body); }
+        catch (e) { return send(req, res, 400, { error: e.message }, origin); }
+        return send(req, res, 201, { ok: true }, origin);
+      }).catch(function (e) {
+        if (!res.headersSent) send(req, res, e.status || 400, { error: e.message }, origin);
+      });
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/v1/runs') {
+      var wanted = url.searchParams.get('version');
+      var ver = wanted == null ? null : Number(wanted);
+      if (ver !== null && !(Number.isInteger(ver) && ver >= 1 && ver <= 9999)) return send(req, res, 400, { error: 'invalid version' }, origin);
+      return send(req, res, 200, { runs: scores.runEnds(db, ver) }, origin);
+    }
     var boardMatch = url.pathname.match(/^\/v1\/boards\/([^/]+)$/);
     if (boardMatch && req.method === 'GET') {
       var board = scores.getBoard(db, decodeURIComponent(boardMatch[1]));

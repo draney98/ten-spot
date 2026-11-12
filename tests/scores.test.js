@@ -128,5 +128,27 @@ test('an old database keeps its old bests aside and starts ramp bests at zero', 
   try { fs.unlinkSync(file); } catch (e) { /* ignore */ }
 });
 
+test('run ends are counted per version, start and level', function () {
+  var db = scores.openScores(':memory:');
+  scores.countRunEnd(db, { version: 1, start: 'easy', level: 41 });
+  scores.countRunEnd(db, { version: 1, start: 'easy', level: 41 });
+  scores.countRunEnd(db, { version: 1, start: 'normal', level: 44 });
+  scores.countRunEnd(db, { version: 2, start: 'easy', level: 41 });
+  assert.deepStrictEqual(scores.runEnds(db, 1), [
+    { version: 1, start: 'easy', level: 41, n: 2 },
+    { version: 1, start: 'normal', level: 44, n: 1 }
+  ]);
+  assert.strictEqual(scores.runEnds(db).length, 3);
+});
+
+test('a bad run end is rejected', function () {
+  var db = scores.openScores(':memory:');
+  assert.throws(function () { scores.countRunEnd(db, { version: 1, start: 'medium', level: 4 }); }, /invalid run/);
+  assert.throws(function () { scores.countRunEnd(db, { version: 1, start: 'easy', level: 0 }); }, /invalid run/);
+  assert.throws(function () { scores.countRunEnd(db, { version: 1.5, start: 'easy', level: 4 }); }, /invalid run/);
+  assert.throws(function () { scores.countRunEnd(db, null); }, /invalid run/);
+  assert.strictEqual(scores.runEnds(db).length, 0);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

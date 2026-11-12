@@ -108,6 +108,31 @@ test('createPlayer posts and returns the server body', function () {
   });
 });
 
+test('addRunEnd adds to the waiting list, drops bad ones and keeps the newest 50', function () {
+  var text = client.addRunEnd(null, { start: 'easy', level: 12, version: 1 });
+  assert.deepStrictEqual(JSON.parse(text), [{ start: 'easy', level: 12, version: 1 }]);
+  assert.strictEqual(client.addRunEnd(text, { start: 'nope', level: 12, version: 1 }), text);
+  assert.deepStrictEqual(client.readRunEnds('not json'), []);
+  for (var i = 1; i <= 60; i++) text = client.addRunEnd(text, { start: 'hard', level: i, version: 1 });
+  var list = client.readRunEnds(text);
+  assert.strictEqual(list.length, 50);
+  assert.strictEqual(list[49].level, 60);
+});
+
+test('flushRunEnds sends oldest first and keeps what could not be sent', function () {
+  var text = JSON.stringify([{ start: 'easy', level: 5, version: 1 }, { start: 'easy', level: 9, version: 1 }]);
+  var sent = [];
+  return client.flushRunEnds('https://scores.example', text, function (url, opts) {
+    assert.strictEqual(url, 'https://scores.example/v1/runs');
+    sent.push(JSON.parse(opts.body).level);
+    if (sent.length === 2) return Promise.reject(new Error('offline'));
+    return Promise.resolve({ ok: true, status: 201, json: function () { return Promise.resolve({ ok: true }); } });
+  }).then(function (left) {
+    assert.deepStrictEqual(sent, [5, 9]);
+    assert.deepStrictEqual(JSON.parse(left), [{ start: 'easy', level: 9, version: 1 }]);
+  });
+});
+
 setTimeout(function () {
   Promise.all(pending).then(function () {
     console.log(passed + ' passed, ' + failed + ' failed');

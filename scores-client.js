@@ -79,6 +79,50 @@
     return send(base, 'GET', '/v1/boards/' + id, null, fetchFn);
   }
 
+  /* ---- run ends: the level a run ended on, sent to the server with nothing about the player ---- */
+  var STARTS = ['easy', 'normal', 'hard'];
+  var MAX_WAITING = 50;
+
+  function goodRun(r) {
+    return !!r && STARTS.indexOf(r.start) !== -1 &&
+      Number.isInteger(r.level) && r.level >= 1 && r.level <= 999 &&
+      Number.isInteger(r.version) && r.version >= 1 && r.version <= 9999;
+  }
+
+  /** The waiting list is kept as text in browser storage. Bad text reads as an empty list. */
+  function readRunEnds(text) {
+    var list;
+    try { list = JSON.parse(text || '[]'); } catch (e) { return []; }
+    if (!Array.isArray(list)) return [];
+    return list.filter(goodRun).map(function (r) { return { start: r.start, level: r.level, version: r.version }; });
+  }
+
+  /** Add one run end to the waiting list. Returns the new list as text. Keeps the newest 50. */
+  function addRunEnd(text, run) {
+    var list = readRunEnds(text);
+    if (goodRun(run)) list.push({ start: run.start, level: run.level, version: run.version });
+    if (list.length > MAX_WAITING) list = list.slice(list.length - MAX_WAITING);
+    return JSON.stringify(list);
+  }
+
+  /** Send the waiting run ends, oldest first. Stops at the first one the server can't be reached for.
+      One the server refuses (400) is dropped. Resolves with what is still waiting, as text. */
+  function flushRunEnds(base, text, fetchFn) {
+    var list = readRunEnds(text);
+    function next() {
+      if (!list.length) return Promise.resolve('[]');
+      return send(base, 'POST', '/v1/runs', list[0], fetchFn).then(function (res) {
+        if (res.ok || res.status === 400) { list.shift(); return next(); }
+        return JSON.stringify(list);
+      });
+    }
+    return next();
+  }
+
+  function getRunEnds(base, version, fetchFn) {
+    return send(base, 'GET', '/v1/runs' + (version == null ? '' : '?version=' + version), null, fetchFn);
+  }
+
   function shouldSync(api, code) {
     return typeof api === 'string' && api.length > 0 && typeof code === 'string' && code.length > 0;
   }
@@ -92,6 +136,10 @@
     parseBoardCode: parseBoardCode,
     saveBoard: saveBoard,
     getBoard: getBoard,
-    shouldSync: shouldSync
+    shouldSync: shouldSync,
+    readRunEnds: readRunEnds,
+    addRunEnd: addRunEnd,
+    flushRunEnds: flushRunEnds,
+    getRunEnds: getRunEnds
   };
 });

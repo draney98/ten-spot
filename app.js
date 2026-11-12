@@ -39,6 +39,7 @@
   var KEY_SAVE = 'numbermatch.save1';   // the game in progress (see save.js)
   var KEY_DIFF = 'numbermatch.diff';    // where the last run started: easy|normal|hard
   var KEY_REACHED = 'numbermatch.reached';   // highest level reached on this device (unlocks Start at Normal / Hard)
+  var KEY_ENDS = 'numbermatch.ends';   // run ends waiting to be sent to the score server (see scores-client.js)
   function reached() { return Math.max(1, Number(store.get(KEY_REACHED)) || 1); }
   function unlocked(diff) { return reached() >= L.startLevel(diff); }
   var SV = window.NumberMatchSave;
@@ -73,6 +74,30 @@
     state.best = merged;
     render();
   }
+  /* Run ends. When a lost game is replaced by a new one, the level it ended on is sent to the
+     score server (level, start point, rules version: nothing about the player). If the server
+     can't be reached, it waits in storage and is tried again on the next visit. */
+  var sendingEnds = false;
+  function sendRunEnds() {
+    if (!S || !SCORES_API || sendingEnds) return;
+    var waiting = store.get(KEY_ENDS);
+    if (!S.readRunEnds(waiting).length) return;
+    sendingEnds = true;
+    S.flushRunEnds(SCORES_API, waiting, fetch).then(function (left) {
+      // anything added while we were sending is at the end of the stored list: keep it
+      var now = S.readRunEnds(store.get(KEY_ENDS)), sent = S.readRunEnds(waiting).length - S.readRunEnds(left).length;
+      store.set(KEY_ENDS, JSON.stringify(now.slice(sent)));
+      sendingEnds = false;
+    }, function () { sendingEnds = false; });
+  }
+  /** Call just before the current game is thrown away. Counts it only if it was lost,
+      and only if it was a run (not a board played from a puzzle code). */
+  function noteRunEnd() {
+    if (!S || !state || state.status !== 'lose' || state.fromCode) return;
+    store.set(KEY_ENDS, S.addRunEnd(store.get(KEY_ENDS), { start: state.diff, level: state.level, version: L.RULES_VERSION }));
+    sendRunEnds();
+  }
+
   function pushBests() {
     var code = store.get(KEY_PLAYER);
     if (!S || !S.shouldSync(SCORES_API, code)) return;
@@ -1044,6 +1069,7 @@
   function onNextLevel() {
     var carried = { score: state.score, moves: state.moves, penalties: state.penalties || 0, best: state.best, diff: state.diff, rules: state.rules, level: state.level + 1 };
     var key = carried.diff + '|' + carried.rules + '|' + carried.level;
+    var wasCode = !!state.fromCode;
     var prepared = upcoming && upcoming.key === key && upcoming.state;
     resetAll();
     if (prepared) {
@@ -1058,6 +1084,7 @@
         seed: L.randomSeed(), score: carried.score, moves: carried.moves, penalties: carried.penalties
       });
     }
+    if (wasCode) state.fromCode = true;
     ui.note = levelNote();
     if (L.stageOf(state.level) !== L.stageOf(state.level - 1)) play('stage');
     scheduleUpcoming();
@@ -1066,6 +1093,7 @@
   }
 
   function newGame(diff) {
+    noteRunEnd();
     resetAll();
     diff = diff || state.diff;
     if (!unlocked(diff)) diff = 'easy';
@@ -1141,8 +1169,10 @@
     var best = state.best;
     ui.settingsOpen = false;
     ui.puzzleError = '';
+    noteRunEnd();
     resetAll();
     state = L.dealPuzzle({ diff: L.stageOf(spec.level), level: spec.level, best: best, seed: spec.seed });
+    state.fromCode = true;   // a board from a puzzle code is not a run: its loss is not counted
     scheduleUpcoming();
     publishBoard();
     render();
@@ -1234,6 +1264,7 @@
   if (!ui.boardCode) publishBoard();   // a restored game already has its board code
   render();
   pullBests();
+  sendRunEnds();
 
   /* ---------- 12. OPTIONAL TEST HOOK ----------
      Lets automated tests and screenshots set up exact boards.
