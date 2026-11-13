@@ -193,6 +193,10 @@ async function test(name, fn) {
     await p.waitForTimeout(300);
     assert.ok(/^(Heart|Star|Gem|Potion|Clover|Bomb|Sword|Flame), /.test(await p.getAttribute('button.c-tile', 'aria-label')), 'Arcade is remembered');
     await p.evaluate(function () { window.__nm.openSettings(true); });
+    await p.click('button[data-tiles="arcadehd"]');
+    assert.strictEqual(await p.getAttribute('button[data-tiles="arcadehd"]', 'aria-pressed'), 'true');
+    assert.strictEqual(await p.locator('button.c-tile svg[viewBox="-4 -4 40 40"]').count(), tiles, 'every tile is drawn at 32 x 32');
+    await p.evaluate(function () { window.__nm.openSettings(true); });
     await p.click('button[data-tiles="gridiron"]');
     assert.strictEqual(await p.locator('button.c-tile svg.pixel').count(), 0);
     await p.context().close();
