@@ -165,7 +165,7 @@
   var ui = {                                      // UI-only state
     dark: loadDark(),
     sound: store.get(KEY.sound) === 'on',
-    tiles: store.get(KEY.tiles) === 'pixel' ? 'pixel' : 'gridiron',   // the tile set (art.js)
+    tiles: window.TenSpotArt.SETS[store.get(KEY.tiles)] ? store.get(KEY.tiles) : 'gridiron',   // the tile set (art.js)
     settingsOpen: !!saved.settingsOpen,
     confirm: null, // the open confirmation dialog: { yes: function } or null
     flash: [],     // cell ids playing the match "pop"
@@ -299,7 +299,7 @@
   function cellName(v) {
     if (v < 0) { var wk = L.wallKind({ v: v }); return WALL_NAME[wk] + '. ' + WALL_RULE[wk]; }
     if (v === L.BLANK) return 'Empty spot';
-    if (ui.tiles === 'pixel') return ART.mascotName(L.mascotOf(v), 'pixel') + (L.isSolid(v) ? ', night' : ', day');
+    if (ART.SETS[ui.tiles].pixel) return ART.mascotName(L.mascotOf(v), ui.tiles) + (L.isSolid(v) ? ', night' : ', day');
     return ART.mascotName(L.mascotOf(v)) + (L.isSolid(v) ? ', solid' : ', outline');
   }
 
@@ -308,7 +308,7 @@
     if (c.v < 0) return cls + ' c-wall';
     if (c.v === L.BLANK) return cls + ' c-blank';
     cls += ' c-tile h' + family(c.v);
-    if (ui.tiles === 'pixel') cls += ' px';
+    if (ART.SETS[ui.tiles].pixel) cls += ' px';
     if (c.done) cls += ' c-done';
     if (c.id === state.selected) cls += ' c-sel';
     if (ui.flash.indexOf(c.id) >= 0) cls += ' c-flash';

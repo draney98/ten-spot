@@ -24,7 +24,7 @@ and the score server uses only what ships with Node 22.
 | `save.js` | Turns a game into text for browser storage and back. |
 | `scores-client.js` | Talks to the score server: bests, shared boards, run ends. |
 | `index.html`, `styles.css` | The page and its looks. |
-| `storage.js`, `sound.js`, `art.js` | Helpers for `app.js`: browser storage and its keys, the sound ticks, and the tile drawings (the Gridiron mascots, the Pixel characters, the walls). |
+| `storage.js`, `sound.js`, `art.js` | Helpers for `app.js`: browser storage and its keys, the sound ticks, and the tile drawings (the Gridiron mascots, the Pixel characters, the Arcade pick-ups, the walls). |
 | `account.js` | The Account group in Settings: making an account, adding a device with a code, the recovery link, signing out. |
 | `config.js` | Settings shared by the game and the tuner: the score server's address. |
 | `server/` | The score server: `scores.js` (SQLite), `http.js` (routes), `limits.js` (posting limits), `migrations.js` (numbered database changes), `accounts.js` (accounts: device keys, link codes, recovery), `index.js` (start-up). |

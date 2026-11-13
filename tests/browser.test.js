@@ -182,6 +182,17 @@ async function test(name, fn) {
     await p.waitForTimeout(300);
     assert.strictEqual(await p.locator('button.c-tile svg.pixel').count(), tiles);
     await p.evaluate(function () { window.__nm.openSettings(true); });
+    var before = await p.locator('button.c-tile').first().innerHTML();
+    await p.click('button[data-tiles="arcade"]');
+    assert.strictEqual(await p.getAttribute('button[data-tiles="arcade"]', 'aria-pressed'), 'true');
+    assert.strictEqual(await p.getAttribute('button[data-tiles="pixel"]', 'aria-pressed'), 'false');
+    assert.strictEqual(await p.locator('button.c-tile svg.pixel').count(), tiles);
+    assert.notStrictEqual(await p.locator('button.c-tile').first().innerHTML(), before, 'the drawings changed');
+    assert.ok(/^(Heart|Star|Gem|Potion|Clover|Bomb|Sword|Flame), (day|night)/.test(await p.getAttribute('button.c-tile', 'aria-label')));
+    await p.reload();
+    await p.waitForTimeout(300);
+    assert.ok(/^(Heart|Star|Gem|Potion|Clover|Bomb|Sword|Flame), /.test(await p.getAttribute('button.c-tile', 'aria-label')), 'Arcade is remembered');
+    await p.evaluate(function () { window.__nm.openSettings(true); });
     await p.click('button[data-tiles="gridiron"]');
     assert.strictEqual(await p.locator('button.c-tile svg.pixel').count(), 0);
     await p.context().close();

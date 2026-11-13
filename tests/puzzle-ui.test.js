@@ -210,26 +210,34 @@ test('app.js and game-logic.js parse as scripts', function () {
   new Function(fs.readFileSync('game-logic.js', 'utf8'));
 });
 
-test('Appearance has a tile set choice, and the pixel set has eight 16 x 16 characters', function () {
-  assert.ok(html.indexOf('data-tiles="gridiron"') !== -1 && html.indexOf('data-tiles="pixel"') !== -1);
+test('Appearance has a tile set choice, and each pixel set has eight 16 x 16 drawings', function () {
+  assert.ok(html.indexOf('data-tiles="gridiron"') !== -1 && html.indexOf('data-tiles="pixel"') !== -1 && html.indexOf('data-tiles="arcade"') !== -1);
   assert.ok(app.indexOf("tiles: 'numbermatch.tiles'") !== -1);
   assert.ok(css.indexOf('.glyph.mascot.pixel') !== -1);
   global.window = {};
   new Function('window', fs.readFileSync('art.js', 'utf8'))(global.window);
   var ART = global.window.TenSpotArt;
-  assert.deepStrictEqual(Object.keys(ART.SETS), ['gridiron', 'pixel']);
-  assert.strictEqual(ART.PIXEL.length, 9);
-  for (var m = 1; m <= 8; m++) {
-    ['day', 'night'].forEach(function (when) {
-      var art = ART.PIXEL[m][when];
-      assert.strictEqual(art.rows.length, 16, ART.PIXEL[m].name + ' ' + when);
-      art.rows.forEach(function (row) {
-        assert.strictEqual(row.length, 16);
-        row.replace(/\./g, '').split('').forEach(function (ch) { assert.ok(art.pal['abcdefghij'.indexOf(ch)], ART.PIXEL[m].name + ' uses a colour it has'); });
+  assert.deepStrictEqual(Object.keys(ART.SETS), ['gridiron', 'pixel', 'arcade']);
+  assert.deepStrictEqual(Object.keys(ART.SETS).map(function (k) { return ART.SETS[k].pixel; }), [false, true, true]);
+  [ART.PIXEL, ART.ARCADE].forEach(function (LIST) {
+    assert.strictEqual(LIST.length, 9);
+    for (var m = 1; m <= 8; m++) {
+      ['day', 'night'].forEach(function (when) {
+        var art = LIST[m][when];
+        assert.strictEqual(art.rows.length, 16, LIST[m].name + ' ' + when);
+        art.rows.forEach(function (row) {
+          assert.strictEqual(row.length, 16);
+          row.replace(/\./g, '').split('').forEach(function (ch) { assert.ok(art.pal['abcdefghij'.indexOf(ch)], LIST[m].name + ' uses a colour it has'); });
+        });
       });
-    });
-    assert.ok(/^#[0-9a-f]{6}$/.test(ART.PIXEL[m].night.bg));
-  }
+      assert.ok(/^#[0-9a-f]{6}$/.test(LIST[m].night.bg));
+    }
+  });
+  var names = [1, 2, 3, 4, 5, 6, 7, 8].map(function (m) { return ART.mascotName(m, 'arcade'); });
+  assert.deepStrictEqual(names, ['Heart', 'Star', 'Gem', 'Potion', 'Clover', 'Bomb', 'Sword', 'Flame']);
+  assert.ok(/class="glyph mascot pixel"/.test(ART.mascotSVG(8, true, 'arcade')));
+  assert.notStrictEqual(ART.mascotSVG(1, false, 'arcade'), ART.mascotSVG(1, false, 'pixel'));
+  assert.ok(app.indexOf("ui.tiles === 'pixel'") === -1, 'the page asks the set, not its name');
   assert.strictEqual(ART.mascotName(1, 'pixel'), 'Wizard');
   assert.strictEqual(ART.mascotName(1), ART.MASCOTS[1].name);
   var day = ART.mascotSVG(1, false, 'pixel'), night = ART.mascotSVG(1, true, 'pixel');
