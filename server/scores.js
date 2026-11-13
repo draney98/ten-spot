@@ -51,20 +51,14 @@ function countRunEnd(db, body) {
   if (FIELDS.indexOf(body.start) === -1) throw new Error('invalid run');
   if (!isCount(body.level, 999) || !isCount(body.version, 9999)) throw new Error('invalid run');
   var run = runId(body.run);
-  db.exec('BEGIN');
-  try {
+  return atomic(db, function () {
     if (run && db.prepare('INSERT OR IGNORE INTO run_seen (run, at) VALUES (?, ?)').run(run, new Date().toISOString()).changes === 0) {
-      db.exec('COMMIT');
       return { ok: true, repeat: true };
     }
     db.prepare('INSERT INTO run_ends (version, start, level, n) VALUES (?, ?, ?, 1) ' +
       'ON CONFLICT (version, start, level) DO UPDATE SET n = n + 1').run(body.version, body.start, body.level);
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-  return { ok: true };
+    return { ok: true };
+  });
 }
 
 /** Counts, lowest level first. Pass a version to get only that version. */
@@ -93,15 +87,35 @@ function createPlayer(db) {
   return getPlayer(db, raw);
 }
 
+/** A score code's bests. A code folded into an account shows the account's bests (under its own code). */
 function getPlayer(db, code) {
   var raw = normalizeCode(code);
   if (!raw) return null;
-  return rowFrom(db.prepare('SELECT ' + COLS + ' FROM players WHERE code = ?').get(raw));
+  var known = db.prepare('SELECT code FROM players WHERE code = ?').get(raw);
+  if (!known) return null;
+  var p = rowFrom(db.prepare('SELECT ' + COLS + ' FROM players WHERE code = ?').get(liveCode(db, raw)));
+  p.code = formatCode(raw);
+  return p;
+}
+
+/** Run fn inside a savepoint: works on its own and inside another transaction (accounts.js). */
+function atomic(db, fn) {
+  db.exec('SAVEPOINT sp');
+  try { var out = fn(); db.exec('RELEASE sp'); return out; }
+  catch (e) { try { db.exec('ROLLBACK TO sp'); db.exec('RELEASE sp'); } catch (e2) { /* nothing open */ } throw e; }
+}
+
+/** A score code folded into an account stands for the account's own code (see accounts.js). */
+function liveCode(db, raw) {
+  var row = db.prepare('SELECT a.code FROM players p JOIN accounts a ON a.id = p.linked_to WHERE p.code = ?').get(raw);
+  return row ? row.code : raw;
 }
 
 function raiseBests(db, code, patch) {
   var raw = normalizeCode(code);
   if (!raw) throw new Error('invalid code');
+  var asked = raw;
+  raw = liveCode(db, raw);
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('invalid score');
   var current = db.prepare('SELECT ' + COLS + ' FROM players WHERE code = ?').get(raw);
   if (!current) return null;
@@ -114,20 +128,15 @@ function raiseBests(db, code, patch) {
     if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > MAX_SCORE) throw new Error('invalid score');
     if (n > next[key]) { next[key] = n; raisedKeys.push(key); }
   }
-  if (!raisedKeys.length) return getPlayer(db, raw);
+  if (!raisedKeys.length) return getPlayer(db, asked);
   var now = new Date().toISOString(), version = rulesVersion(patch.version), run = runId(patch.run);
-  db.exec('BEGIN');
-  try {
+  atomic(db, function () {
     db.prepare('UPDATE players SET ramp_easy = ?, ramp_normal = ?, ramp_hard = ?, updated_at = ? WHERE code = ?')
       .run(next.easy, next.normal, next.hard, now, raw);
     var log = db.prepare('INSERT INTO best_log (code, start, score, version, run, at) VALUES (?, ?, ?, ?, ?, ?)');
     raisedKeys.forEach(function (k) { log.run(raw, k, next[k], version, run, now); });
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-  return getPlayer(db, raw);
+  });
+  return getPlayer(db, asked);
 }
 
 var BOARD_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
@@ -239,5 +248,6 @@ module.exports = {
   saveBoard: saveBoard,
   countRunEnd: countRunEnd,
   runEnds: runEnds,
-  bestLog: bestLog
+  bestLog: bestLog,
+  atomic: atomic
 };

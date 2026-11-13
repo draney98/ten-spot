@@ -12,7 +12,8 @@ function test(name, fn) {
 test('the default limits', function () {
   assert.deepStrictEqual(limits.DEFAULT_RULES, {
     runs: { max: 30, windowMs: 60000 }, boards: { max: 20, windowMs: 60000 },
-    bests: { max: 60, windowMs: 60000 }, players: { max: 10, windowMs: 3600000 }
+    bests: { max: 60, windowMs: 60000 }, players: { max: 10, windowMs: 3600000 },
+    accounts: { max: 10, windowMs: 3600000 }, links: { max: 20, windowMs: 3600000 }, signin: { max: 10, windowMs: 60000 }
   });
 });
 

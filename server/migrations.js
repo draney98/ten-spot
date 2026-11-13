@@ -77,6 +77,41 @@ var CHANGES = [
     up: function (db) {
       db.exec('CREATE TABLE run_seen (run TEXT PRIMARY KEY, at TEXT NOT NULL)');
     }
+  },
+  {
+    n: 4,
+    name: 'accounts',
+    // An account is a display name with a score code of its own (its bests live on that code).
+    // Each signed-in device holds a long random key; only its SHA-256 is stored (devices).
+    // Link codes add a device for 10 minutes; the recovery key brings an account back.
+    // A score code folded into an account points at it (players.linked_to).
+    up: function (db) {
+      db.exec(
+        'CREATE TABLE accounts (' +
+        'id TEXT PRIMARY KEY,' +
+        'name TEXT NOT NULL,' +
+        'code TEXT NOT NULL UNIQUE,' +
+        'recovery_hash TEXT NOT NULL,' +
+        'created_at TEXT NOT NULL)'
+      );
+      db.exec(
+        'CREATE TABLE devices (' +
+        'id TEXT PRIMARY KEY,' +
+        'account_id TEXT NOT NULL,' +
+        'key_hash TEXT NOT NULL UNIQUE,' +
+        'label TEXT NOT NULL,' +
+        'created_at TEXT NOT NULL,' +
+        'seen_at TEXT NOT NULL)'
+      );
+      db.exec('CREATE INDEX devices_account ON devices (account_id)');
+      db.exec(
+        'CREATE TABLE link_codes (' +
+        'code_hash TEXT PRIMARY KEY,' +
+        'account_id TEXT NOT NULL,' +
+        'expires_at INTEGER NOT NULL)'
+      );
+      db.exec('ALTER TABLE players ADD COLUMN linked_to TEXT');
+    }
   }
 ];
 

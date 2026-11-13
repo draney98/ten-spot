@@ -26,7 +26,7 @@ and the score server uses only what ships with Node 22.
 | `index.html`, `styles.css` | The page and its looks. |
 | `storage.js`, `sound.js`, `art.js` | Helpers for `app.js`: browser storage and its keys, the sound ticks, and the mascot and wall drawings. |
 | `config.js` | Settings shared by the game and the tuner: the score server's address. |
-| `server/` | The score server: `scores.js` (SQLite), `http.js` (routes), `limits.js` (posting limits), `migrations.js` (numbered database changes), `index.js` (start-up). |
+| `server/` | The score server: `scores.js` (SQLite), `http.js` (routes), `limits.js` (posting limits), `migrations.js` (numbered database changes), `accounts.js` (accounts: device keys, link codes, recovery), `index.js` (start-up). |
 | `tools/` | `tuner.html` and `tuner-core.js` (configurator and bot), `sim.js` (the bot from the command line). |
 | `tests/` | Plain node scripts, one per area. `run.js` runs them all. |
 | `design-info/`, `docs/`, `number-match.html` | Earlier design notes and the original single-file version. Kept in the repo, not published. |
