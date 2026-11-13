@@ -1,5 +1,7 @@
-/* art.js: what the tiles look like. Pure data and two small functions that return SVG text.
-   Loaded before app.js. window.TenSpotArt = { MASCOTS, WALL_NAME, WALL_RULE, mascotSVG, wallSVG }. */
+/* art.js: what the tiles look like. Pure data and small functions that return SVG text.
+   Two tile sets: 'gridiron' (the SEC mascots, drawn in pencil colours) and 'pixel' (retro pixel
+   characters). Loaded before app.js.
+   window.TenSpotArt = { SETS, MASCOTS, PIXEL, WALL_NAME, WALL_RULE, mascotSVG, mascotName, wallSVG }. */
 (function () {
   'use strict';
   // Gridiron mascots (SEC). Value v -> mascot L.mascotOf(v) (1..8); odd = outline, even = solid.
@@ -38,6 +40,294 @@
 
   // A wall: faint bricks with arrows that say how it goes (see WALLS in game-logic.js), and its bonus underneath.
   //   row: arrows left-right.  col: arrows up-down.  either: four separate arrows.  both: a cross with a solid centre.
+  // Retro pixel set: eight original characters, 16 x 16 pixels, drawn for ten-spot.
+  // Same order as MASCOTS (mascot m = PIXEL[m]). The outline twin is the day version; the solid
+  // twin is the night version, which fills the tile with the character's darkest tone.
+  // rows: one letter per pixel, '.' = clear, a = pal[0], b = pal[1] … Copy exactly; do not redraw.
+  var PIXEL = [
+    null,
+    { name: 'Wizard',
+      day: { pal: ['#341151', '#a978d1', '#571c88', '#7426b5', '#f5ecd6', '#f3d9b1', '#161616'],
+        rows: ['...........a....',
+          '..........aba...',
+          '.........abca...',
+          '........abdca...',
+          '.......abcdca...',
+          '......abcebca...',
+          '...aaabddbdcaa..',
+          '..abbbccccccbba.',
+          '...aaffffffaaa..',
+          '....afgffgfa....',
+          '....affffffa....',
+          '...aeeeeeeeea...',
+          '....aeeeeeea....',
+          '.....aeeeea.....',
+          '......aeea......',
+          '.......aa.......'] },
+      night: { bg: '#341151', pal: ['#8947c0', '#eadef4', '#b388d6', '#caade3', '#fbfbf4', '#f3d9b1'],
+        rows: ['...........a....',
+          '..........aba...',
+          '.........abca...',
+          '........abdca...',
+          '.......abcdca...',
+          '......abcebca...',
+          '...aaabddbdcaa..',
+          '..abbbccccccbba.',
+          '...aaffffffaaa..',
+          '....af.ff.fa....',
+          '....affffffa....',
+          '...aeeeeeeeea...',
+          '....aeeeeeea....',
+          '.....aeeeea.....',
+          '......aeea......',
+          '.......aa.......'] } },
+    { name: 'Skeleton',
+      day: { pal: ['#282b2f', '#999ca1', '#5a6068', '#44484e', '#161616'],
+        rows: ['....aaaaaaaa....',
+          '...abbbbbbbba...',
+          '..abccccccccba..',
+          '.abccccccccccba.',
+          '.abcddccccddcda.',
+          '.abdeebccdeebda.',
+          '.abeeebccdeeeba.',
+          '.abbeebccdeebda.',
+          '.abcbbcddcbbcda.',
+          '..abccdeebccda..',
+          '...abccbbccda...',
+          '....abdccdda....',
+          '....abebdeba....',
+          '....abbddbda....',
+          '.....aaaaaa.....',
+          '................'] },
+      night: { bg: '#282b2f', pal: ['#73787f', '#e6e7e8', '#c0c3c6', '#a4a8ac'],
+        rows: ['....aaaaaaaa....',
+          '...abbbbbbbba...',
+          '..abccccccccba..',
+          '.abccccccccccba.',
+          '.abcddccccddcda.',
+          '.abd..bccd..bda.',
+          '.ab...bccd...ba.',
+          '.abb..bccd..bda.',
+          '.abcbbcddcbbcda.',
+          '..abccd..bccda..',
+          '...abccbbccda...',
+          '....abdccdda....',
+          '....ab.bd.ba....',
+          '....abbddbda....',
+          '.....aaaaaa.....',
+          '................'] } },
+    { name: 'Mushroom',
+      day: { pal: ['#3f0d13', '#b8737c', '#8c1d2b', '#691620', '#161616', '#f3d9b1'],
+        rows: ['.....aaaaaa.....',
+          '...aabbbbbbaa...',
+          '..abbccccccbba..',
+          '.abccccccccccba.',
+          'abccccccccccccba',
+          'abddddddddddddda',
+          '.aeeeeeeeeeeeea.',
+          '..aaaffffffaaa..',
+          '....afeffefa....',
+          '....affffffa....',
+          '....afffeefa....',
+          '....affffffa....',
+          '...affffffffa...',
+          '..affffffffffa..',
+          '...aaaaaaaaaa...',
+          '................'] },
+      night: { bg: '#3f0d13', pal: ['#9d3f4b', '#eedddf', '#d3a9ae', '#c0838a', '#f3d9b1'],
+        rows: ['.....aaaaaa.....',
+          '...aabbbbbbaa...',
+          '..abbccccccbba..',
+          '.abccccccccccba.',
+          'abccccccccccccba',
+          'abddddddddddddda',
+          '.a............a.',
+          '..aaaeeeeeeaaa..',
+          '....ae.ee.ea....',
+          '....aeeeeeea....',
+          '....aeee..ea....',
+          '....aeeeeeea....',
+          '...aeeeeeeeea...',
+          '..aeeeeeeeeeea..',
+          '...aaaaaaaaaa...',
+          '................'] } },
+    { name: 'Crab',
+      day: { pal: ['#572600', '#d99561', '#923f00', '#fbfbf4', '#c25400'],
+        rows: ['..aa........aa..',
+          '.abba......abba.',
+          'abccba....abccba',
+          'abaabaa..aabaaba',
+          '.abbaadaadaabba.',
+          '..abaabaabaaba..',
+          '..abbbebbebbca..',
+          '.abeeeeeeeeeeba.',
+          'abeeeeeeeeeeeeba',
+          'abeeeeeeeeeeeeca',
+          '.abeeeeeeeeeeca.',
+          '..abececcececa..',
+          '.abababaabababa.',
+          'ababa.a..a.ababa',
+          '.a.a........a.a.',
+          '................'] },
+      night: { bg: '#572600', pal: ['#cb6e26', '#f6e5d9', '#dda173', '#fbfbf4', '#e8be9e'],
+        rows: ['..aa........aa..',
+          '.abba......abba.',
+          'abccba....abccba',
+          'abaabaa..aabaaba',
+          '.abbaadaadaabba.',
+          '..abaabaabaaba..',
+          '..abbbebbebbca..',
+          '.abeeeeeeeeeeba.',
+          'abeeeeeeeeeeeeba',
+          'abeeeeeeeeeeeeca',
+          '.abeeeeeeeeeeca.',
+          '..abececcececa..',
+          '.abababaabababa.',
+          'ababa.a..a.ababa',
+          '.a.a........a.a.',
+          '................'] } },
+    { name: 'Octopus',
+      day: { pal: ['#003438', '#61a8ae', '#00737d', '#00565e', '#fbfbf4', '#161616'],
+        rows: ['.....aaaaaa.....',
+          '...aabbbbbbaa...',
+          '..abbccccccbba..',
+          '.abccccccccccba.',
+          '.abcddccccddcda.',
+          '.abdeebccdeebda.',
+          '.abdefbccdefbda.',
+          '.abcbbccccbbcda.',
+          '..abdccddccdda..',
+          '.abdabdaabdabba.',
+          'abdaabdaabdaabba',
+          'abaabda..abbaaba',
+          'abaaba....abaaba',
+          '.abba......abba.',
+          '..aa........aa..',
+          '................'] },
+      night: { bg: '#003438', pal: ['#268890', '#d9eaec', '#9ecace', '#73b2b8', '#fbfbf4'],
+        rows: ['.....aaaaaa.....',
+          '...aabbbbbbaa...',
+          '..abbccccccbba..',
+          '.abccccccccccba.',
+          '.abcddccccddcda.',
+          '.abdeebccdeebda.',
+          '.abde.bccde.bda.',
+          '.abcbbccccbbcda.',
+          '..abdccddccdda..',
+          '.abdabdaabdabba.',
+          'abdaabdaabdaabba',
+          'abaabda..abbaaba',
+          'abaaba....abaaba',
+          '.abba......abba.',
+          '..aa........aa..',
+          '................'] } },
+    { name: 'Astronaut',
+      day: { pal: ['#0a204b', '#6f8dc8', '#11357c', '#161616', '#fbfbf4', '#1747a6', '#f3d9b1'],
+        rows: ['.....aaaaaa.....',
+          '...aabbbbbbaa...',
+          '..abbccccccbba..',
+          '.abcddddddddbba.',
+          '.abdeddddddddba.',
+          '.abddddddddddba.',
+          '.abbddddddddbca.',
+          '..abbbbbbbbbca..',
+          '.abcfcggggbfcba.',
+          'abcabcggggbcabba',
+          'abcabfbbbbfcabca',
+          '.aaabffccffcaaa.',
+          '...abfcaabfca...',
+          '..abcccaabccba..',
+          '...aaaa..aaaa...',
+          '................'] },
+      night: { bg: '#0a204b', pal: ['#3a63b3', '#dce3f2', '#7f9ace', '#fbfbf4', '#a7b9dd', '#f3d9b1'],
+        rows: ['.....aaaaaa.....',
+          '...aabbbbbbaa...',
+          '..abbccccccbba..',
+          '.abc........bba.',
+          '.ab.d........ba.',
+          '.ab..........ba.',
+          '.abb........bca.',
+          '..abbbbbbbbbca..',
+          '.abcecffffbecba.',
+          'abcabcffffbcabba',
+          'abcabebbbbecabca',
+          '.aaabeecceecaaa.',
+          '...abecaabeca...',
+          '..abcccaabccba..',
+          '...aaaa..aaaa...',
+          '................'] } },
+    { name: 'Miner',
+      day: { pal: ['#432c00', '#bd9e61', '#946200', '#6f4a00', '#fbfbf4', '#f3d9b1', '#161616'],
+        rows: ['.....aaaaaa.....',
+          '...aabbbbbbaa...',
+          '..abbcdeebcbba..',
+          '.abccdeeeebccba.',
+          '.abcccbeebcccda.',
+          '.abccccbbccccda.',
+          'abddddddddddddba',
+          '.aaaffffffffaaa.',
+          '...afgffffgfa...',
+          '...affffffffa...',
+          '...afffggfffa...',
+          '...aaffffffaa...',
+          '..abbbbbbbbbba..',
+          '.abccccccccccba.',
+          '.abddddddddddda.',
+          '..aaaaaaaaaaaa..'] },
+      night: { bg: '#432c00', pal: ['#a47a26', '#efe7d9', '#d6c39e', '#c4a973', '#fbfbf4', '#f3d9b1'],
+        rows: ['.....aaaaaa.....',
+          '...aabbbbbbaa...',
+          '..abbcdeebcbba..',
+          '.abccdeeeebccba.',
+          '.abcccbeebcccda.',
+          '.abccccbbccccda.',
+          'abddddddddddddba',
+          '.aaaffffffffaaa.',
+          '...af.ffff.fa...',
+          '...affffffffa...',
+          '...afff..fffa...',
+          '...aaffffffaa...',
+          '..abbbbbbbbbba..',
+          '.abccccccccccba.',
+          '.abddddddddddda.',
+          '..aaaaaaaaaaaa..'] } },
+    { name: 'Chef',
+      day: { pal: ['#0d3714', '#f5ecd6', '#73ad7c', '#f3d9b1', '#161616', '#1d7a2c', '#165c21'],
+        rows: ['....aaaaaaaa....',
+          '...abbbbbbbba...',
+          '..abbbbbbbbbba..',
+          '.abbbbbbbbbbbba.',
+          '.abbbbbbbbbbbba.',
+          '..abbbbbbbbbba..',
+          '..acccccccccca..',
+          '...adddddddda...',
+          '...adeddddeda...',
+          '...adddddddda...',
+          '...adddeeddda...',
+          '...aaddddddaa...',
+          '..acccccccccca..',
+          '.acffffffffffca.',
+          '.acggggggggggga.',
+          '..aaaaaaaaaaaa..'] },
+      night: { bg: '#0d3714', pal: ['#3f8e4c', '#fbfbf4', '#ddebdf', '#f3d9b1', '#a9ccaf', '#83b68b'],
+        rows: ['....aaaaaaaa....',
+          '...abbbbbbbba...',
+          '..abbbbbbbbbba..',
+          '.abbbbbbbbbbbba.',
+          '.abbbbbbbbbbbba.',
+          '..abbbbbbbbbba..',
+          '..acccccccccca..',
+          '...adddddddda...',
+          '...ad.dddd.da...',
+          '...adddddddda...',
+          '...addd..ddda...',
+          '...aaddddddaa...',
+          '..acccccccccca..',
+          '.aceeeeeeeeeeca.',
+          '.acfffffffffffa.',
+          '..aaaaaaaaaaaa..'] } }
+  ];
+
   var WALL_BRICKS = '<path fill="currentColor" opacity=".3" d="M2 3h9v5H2zM13 3h9v5h-9zM2 10h4v5H2zM8 10h8v5H8zM18 10h4v5h-4zM2 17h9v4H2zM13 17h9v4h-9z"/>';
   var WALL_ROW = 'M3 12h18M3 12l4-4M3 12l4 4M21 12l-4-4M21 12l-4 4';
   var WALL_COL = 'M12 3v18M12 3l-4 4M12 3l4 4M12 21l-4-4M12 21l4-4';
@@ -54,8 +344,31 @@
     either: 'It goes when its row or its column is cleared.',
     both: 'It goes only when its row and its column are both cleared.'
   };
-  /** One mascot, outline (solid = false) or solid. m is 1..8, as game-logic.js mascotOf gives it. */
-  function mascotSVG(m, solid) {
+  var SETS = { gridiron: { label: 'Gridiron', list: MASCOTS }, pixel: { label: 'Pixel', list: PIXEL } };
+  function setOf(name) { return SETS[name] ? name : 'gridiron'; }
+
+  /** A pixel sprite as SVG: one rect per run of same-coloured pixels in a row, sharp edges.
+      The viewBox has 2 pixels of margin, so the sprite fills 80% of the tile; a night sprite's
+      background fills the whole tile. */
+  function pixelSVG(P, solid) {
+    var art = solid ? P.night : P.day;
+    var out = '<svg class="glyph mascot pixel" viewBox="-2 -2 20 20" shape-rendering="crispEdges" aria-hidden="true">';
+    if (solid) out += '<rect x="-2" y="-2" width="20" height="20" fill="' + art.bg + '"/>';
+    art.rows.forEach(function (row, y) {
+      for (var x = 0; x < row.length;) {
+        var ch = row.charAt(x), end = x;
+        while (end < row.length && row.charAt(end) === ch) end++;
+        if (ch !== '.') out += '<rect x="' + x + '" y="' + y + '" width="' + (end - x) + '" height="1" fill="' + art.pal['abcdefghij'.indexOf(ch)] + '"/>';
+        x = end;
+      }
+    });
+    return out + '</svg>';
+  }
+
+  /** One mascot, outline (solid = false) or solid. m is 1..8, as game-logic.js mascotOf gives it.
+      set: 'gridiron' (default) or 'pixel'. */
+  function mascotSVG(m, solid, set) {
+    if (setOf(set) === 'pixel') return pixelSVG(PIXEL[m], solid);
     var M = MASCOTS[m];
     return '<svg class="glyph mascot" viewBox="0 0 24 24" aria-hidden="true">' +
       '<path fill="currentColor" fill-rule="evenodd" d="' + (solid ? M.s : M.o) + '"/></svg>';
@@ -65,5 +378,11 @@
     return '<svg class="glyph wall-glyph" viewBox="0 0 24 24" aria-hidden="true">' + WALL_BRICKS + WALL_MARK[kind] + '</svg>';
   }
 
-  window.TenSpotArt = { MASCOTS: MASCOTS, WALL_NAME: WALL_NAME, WALL_RULE: WALL_RULE, mascotSVG: mascotSVG, wallSVG: wallSVG };
+  /** A mascot's name in a set ('Longhorn', 'Wizard'). */
+  function mascotName(m, set) { return SETS[setOf(set)].list[m].name; }
+
+  window.TenSpotArt = {
+    SETS: SETS, MASCOTS: MASCOTS, PIXEL: PIXEL, WALL_NAME: WALL_NAME, WALL_RULE: WALL_RULE,
+    mascotSVG: mascotSVG, mascotName: mascotName, wallSVG: wallSVG
+  };
 })();

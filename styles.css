@@ -200,6 +200,13 @@ h1.is-under { color: var(--h2i); }
 .c-done { color: var(--done); cursor: default; }
 .c-done::after { transform: scaleX(1) rotate(-38deg); opacity: .4; }
 .c-done .glyph { color: var(--done); }
+/* Pixel tiles: the sprite (and a night tile's background) fills the cell. Cleared tiles fade to grey.
+   Rings and frames sit above the sprite, with a pale halo so they show on night tiles too. */
+.glyph.mascot.pixel { width: 100%; height: 100%; image-rendering: pixelated; }
+.c-done .glyph.pixel { opacity: .22; filter: grayscale(1); }
+.c-tile.px.c-hint::before { z-index: 1; box-shadow: 0 0 0 2px var(--paper), inset 0 0 0 2px var(--paper); }
+.c-tile.px.c-sel::before { box-shadow: 0 0 0 2px var(--paper), inset 0 0 0 2px var(--paper); }
+.c-tile.px.c-guide .glyph { outline: 3px solid var(--gain); outline-offset: -3px; }
 .c-flash { animation: nmPop .55s ease both; z-index: 2; }
 .c-bad { animation: nmShake .32s ease both; color: var(--strike); }
 .c.c-bad { --tink: var(--strike); }

@@ -165,6 +165,7 @@
   var ui = {                                      // UI-only state
     dark: loadDark(),
     sound: store.get(KEY.sound) === 'on',
+    tiles: store.get(KEY.tiles) === 'pixel' ? 'pixel' : 'gridiron',   // the tile set (art.js)
     settingsOpen: !!saved.settingsOpen,
     confirm: null, // the open confirmation dialog: { yes: function } or null
     flash: [],     // cell ids playing the match "pop"
@@ -291,14 +292,15 @@
   function cellInnerHTML(v, bonus) {
     if (v < 0) return wallHTML(L.wallKind({ v: v }), bonus || 0);
     if (v === L.BLANK) return '';   // the blank centre spot of an odd square board
-    return ART.mascotSVG(L.mascotOf(v), L.isSolid(v));
+    return ART.mascotSVG(L.mascotOf(v), L.isSolid(v), ui.tiles);
   }
 
   function family(v) { return MASCOTS[L.mascotOf(v)].h; }
   function cellName(v) {
     if (v < 0) { var wk = L.wallKind({ v: v }); return WALL_NAME[wk] + '. ' + WALL_RULE[wk]; }
     if (v === L.BLANK) return 'Empty spot';
-    return MASCOTS[L.mascotOf(v)].name + (L.isSolid(v) ? ', solid' : ', outline');
+    if (ui.tiles === 'pixel') return ART.mascotName(L.mascotOf(v), 'pixel') + (L.isSolid(v) ? ', night' : ', day');
+    return ART.mascotName(L.mascotOf(v)) + (L.isSolid(v) ? ', solid' : ', outline');
   }
 
   function cellClass(c) {
@@ -306,6 +308,7 @@
     if (c.v < 0) return cls + ' c-wall';
     if (c.v === L.BLANK) return cls + ' c-blank';
     cls += ' c-tile h' + family(c.v);
+    if (ui.tiles === 'pixel') cls += ' px';
     if (c.done) cls += ' c-done';
     if (c.id === state.selected) cls += ' c-sel';
     if (ui.flash.indexOf(c.id) >= 0) cls += ' c-flash';
@@ -528,7 +531,7 @@
       }
       if (grid.children[i] !== el) grid.insertBefore(el, grid.children[i] || null);
       var wallPts = c.v < 0 ? L.wallBonusAt(state) : 0;   // a wall shows what it would pay right now
-      var key = c.v < 0 ? c.v + ':' + wallPts : String(c.v);
+      var key = c.v < 0 ? c.v + ':' + wallPts : ui.tiles + ':' + c.v;   // a new tile set redraws every tile
       if (el.dataset.key !== key) { el.innerHTML = cellInnerHTML(c.v, wallPts); el.dataset.key = key; }
       var cls = cellClass(c);
       if (el.className !== cls) el.className = cls;
@@ -686,6 +689,7 @@
       b.title = open ? '' : 'Reach level ' + L.startLevel(b.dataset.diff) + ' first';
     });
     setPressed('[data-theme]', 'data-theme', ui.dark ? 'dark' : 'light');
+    setPressed('[data-tiles]', 'data-tiles', ui.tiles);
     setPressed('[data-sound]', 'data-sound', ui.sound ? 'on' : 'off');
     $('diffInfo').textContent = startInfo();
     $('grid').style.setProperty('--cols', String(s.cols || L.colsFor(s.diff)));
@@ -1112,7 +1116,7 @@
     if (stage !== L.stageOf(lv - 1)) parts.push(L.LEVELS[stage].label + ' starts here.');
     if (L.widthAt(lv) > L.widthAt(lv - 1)) parts.push('Wider board: ' + L.widthAt(lv) + ' across.');
     var now = L.mascots(lv), before = L.mascots(lv - 1);
-    if (now > before && MASCOTS[now]) parts.push('New mascot: ' + MASCOTS[now].name + '.');
+    if (now > before && MASCOTS[now]) parts.push('New mascot: ' + ART.mascotName(now, ui.tiles) + '.');
     var walls = L.wallCount(lv), wallsBefore = L.wallCount(lv - 1);
     var firstWall = walls > 0 && !L.RAMP.some(function (r) { return r.from < lv && r.walls > 0; });
     if (firstWall) parts.push("A wall! It can't be cleared and blocks the way. Clear the rest of its row and it goes too. The longer it stands, the more it pays.");
@@ -1236,6 +1240,12 @@
   }
 
   function setTheme(dark) { ui.dark = dark; store.set(KEY.theme, dark ? 'dark' : 'light'); render(); }
+  function setTiles(set) {
+    if (!ART.SETS[set]) return;
+    ui.tiles = set;
+    store.set(KEY.tiles, set);
+    render();
+  }
 
   function setDifficulty(diff) {
     if (diff === state.diff || !unlocked(diff)) return;
@@ -1335,6 +1345,9 @@
   });
   document.querySelectorAll('[data-theme]').forEach(function (b) {
     b.addEventListener('click', function () { setTheme(b.dataset.theme === 'dark'); });
+  });
+  document.querySelectorAll('[data-tiles]').forEach(function (b) {
+    b.addEventListener('click', function () { setTiles(b.dataset.tiles); });
   });
   document.querySelectorAll('[data-sound]').forEach(function (b) {
     b.addEventListener('click', function () { setSound(b.dataset.sound === 'on'); });

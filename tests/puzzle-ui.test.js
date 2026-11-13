@@ -121,7 +121,7 @@ test('the game is saved on this device and picked up again after a reload', func
 });
 
 test('the start-of-level note only names a new mascot', function () {
-  assert.ok(app.indexOf("'New mascot: ' + MASCOTS[now].name") !== -1);
+  assert.ok(app.indexOf("'New mascot: ' + ART.mascotName(now, ui.tiles)") !== -1);
   assert.ok(app.indexOf("' tiles, ' + L.mascots(") === -1, 'old note removed');
 });
 test('Add is greyed out before level 30; from 30 too early is a mistake', function () {
@@ -208,6 +208,35 @@ test('the score server address is written only in config.js', function () {
 test('app.js and game-logic.js parse as scripts', function () {
   new Function(app);
   new Function(fs.readFileSync('game-logic.js', 'utf8'));
+});
+
+test('Appearance has a tile set choice, and the pixel set has eight 16 x 16 characters', function () {
+  assert.ok(html.indexOf('data-tiles="gridiron"') !== -1 && html.indexOf('data-tiles="pixel"') !== -1);
+  assert.ok(app.indexOf("tiles: 'numbermatch.tiles'") !== -1);
+  assert.ok(css.indexOf('.glyph.mascot.pixel') !== -1);
+  global.window = {};
+  new Function('window', fs.readFileSync('art.js', 'utf8'))(global.window);
+  var ART = global.window.TenSpotArt;
+  assert.deepStrictEqual(Object.keys(ART.SETS), ['gridiron', 'pixel']);
+  assert.strictEqual(ART.PIXEL.length, 9);
+  for (var m = 1; m <= 8; m++) {
+    ['day', 'night'].forEach(function (when) {
+      var art = ART.PIXEL[m][when];
+      assert.strictEqual(art.rows.length, 16, ART.PIXEL[m].name + ' ' + when);
+      art.rows.forEach(function (row) {
+        assert.strictEqual(row.length, 16);
+        row.replace(/\./g, '').split('').forEach(function (ch) { assert.ok(art.pal['abcdefghij'.indexOf(ch)], ART.PIXEL[m].name + ' uses a colour it has'); });
+      });
+    });
+    assert.ok(/^#[0-9a-f]{6}$/.test(ART.PIXEL[m].night.bg));
+  }
+  assert.strictEqual(ART.mascotName(1, 'pixel'), 'Wizard');
+  assert.strictEqual(ART.mascotName(1), ART.MASCOTS[1].name);
+  var day = ART.mascotSVG(1, false, 'pixel'), night = ART.mascotSVG(1, true, 'pixel');
+  assert.ok(/class="glyph mascot pixel"/.test(day) && /crispEdges/.test(day));
+  assert.ok(night.indexOf('<rect x="-2" y="-2" width="20" height="20" fill="#341151"/>') !== -1, 'night fills the tile');
+  assert.strictEqual(day.indexOf('width="20"'), -1, 'day has no background');
+  assert.ok(/<path/.test(ART.mascotSVG(1, false)), 'gridiron is still the default');
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');

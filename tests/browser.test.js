@@ -170,6 +170,23 @@ async function test(name, fn) {
     assert.strictEqual(await page.locator('.c-pack-hold').count(), 0, 'the space held open during the slide is gone');
   });
 
+  await test('Appearance › Pixel switches every tile to the pixel set, and is remembered', async function () {
+    var p = await openPage(game);
+    await p.evaluate(function () { localStorage.setItem('numbermatch.guide', 'done'); window.__nm.openSettings(true); });
+    await p.click('button[data-tiles="pixel"]');
+    assert.strictEqual(await p.getAttribute('button[data-tiles="pixel"]', 'aria-pressed'), 'true');
+    var tiles = await p.locator('button.c-tile').count();
+    assert.strictEqual(await p.locator('button.c-tile svg.pixel').count(), tiles);
+    assert.ok(/, (day|night)$/.test(await p.getAttribute('button.c-tile', 'aria-label')));
+    await p.reload();
+    await p.waitForTimeout(300);
+    assert.strictEqual(await p.locator('button.c-tile svg.pixel').count(), tiles);
+    await p.evaluate(function () { window.__nm.openSettings(true); });
+    await p.click('button[data-tiles="gridiron"]');
+    assert.strictEqual(await p.locator('button.c-tile svg.pixel').count(), 0);
+    await p.context().close();
+  });
+
   await test('a board code from a shared link deals that board, walls and all', async function () {
     var linked = await openPage(game + '?board=60-1a2b3c4d');
     if (await linked.isVisible('#confirm')) { await linked.click('#confirmYes'); await linked.waitForTimeout(300); }

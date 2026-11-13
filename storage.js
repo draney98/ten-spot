@@ -12,6 +12,7 @@
     theme: 'numbermatch.theme', // 'light'|'dark'
     sound: 'numbermatch.sound', // 'on'|'off'; missing means off
     player: 'numbermatch.player',
+    tiles: 'numbermatch.tiles',       // the tile set: gridiron or pixel (see art.js)
     account: 'numbermatch.account',   // the signed-in account: { key, name } (see account.js)
     save: 'numbermatch.save1', // the game in progress (see save.js)
     diff: 'numbermatch.diff', // where the last run started: easy|normal|hard
