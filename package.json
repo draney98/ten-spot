@@ -7,6 +7,7 @@
   "scripts": {
     "test": "node tests/run.js",
     "start": "node server/index.js",
-    "sim": "node tools/sim.js"
+    "sim": "node tools/sim.js",
+    "build": "sh tools/build-site.sh"
   }
 }

@@ -174,7 +174,7 @@
           result.done = true;
           return false;
         }
-        score = played.state.score + played.state.bonus;
+        score = played.state.score;   // the level bonus is already in it
         level++;
         return true;
       }

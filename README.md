@@ -9,6 +9,8 @@ and the score server uses only what ships with Node 22.
 - **The game:** open `index.html` in a browser, or serve the folder with any static server.
 - **The live site:** `sh tools/build-site.sh` copies only what the game and the tuner need into `public/`. Render runs it on every push.
 - **The tests:** `npm test` (same as `node tests/run.js`). One line per test file; every file must say `ok`.
+  `tests/browser.test.js` opens the real game in a headless browser and presses the buttons. It needs
+  Playwright (`npm install --no-save playwright && npx playwright install chromium`); without it, it says SKIP.
 - **The score server:** `SCORES_DB=./scores.sqlite node server/index.js` (port 8787, or `PORT`).
 - **The bot:** `node tools/sim.js 100` plays 100 runs and prints how far they get.
 - **The configurator:** open `tools/tuner.html` to try other difficulty numbers with the bot.
