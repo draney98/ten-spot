@@ -7,8 +7,9 @@ services:
     name: ten-spot
     runtime: static
     branch: main
-    buildCommand: sed -i "s/__V__/${RENDER_GIT_COMMIT:-dev}/g" index.html
-    staticPublishPath: .
+    # Copies only the game and the tuner into public/ (see tools/build-site.sh).
+    buildCommand: sh tools/build-site.sh
+    staticPublishPath: public
     routes:
       - type: rewrite
         source: /*

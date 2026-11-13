@@ -136,7 +136,7 @@
 
   /** Gridiron: mascots in play on a level (see RAMP). */
   function mascots(level, diff) {
-    return kindCount(diff, level, 'pairs');
+    return kindCount(level, 'pairs');
   }
   function mascotOf(v) { return Math.ceil(v / 2); }   // 1..8
   function isSolid(v) { return v % 2 === 0; }
@@ -236,8 +236,8 @@
     return spec.level + '-' + hex;
   }
 
-  /** How many mascots a level uses (see RAMP). The diff argument is ignored. */
-  function kindCount(diff, level) {
+  /** How many mascots a level uses (see RAMP). */
+  function kindCount(level) {
     return Math.min(MAX_MASCOTS, rampAt(level).kinds);
   }
 
@@ -249,13 +249,13 @@
      RULE HELPERS
      ------------------------------------------------------------------ */
 
-  /** Adds allowed on a level (see RAMP). The diff argument is ignored. */
-  function addsFor(diff, level) {
+  /** Adds allowed on a level (see RAMP). */
+  function addsFor(level) {
     return rampAt(level).adds;
   }
 
   /** Point multiplier: x1 on level 1, +0.1 a level (x4.6 at 37, x6.2 at 53, x7.9 at 70). */
-  function pointMult(diff, level) {
+  function pointMult(level) {
     return Math.round((1 + 0.1 * ((level || 1) - 1)) * 10) / 10;
   }
 
@@ -317,8 +317,8 @@
     }
     return tile;
   }
-  /** How many walls a level is dealt with (see RAMP). The diff argument is ignored. */
-  function wallCount(diff, level) {
+  /** How many walls a level is dealt with (see RAMP). */
+  function wallCount(level) {
     return rampAt(level).walls;
   }
   /** The kinds of the walls a level is dealt with, e.g. ['row', 'col']. A RAMP row may list them
@@ -760,7 +760,7 @@
       rows = how many rows this pair empties (the existing rowsCleared.length).
       Same shade uses the tile's drawn shade, so a light 1 and a light 9 double. */
   function pairScore(state, a, b, streak, rows) {
-    var cells = state.cells, mult = pointMult(state.diff, state.level);
+    var cells = state.cells, mult = pointMult(state.level);
     var li = linkInfo(cells, a, b, boardCols(state));
     var raw = SCORE.base + SCORE.perGap * li.gaps
             + (li.kind === 'diag' ? SCORE.diagonal : 0)
@@ -781,11 +781,11 @@
   function levelBonus(s) {
     var used = matchesMade(s);
     var underPar = Math.max(0, Math.round(s.par || 0) - used);
-    return Math.round(pointMult(s.diff, s.level) * (SCORE.levelPerLevel * s.level + SCORE.parAdd * underPar));
+    return Math.round(pointMult(s.level) * (SCORE.levelPerLevel * s.level + SCORE.parAdd * underPar));
   }
 
   function bonusParts(s) {
-    var mult = pointMult(s.diff, s.level);
+    var mult = pointMult(s.level);
     var used = matchesMade(s);
     var par = Math.round(s.par || 0);
     var under = Math.max(0, par - used);
@@ -1060,7 +1060,7 @@
     var cols = widthAt(level);
     var tiles = pairsBoard(level, rng || Math.random, diff);
     var vals = placeBlank(placeWalls(tiles, wallKinds(level), cols, rng || Math.random), cols);
-    var addsThisLevel = addsFor(diff, level);
+    var addsThisLevel = addsFor(level);
     var play = tidyPlay(vals, DIAG, 'pairs', addsThisLevel, null, cols);
     return {
       level: level,
@@ -1225,7 +1225,7 @@
       n = pairs of dealt tiles cleared so far this level. Pass n to price a different count. */
   function wallBonusAt(s, n) {
     if (n == null) n = s.wallPairs || 0;
-    return Math.round((SCORE.wall + n * n) * pointMult(s.diff, s.level));
+    return Math.round((SCORE.wall + n * n) * pointMult(s.level));
   }
 
   function applyMatch(s, a, b) {
@@ -1360,14 +1360,14 @@
   function sweepOffer(s) {
     var found = sweepPairs(s);
     if (!found) return null;
-    return { pairs: found.length, bonus: Math.round(SCORE.sweep * found.length * pointMult(s.diff, s.level)) };
+    return { pairs: found.length, bonus: Math.round(SCORE.sweep * found.length * pointMult(s.level)) };
   }
 
   function cleanSweep(s) {
     var found = sweepPairs(s);
     if (!found) return { state: s, event: null };
     var pairs = found.map(function (p) { return [s.cells[p[0]].id, s.cells[p[1]].id]; });
-    var bonus = Math.round(SCORE.sweep * pairs.length * pointMult(s.diff, s.level));
+    var bonus = Math.round(SCORE.sweep * pairs.length * pointMult(s.level));
     var n = copy(s);
     n.score = s.score + bonus;
     n.selected = null;
@@ -1454,7 +1454,7 @@
     n.history = h;
     n.selected = null;
     n.status = 'playing'; n.reason = null; n.bonus = 0; n.final = 0; n.newBest = false;
-    var cost = Math.min(n.score, Math.round(SCORE.undoCost * pointMult(n.diff, n.level)));
+    var cost = Math.min(n.score, Math.round(SCORE.undoCost * pointMult(n.level)));
     n.score -= cost;
     n.penalties = (n.penalties || 0) + cost;
     // The story steps back with the board (streak, sweeps, walls), but what was spent stays spent.
@@ -1482,7 +1482,7 @@
       ids = [s.cells[p[0]].id, s.cells[p[1]].id];
     }
     var n = copy(s);
-    var cost = Math.min(s.score, Math.round(SCORE.hintCost * pointMult(s.diff, s.level)));
+    var cost = Math.min(s.score, Math.round(SCORE.hintCost * pointMult(s.level)));
     n.hintsLeft = s.hintsLeft - 1;
     n.selected = null;
     n.streak = Math.max(0, (s.streak || 0) - 1);

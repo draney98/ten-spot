@@ -11,7 +11,8 @@ function test(name, fn) {
 
 var html = fs.readFileSync('index.html', 'utf8');
 var css = fs.readFileSync('styles.css', 'utf8');
-var app = fs.readFileSync('app.js', 'utf8');
+// The page code: app.js and the helpers split out of it (Nov 12).
+var app = ['app.js', 'storage.js', 'sound.js', 'art.js'].map(function (f) { return fs.readFileSync(f, 'utf8'); }).join('\n');
 
 test('the beatability label is gone', function () {
   assert.ok(html.indexOf('id="beatability"') === -1);
@@ -81,7 +82,7 @@ test('sound is a quiet tick and starts off', function () {
   assert.ok(html.indexOf('aria-label="Sound"') !== -1);
   assert.ok(html.indexOf('data-sound="off"') !== -1);
   assert.ok(html.indexOf('data-sound="on"') !== -1);
-  assert.ok(app.indexOf("store.get(KEY_SOUND) === 'on'") !== -1);
+  assert.ok(app.indexOf("store.get(KEY.sound) === 'on'") !== -1);
   assert.ok(app.indexOf("play('click')") !== -1);
   assert.ok(app.indexOf("play('bad')") !== -1);
   assert.ok(app.indexOf("'clear'") !== -1);
@@ -114,7 +115,7 @@ test('the game is saved on this device and picked up again after a reload', func
   assert.ok(html.indexOf('id="saveError"') !== -1);
   assert.ok(app.indexOf("'numbermatch.save1'") !== -1);
   assert.ok(app.indexOf("window.addEventListener('pagehide', saveNow)") !== -1);
-  assert.ok(app.indexOf('SV.unpack(store.get(KEY_SAVE))') !== -1);
+  assert.ok(app.indexOf('SV.unpack(store.get(KEY.save))') !== -1);
   assert.ok(app.indexOf('saveSoon();') !== -1);
 });
 
@@ -145,7 +146,7 @@ test('walls are drawn, named, explained and announced', function () {
   assert.ok(html.indexOf('doubles if the wall lasts to the level') !== -1);
   assert.ok(app.indexOf("return cls + ' c-wall';") !== -1);
   assert.ok(app.indexOf("'Wall gone! +'") !== -1);
-  assert.ok(app.indexOf('L.wallCount(state.diff, lv)') !== -1);
+  assert.ok(app.indexOf('L.wallCount(lv)') !== -1);
   assert.ok(css.indexOf('.c-wall {') !== -1);
   assert.ok(html.indexOf('brick walls appear') !== -1);
 });

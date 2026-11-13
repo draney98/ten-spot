@@ -10,9 +10,9 @@ function test(name, fn) {
   catch (e) { failed++; console.log('FAIL  ' + name + '\n      ' + e.message); }
 }
 
-test('the static site is still published from the repo root', function () {
+test('the static site is built into public/ (only the game and the tuner are published)', function () {
   assert.ok(yaml.indexOf('runtime: static') !== -1);
-  assert.ok(yaml.indexOf('staticPublishPath: .') !== -1);
+  assert.ok(yaml.indexOf('staticPublishPath: public') !== -1);
 });
 
 test('the score service uses the paid instance disk and the node server', function () {

@@ -11,7 +11,8 @@ function test(name, fn) {
 
 var html = fs.readFileSync('index.html', 'utf8');
 var css = fs.readFileSync('styles.css', 'utf8');
-var app = fs.readFileSync('app.js', 'utf8');
+// The page code: app.js and the helpers split out of it (Nov 12).
+var app = ['app.js', 'storage.js', 'sound.js', 'art.js'].map(function (f) { return fs.readFileSync(f, 'utf8'); }).join('\n');
 
 test('the page loads the score client and points it at the score service', function () {
   assert.ok(html.indexOf('scores-client.js') !== -1);

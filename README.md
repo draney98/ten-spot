@@ -7,6 +7,7 @@ and the score server uses only what ships with Node 22.
 ## Run it
 
 - **The game:** open `index.html` in a browser, or serve the folder with any static server.
+- **The live site:** `sh tools/build-site.sh` copies only what the game and the tuner need into `public/`. Render runs it on every push.
 - **The tests:** `npm test` (same as `node tests/run.js`). One line per test file; every file must say `ok`.
 - **The score server:** `SCORES_DB=./scores.sqlite node server/index.js` (port 8787, or `PORT`).
 - **The bot:** `node tools/sim.js 100` plays 100 runs and prints how far they get.
@@ -21,11 +22,12 @@ and the score server uses only what ships with Node 22.
 | `save.js` | Turns a game into text for browser storage and back. |
 | `scores-client.js` | Talks to the score server: bests, shared boards, run ends. |
 | `index.html`, `styles.css` | The page and its looks. |
+| `storage.js`, `sound.js`, `art.js` | Helpers for `app.js`: browser storage and its keys, the sound ticks, and the mascot and wall drawings. |
 | `config.js` | Settings shared by the game and the tuner: the score server's address. |
 | `server/` | The score server: `scores.js` (SQLite), `http.js` (routes), `limits.js` (posting limits), `migrations.js` (numbered database changes), `index.js` (start-up). |
 | `tools/` | `tuner.html` and `tuner-core.js` (configurator and bot), `sim.js` (the bot from the command line). |
 | `tests/` | Plain node scripts, one per area. `run.js` runs them all. |
-| `design-info/`, `docs/`, `number-match.html` | Earlier design notes and the original single-file version. Not used by the live game. |
+| `design-info/`, `docs/`, `number-match.html` | Earlier design notes and the original single-file version. Kept in the repo, not published. |
 
 ## Rules of the house
 
@@ -33,4 +35,4 @@ and the score server uses only what ships with Node 22.
 - When the difficulty numbers change, raise `RULES_VERSION` in `game-logic.js` so real-play counts stay apart.
 - A database change is a new numbered entry at the end of `server/migrations.js`. Never edit one that has shipped. The server copies the database to `<file>.before-change-<n>` before applying change n.
 - Text on the board is drawn with `drawText()` (see `app.js`), not typed into the page, so phones can't select it.
-- Deploys happen on push to `main` (see `render.yaml`).
+- Deploys happen on push to `main` (see `render.yaml`). A new file the page loads must also be added to `tools/build-site.sh`; a test checks this.

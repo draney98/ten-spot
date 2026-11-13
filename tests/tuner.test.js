@@ -17,9 +17,9 @@ test('readConfig gives the game\'s numbers, and applying them back changes nothi
   assert.deepStrictEqual(ORIGINAL.tiles, { base: 10, step: 2, every: 2, max: 80, maxWidth: 9 });
   assert.strictEqual(ORIGINAL.tools[0].hints, 'inf');
   assert.deepStrictEqual(T.checkConfig(ORIGINAL), []);
-  var before = [1, 14, 15, 40, 53, 59, 76].map(function (l) { return [L.boardSize(l), L.widthAt(l), L.wallKinds(l).join(), L.addsFor('easy', l), L.toolsAt(l).undos]; });
+  var before = [1, 14, 15, 40, 53, 59, 76].map(function (l) { return [L.boardSize(l), L.widthAt(l), L.wallKinds(l).join(), L.addsFor(l), L.toolsAt(l).undos]; });
   T.applyConfig(L, ORIGINAL);
-  var after = [1, 14, 15, 40, 53, 59, 76].map(function (l) { return [L.boardSize(l), L.widthAt(l), L.wallKinds(l).join(), L.addsFor('easy', l), L.toolsAt(l).undos]; });
+  var after = [1, 14, 15, 40, 53, 59, 76].map(function (l) { return [L.boardSize(l), L.widthAt(l), L.wallKinds(l).join(), L.addsFor(l), L.toolsAt(l).undos]; });
   assert.deepStrictEqual(after, before);
   assert.deepStrictEqual(T.readConfig(L), ORIGINAL);
 });
@@ -33,7 +33,7 @@ test('applyConfig changes what the game deals', function () {
   try {
     assert.strictEqual(L.boardSize(1), 24);
     assert.strictEqual(L.boardSize(30), 40);
-    assert.strictEqual(L.addsFor('easy', 50), 2);
+    assert.strictEqual(L.addsFor(50), 2);
     assert.deepStrictEqual(L.wallKinds(3), ['col']);
     assert.strictEqual(L.stageOf(6), 'normal');
     assert.ok(L.widthAt(30) <= 7);

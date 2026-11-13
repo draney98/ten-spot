@@ -123,11 +123,11 @@ test('a fully-done partial last row is removed too', function () {
 
 /* ---------------- difficulty ---------------- */
 test('ramp: adds per level', function () {
-  assert.deepStrictEqual([1, 10, 11, 26, 27, 58, 59, 100].map(function (l) { return L.addsFor('easy', l); }), [6, 6, 5, 5, 4, 4, 3, 3]);
-  assert.strictEqual(L.addsFor('hard', 1), 6, 'the difficulty no longer matters');
+  assert.deepStrictEqual([1, 10, 11, 26, 27, 58, 59, 100].map(function (l) { return L.addsFor(l); }), [6, 6, 5, 5, 4, 4, 3, 3]);
+  assert.strictEqual(L.addsFor(1), 6, 'the difficulty no longer matters');
 });
 test('point multiplier grows 0.1 a level', function () {
-  assert.deepStrictEqual([1, 6, 16, 37, 53, 70].map(function (l) { return L.pointMult('easy', l); }), [1, 1.5, 2.5, 4.6, 6.2, 7.9]);
+  assert.deepStrictEqual([1, 6, 16, 37, 53, 70].map(function (l) { return L.pointMult(l); }), [1, 1.5, 2.5, 4.6, 6.2, 7.9]);
 });
 
 /* ---------------- actions ---------------- */
@@ -779,7 +779,7 @@ test('seeded reference plays finish under the time budget', function () {
   levels.forEach(function (level) {
     for (var s = 1; s <= 8; s++) {
       var vals = L.makeBoard(level, L.mulberry32(s));
-      var cap = L.addsFor('normal', level);
+      var cap = L.addsFor(level);
       var t0 = Date.now();
       var adds = L.tidyAdds(vals, true, 'pairs', cap, null, L.colsFor('normal'));
       if (Date.now() - t0 > 50) slow++;
@@ -921,12 +921,12 @@ test('walls: clearing the rest of its row removes the wall and pays a wall bonus
   var s = stateWith(vals, 'normal', { total: 15, dealtIds: 17, wallPairs: 0 });
   [[1, 2], [4, 5], [6, 7]].forEach(function (p) { s = L.select(L.select(s, p[0]).state, p[1]).state; });
   assert.strictEqual(s.wallPairs, 3);
-  assert.strictEqual(L.wallBonusAt(s), Math.round((50 + 9) * L.pointMult('easy', 6)));
+  assert.strictEqual(L.wallBonusAt(s), Math.round((50 + 9) * L.pointMult(6)));
   var r = L.select(L.select(s, 8).state, 16);          // the last tile of row 0, paired straight down
   assert.strictEqual(r.event.type, 'match');
   assert.deepStrictEqual(r.event.rowsCleared, [0]);
   assert.strictEqual(r.event.wallsGone, 1);
-  assert.strictEqual(r.event.wallBonus, Math.round((50 + 16) * L.pointMult('easy', 6)));   // 4 pairs while it stood
+  assert.strictEqual(r.event.wallBonus, Math.round((50 + 16) * L.pointMult(6)));   // 4 pairs while it stood
   assert.strictEqual(r.event.lastStand, false);
   assert.strictEqual(L.undo(r.state).state.wallPairs, 3);   // Undo takes the count back
   var packed = L.compactBoard(r.state);
@@ -992,7 +992,7 @@ test('row-and-column wall: needs both', function () {
   assert.strictEqual(col.event.wallsGone, 0);
 });
 test('wall bonus: grows with dealt pairs, ignores added tiles, and doubles on the last pair', function () {
-  var m = L.pointMult('easy', 6);
+  var m = L.pointMult(6);
   assert.strictEqual(L.wallBonusAt({ diff: 'easy', level: 6, wallPairs: 10 }), Math.round(150 * m));
   // W 1 1 on a 3-wide board: the only pair is the level's last pair
   var last = pick(small([L.WALL, 1, 1]), 2, 3);
@@ -1034,15 +1034,15 @@ test('walls: the board is clear when every tile is gone, even with a wall left',
   assert.strictEqual(s.status, 'clear');
 });
 test('walls: 1 from level 40, 2 from 46, back to 1 at 53, 2 from 59, 3 from 76', function () {
-  assert.deepStrictEqual([1, 39, 40, 46, 53, 58, 59, 65, 76, 100].map(function (l) { return L.wallCount('easy', l); }), [0, 0, 1, 2, 1, 1, 2, 2, 3, 3]);
+  assert.deepStrictEqual([1, 39, 40, 46, 53, 58, 59, 65, 76, 100].map(function (l) { return L.wallCount(l); }), [0, 0, 1, 2, 1, 1, 2, 2, 3, 3]);
 });
 test('walls: dealt boards get their walls and the blank centre where the square is full', function () {
   [1, 13, 37, 40, 46, 53, 76].forEach(function (level) {
     var s = L.dealPuzzle({ diff: 'easy', level: level, seed: 100 + level });
     var walls = s.cells.filter(L.isWall).length, blanks = s.cells.filter(L.isBlank).length;
-    assert.strictEqual(walls, L.wallCount('easy', level), 'level ' + level);
+    assert.strictEqual(walls, L.wallCount(level), 'level ' + level);
     assert.strictEqual(s.total, s.cells.length - walls - blanks);
-    assert.strictEqual(s.addsLeft, L.addsFor('easy', level), 'level ' + level + ' adds');
+    assert.strictEqual(s.addsLeft, L.addsFor(level), 'level ' + level + ' adds');
     var w = s.cols, full = s.cells.length === w * w && w % 2 === 1;
     assert.strictEqual(blanks, full ? 1 : 0, 'level ' + level + ' blank');
     if (blanks) assert.ok(L.isBlank(s.cells[(w * w - 1) / 2]), 'blank in the centre');
@@ -1060,7 +1060,7 @@ test('clean sweep: every tile with its twin straight below clears the board at o
   assert.strictEqual(r.event.type, 'sweep');
   assert.strictEqual(r.event.pairs.length, 8);
   assert.strictEqual(r.event.matches.length, 8);
-  assert.strictEqual(r.event.bonus, Math.round(25 * 8 * L.pointMult('easy', 6)));
+  assert.strictEqual(r.event.bonus, Math.round(25 * 8 * L.pointMult(6)));
   assert.strictEqual(r.state.status, 'clear');
   assert.strictEqual(r.state.cleared, 16);
   assert.ok(r.state.score > 100 + r.event.bonus);
@@ -1076,7 +1076,7 @@ test('clean sweep: no offer when there is a gap among the tiles', function () {
   // 8 columns: twins straight below, but one pair in the middle is already cleared
   var row = [1, 3, 5, 7, 9, 11, 13, 15];
   var s = stateWith(row.concat(row), 'normal');
-  assert.deepStrictEqual(L.sweepOffer(s), { pairs: 8, bonus: Math.round(25 * 8 * L.pointMult('easy', 6)) });
+  assert.deepStrictEqual(L.sweepOffer(s), { pairs: 8, bonus: Math.round(25 * 8 * L.pointMult(6)) });
   s.cells[3].done = true; s.cells[11].done = true;
   assert.strictEqual(L.sweepPairs(s), null);
   assert.strictEqual(L.sweepOffer(s), null);
