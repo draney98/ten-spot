@@ -19,7 +19,8 @@ function send(req, res, status, body, origin, extra) {
   res.end(body == null ? '' : JSON.stringify(body));
 }
 
-function readBody(req) {
+function readBody(req, max) {
+  var limit = max || MAX_BODY;
   return new Promise(function (resolve, reject) {
     var size = 0;
     var chunks = [];
@@ -27,7 +28,7 @@ function readBody(req) {
     req.on('data', function (chunk) {
       if (failed) return;
       size += chunk.length;
-      if (size > MAX_BODY) {
+      if (size > limit) {
         failed = true;
         reject(Object.assign(new Error('body too large'), { status: 413 }));
         req.resume();
@@ -63,8 +64,8 @@ function createScoresServer(opts) {
   }
   /** Read a JSON body and answer with handle(body): its return value with `status`, or its error.
       An error with e.status uses it; any other error is a 400 with its message. */
-  function json(req, res, status, handle) {
-    readBody(req).then(function (text) {
+  function json(req, res, status, handle, max) {
+    readBody(req, max).then(function (text) {
       var body;
       try { body = JSON.parse(text || '{}'); }
       catch (e) { return send(req, res, 400, { error: 'invalid json' }, origin); }
@@ -149,6 +150,15 @@ function createScoresServer(opts) {
       if (method === 'PUT' && path === '/v1/me/bests') {
         if (!allowed('bests', req, res)) return;
         return json(req, res, 200, function (patch) { return accounts.raiseBests(db, w, patch); });
+      }
+      if (method === 'GET' && path === '/v1/me/save') {
+        var saved = accounts.getSave(db, w);
+        if (!saved) return send(req, res, 404, { error: 'no saved game' }, origin);
+        return send(req, res, 200, saved, origin);
+      }
+      if (method === 'PUT' && path === '/v1/me/save') {
+        if (!allowed('saves', req, res)) return;
+        return json(req, res, 200, function (body) { return accounts.putSave(db, w, body, clock()); }, 64 * 1024);
       }
       if (method === 'POST' && path === '/v1/me/fold') return json(req, res, 200, function (body) { return accounts.foldCode(db, w, body.code); });
       if (method === 'POST' && path === '/v1/me/links') {

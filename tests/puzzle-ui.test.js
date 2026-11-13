@@ -115,7 +115,7 @@ test('the game is saved on this device and picked up again after a reload', func
   assert.ok(html.indexOf('save.js?v=') < html.indexOf('app.js?v='), 'save.js loads before app.js');
   assert.ok(html.indexOf('id="saveError"') !== -1);
   assert.ok(app.indexOf("'numbermatch.save1'") !== -1);
-  assert.ok(app.indexOf("window.addEventListener('pagehide', saveNow)") !== -1);
+  assert.ok(app.indexOf("window.addEventListener('pagehide', function () { saveNow(); serverSaveNow(true); });") !== -1);
   assert.ok(app.indexOf('SV.unpack(store.get(KEY.save))') !== -1);
   assert.ok(app.indexOf('saveSoon();') !== -1);
 });

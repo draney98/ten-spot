@@ -76,5 +76,14 @@ test('missing, broken, old-version or fake saves give null', function () {
   assert.ok(SV.unpack(JSON.stringify(good)));
 });
 
+test('pack can keep fewer undo steps (for the server copy)', function () {
+  var s = { diff: 'easy', status: 'playing', level: 3, cols: 5, score: 0, cells: [{ id: 1, v: 1, done: false }], history: [] };
+  for (var i = 0; i < 12; i++) s.history.push({ cells: [{ id: 1, v: 1, done: false }], n: i });
+  assert.strictEqual(SV.unpack(SV.pack(s)).state.history.length, 12);
+  var three = SV.unpack(SV.pack(s, {}, { keepHistory: 3 })).state.history;
+  assert.deepStrictEqual(three.map(function (h) { return h.n; }), [9, 10, 11]);
+  assert.strictEqual(SV.unpack(SV.pack(s, {}, { keepHistory: 0 })).state.history.length, 0);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

@@ -14,7 +14,8 @@
    *   api, S (scores-client), store, KEY, $, drawText,
    *   loadBest() -> bests on this device,  adoptBests(bests) -> merges into this device and redraws,
    *   about() -> { version, run } for the bests being sent,
-   *   ask(title, text, yesLabel, action),  note(text),  openSettings(),  render()
+   *   ask(title, text, yesLabel, action),  note(text),  openSettings(),  render(),
+ *   afterSignIn() -> called once this device has signed in (app.js picks up the saved game)
    * }
    */
   function create(d) {
@@ -91,7 +92,7 @@
         if (res.ok) forgetScoreCode();
         ui.busy = false; ui.error = '';
         if (recovery) { ui.recovery = recovery; if (d.openSettings) d.openSettings(); }
-        return pull();
+        return pull().then(function () { if (d.afterSignIn) d.afterSignIn(); });
       });
     }
     function makeAccount(name) {
@@ -297,7 +298,28 @@
       d.ask('Forget this score code?', 'Its bests stay on this device. The code itself is not kept.', 'Forget it', function () { forgetScoreCode(); d.render(); });
     });
 
-    return { isSignedIn: isSignedIn, pushBests: pushBests, pull: pull, render: render, handleIncoming: handleIncoming };
+    /* ---- the saved game on the server (app.js decides when) ---- */
+    /** Send a saved game: { data, savedAt }. Resolves with the server's answer body, or null. */
+    function pushSave(save, keepalive) {
+      var a = account();
+      if (!a || !d.api) return Promise.resolve(null);
+      return S.putSave(d.api, a.key, save, fetch, keepalive).then(function (res) {
+        if (res.status === 401) { signedOutElsewhere(); return null; }
+        return res.ok ? res.body : null;
+      });
+    }
+    /** The account's saved game { data, savedAt }, or null (none, offline, or signed out). */
+    function pullSave() {
+      var a = account();
+      if (!a || !d.api) return Promise.resolve(null);
+      return S.getSave(d.api, a.key, fetch).then(function (res) {
+        if (res.status === 401) { signedOutElsewhere(); return null; }
+        return res.ok && res.body && typeof res.body.data === 'string' ? res.body : null;
+      });
+    }
+
+    return { isSignedIn: isSignedIn, pushBests: pushBests, pull: pull, render: render, handleIncoming: handleIncoming,
+      pushSave: pushSave, pullSave: pullSave };
   }
 
   window.TenSpotAccount = { create: create };

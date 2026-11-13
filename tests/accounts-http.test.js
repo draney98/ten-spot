@@ -107,6 +107,18 @@ function call(port, method, path, body, key) {
     assert.strictEqual((await call(port, 'POST', '/v1/links/use', { code: 'aaaa-aaaa' })).status, 404);
   });
 
+  await test('a saved game up to 64 KB goes up and comes back', async function () {
+    assert.strictEqual((await call(port, 'GET', '/v1/me/save', null, ana.key)).status, 404);
+    var data = JSON.stringify({ v: 2, pad: 'x'.repeat(30000) });
+    var r = await call(port, 'PUT', '/v1/me/save', { data: data, savedAt: t }, ana.key);
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(r.json, { kept: true, savedAt: t });
+    var back = await call(port, 'GET', '/v1/me/save', null, ana.key);
+    assert.strictEqual(back.json.data, data);
+    assert.strictEqual((await call(port, 'PUT', '/v1/me/save', { data: 'x'.repeat(70000), savedAt: t }, ana.key)).status, 413);
+    assert.strictEqual((await call(port, 'GET', '/v1/me/save')).status, 401);
+  });
+
   await test('an unknown /v1/me route is 404, not a crash', async function () {
     assert.strictEqual((await call(port, 'GET', '/v1/me/nothing', null, ana.key)).status, 404);
     assert.strictEqual((await call(port, 'DELETE', '/v1/me/devices/nope', null, ana.key)).status, 404);

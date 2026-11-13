@@ -186,15 +186,77 @@
   function saveNow() {
     clearTimeout(saveTimer); saveTimer = 0;
     if (!SV) return;
-    var ok = store.set(KEY.save, SV.pack(state, { settingsOpen: ui.settingsOpen, boardCode: ui.boardCode, note: ui.note }));
+    // Only a game played on this page counts as newer: a board just dealt or reopened, not yet
+    // touched, must not hide a newer game saved from another device.
+    if (gameSig(state) !== startSig) lastLocalSave = Date.now();
+    var ok = store.set(KEY.save, SV.pack(state, { settingsOpen: ui.settingsOpen, boardCode: ui.boardCode, note: ui.note, playedAt: lastLocalSave }));
     store.set(KEY.diff, state.diff);
     if (state.level > reached()) store.set(KEY.reached, String(state.level));
     ui.saveFailed = !ok;
     var el = document.getElementById('saveError');
     if (el) el.hidden = ok;
+    serverSaveSoon();
   }
   function saveSoon() {
     if (!saveTimer) saveTimer = setTimeout(saveNow, 300);
+  }
+
+  /* ---------- the saved game on the server ----------
+     When this device is signed in, the game is also kept on the score server, so it follows the
+     player to another device. The device save always comes first; the server copy is sent at most
+     every 5 seconds, and straight away when the page is hidden or closed. It keeps only the undo
+     steps the level still allows, so it stays small. On start-up and after signing in, a newer
+     server copy is picked up, unless this device has already played since it opened. */
+  var SERVER_SAVE_GAP = 5000;
+  var startSig = gameSig(state);   // the game as this page opened it
+  // When this device last played (not just saved): kept in the save's extras as playedAt.
+  // A save from before this was added counts from when it was saved.
+  var lastLocalSave = !restored ? 0
+    : (restored.extras && typeof restored.extras.playedAt === 'number') ? restored.extras.playedAt : restored.savedAt;
+  var serverTimer = 0, lastServerPush = 0, lastServerSig = '';
+  function gameSig(s) {
+    return JSON.stringify([s.runId, s.level, s.moves, s.cleared, s.nextId, s.status, s.score, s.addsLeft, (s.history || []).length]);
+  }
+  function serverSaveSoon() {
+    if (!account || !account.isSignedIn() || serverTimer) return;
+    serverTimer = setTimeout(function () { serverTimer = 0; serverSaveNow(false); },
+      Math.max(0, SERVER_SAVE_GAP - (Date.now() - lastServerPush)));
+  }
+  function serverSaveNow(closing) {
+    if (!SV || !account || !account.isSignedIn()) return;
+    clearTimeout(serverTimer); serverTimer = 0;
+    // A game never played on this device (just dealt, or just opened) is not sent: it would
+    // otherwise look newer than a game played on another device.
+    if (!lastLocalSave) return;
+    var sig = gameSig(state);
+    if (sig === lastServerSig) return;
+    var undos = isFinite(state.undosLeft) ? Math.max(0, Math.min(5, state.undosLeft)) : 5;
+    var data = SV.pack(state, { boardCode: ui.boardCode }, { keepHistory: undos });
+    lastServerSig = sig;
+    lastServerPush = Date.now();
+    account.pushSave({ data: data, savedAt: lastLocalSave }, closing);
+  }
+  function pullServerSave() {
+    if (!SV || !account || !account.isSignedIn()) return;
+    account.pullSave().then(function (saved) {
+      if (!saved || saved.savedAt <= lastLocalSave) return;   // this device's game is as new or newer
+      if (gameSig(state) !== startSig) return;                // played here since opening: this game wins
+      var r = SV.unpack(saved.data);
+      if (!r) return;
+      resetAll();
+      var best = state.best;
+      state = L.withRunId(r.state);
+      state.best = S ? S.mergeBests(best, state.best) : best;
+      ui.boardCode = (r.extras && r.extras.boardCode) || '';
+      ui.note = 'Picked up your game from your other device: level ' + state.level + '.';
+      lastLocalSave = saved.savedAt;
+      lastServerSig = gameSig(state);
+      startSig = lastServerSig;
+      scheduleUpcoming();
+      if (!ui.boardCode) publishBoard();
+      saveNow();
+      render();
+    });
   }
 
   /* ---------- 2b. QUIET TICKS (see sound.js) ---------- */
@@ -1289,9 +1351,9 @@
     }
   });
 
-  window.addEventListener('pagehide', saveNow);
+  window.addEventListener('pagehide', function () { saveNow(); serverSaveNow(true); });
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden') saveNow();
+    if (document.visibilityState === 'hidden') { saveNow(); serverSaveNow(true); }
   });
   // Leaving is always safe because the game is saved. Only warn if this browser won't save.
   window.addEventListener('beforeunload', function (e) {
@@ -1305,6 +1367,7 @@
     about: function () { return { version: L.RULES_VERSION, run: state.runId }; },
     ask: ask, note: function (text) { ui.note = text; },
     openSettings: function () { ui.settingsOpen = true; },
+    afterSignIn: function () { pullServerSave(); },
     render: function () { render(); }
   }) : null;
 
@@ -1313,6 +1376,7 @@
   if (!ui.boardCode) publishBoard();   // a restored game already has its board code
   render();
   pullBests();
+  pullServerSave();
   sendRunEnds();
 
   /* A shared link (?board=41-1a2b3c4d) deals that board. The code is taken off the address

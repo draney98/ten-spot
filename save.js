@@ -1,6 +1,7 @@
 /* save.js: turn a game into text for browser storage, and back again.
    Pure functions, no DOM, so they can be tested in node.
-   pack(state, extras)  -> string
+   pack(state, extras, opts) -> string   opts.keepHistory: undo steps to keep (default 50);
+                                         the server copy keeps only the undos the level still allows
    unpack(text)         -> { state, extras, savedAt } or null (null = start a fresh game) */
 (function (root, factory) {
   var api = factory();
@@ -15,13 +16,14 @@
   var STATUSES = ['playing', 'clear', 'lose'];
   var UNLIMITED = ['hintsLeft', 'undosLeft', 'compactsLeft'];
 
-  function pack(state, extras) {
+  function pack(state, extras, opts) {
+    var keep = (opts && Number.isInteger(opts.keepHistory) && opts.keepHistory >= 0) ? opts.keepHistory : KEEP_HISTORY;
     var s = {};
     for (var k in state) if (Object.prototype.hasOwnProperty.call(state, k)) s[k] = state[k];
     // JSON turns Infinity into null, so write Easy's unlimited counts as "inf".
     UNLIMITED.forEach(function (k) { if (s[k] === Infinity) s[k] = 'inf'; });
-    if (Array.isArray(s.history) && s.history.length > KEEP_HISTORY) {
-      s.history = s.history.slice(s.history.length - KEEP_HISTORY);
+    if (Array.isArray(s.history) && s.history.length > keep) {
+      s.history = keep ? s.history.slice(s.history.length - keep) : [];
     }
     return JSON.stringify({ v: VERSION, savedAt: Date.now(), state: s, extras: extras || {} });
   }

@@ -142,5 +142,20 @@ test('rename', function () {
   assert.strictEqual(status(function () { accounts.rename(db, w, ''); }), '400 invalid name');
 });
 
+test('saved game: kept per account, and an older copy never replaces a newer one', function () {
+  var db = fresh(), t = 1700000000000;
+  var w = accounts.signedIn(db, accounts.createAccount(db, { name: 'Ana' }).key);
+  assert.strictEqual(accounts.getSave(db, w), null);
+  assert.deepStrictEqual(accounts.putSave(db, w, { data: '{"v":2,"a":1}', savedAt: t }, t), { kept: true, savedAt: t });
+  assert.deepStrictEqual(accounts.putSave(db, w, { data: '{"v":2,"a":0}', savedAt: t - 5 }, t), { kept: false, savedAt: t });
+  assert.deepStrictEqual(accounts.getSave(db, w), { data: '{"v":2,"a":1}', savedAt: t });
+  accounts.putSave(db, w, { data: '{"v":2,"a":2}', savedAt: t + 9 }, t);
+  assert.strictEqual(accounts.getSave(db, w).data, '{"v":2,"a":2}');
+  assert.strictEqual(status(function () { accounts.putSave(db, w, { data: 'x'.repeat(accounts.MAX_SAVE + 1), savedAt: t }, t); }), '400 invalid save');
+  assert.strictEqual(status(function () { accounts.putSave(db, w, { data: 'x', savedAt: t + 2 * 86400000 }, t); }), '400 invalid save time');
+  var bo = accounts.signedIn(db, accounts.createAccount(db, { name: 'Bo' }).key);
+  assert.strictEqual(accounts.getSave(db, bo), null, 'each account has its own');
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

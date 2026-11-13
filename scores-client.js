@@ -32,8 +32,9 @@
   /** One call to the score server. Resolves (never rejects) with { ok, status, body, error };
       status 0 means the server couldn't be reached. `key`, optional: a device key, sent as
       "Authorization: Bearer <key>" for the account routes. */
-  function send(base, method, path, body, fetchFn, key) {
+  function send(base, method, path, body, fetchFn, key, keepalive) {
     var opts = { method: method, headers: { 'content-type': 'application/json' } };
+    if (keepalive) opts.keepalive = true;   // lets the call finish while the page is closing
     if (key) opts.headers.authorization = 'Bearer ' + key;
     if (body != null) opts.body = JSON.stringify(body);
     return Promise.resolve().then(function () { return fetchFn(base + path, opts); }).then(function (res) {
@@ -181,6 +182,9 @@
   function foldCode(base, key, code, fetchFn) { return send(base, 'POST', '/v1/me/fold', { code: code }, fetchFn, key); }
   function makeLink(base, key, fetchFn) { return send(base, 'POST', '/v1/me/links', {}, fetchFn, key); }
   function newRecovery(base, key, fetchFn) { return send(base, 'POST', '/v1/me/recovery', {}, fetchFn, key); }
+  function getSave(base, key, fetchFn) { return send(base, 'GET', '/v1/me/save', null, fetchFn, key); }
+  /** save = { data: packed text, savedAt }. keepalive: true when the page is being closed. */
+  function putSave(base, key, save, fetchFn, keepalive) { return send(base, 'PUT', '/v1/me/save', save, fetchFn, key, keepalive); }
   function removeDevice(base, key, id, fetchFn) { return send(base, 'DELETE', '/v1/me/devices/' + encodeURIComponent(id), null, fetchFn, key); }
 
   /** A short name for this device in the account's device list, from the browser's user agent. */
@@ -220,6 +224,8 @@
     makeLink: makeLink,
     newRecovery: newRecovery,
     removeDevice: removeDevice,
+    getSave: getSave,
+    putSave: putSave,
     deviceLabel: deviceLabel,
     readRunEnds: readRunEnds,
     addRunEnd: addRunEnd,

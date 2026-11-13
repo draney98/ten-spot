@@ -11,7 +11,8 @@ var DEFAULT_RULES = {
   players: { max: 10, windowMs: 60 * 60 * 1000 },  // new score codes
   accounts: { max: 10, windowMs: 60 * 60 * 1000 }, // new accounts
   links: { max: 20, windowMs: 60 * 60 * 1000 },    // new link codes and recovery keys
-  signin: { max: 10, windowMs: 60 * 1000 }         // tries with a link code or recovery key (stops guessing)
+  signin: { max: 10, windowMs: 60 * 1000 },        // tries with a link code or recovery key (stops guessing)
+  saves: { max: 30, windowMs: 60 * 1000 }          // saved games (the game sends at most one every 5 seconds)
 };
 
 /** The address a request came from. Render's front end puts the caller's address first in

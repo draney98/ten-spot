@@ -187,7 +187,35 @@ function foldCode(db, who, code) {
   });
 }
 
+/* ---- the saved game (one per account) ---- */
+var MAX_SAVE = 60000;   // characters; a packed game with a few undo steps is 5 to 20 thousand
+
+/** The account's saved game: { data, savedAt }, or null when there is none. */
+function getSave(db, who) {
+  var row = db.prepare('SELECT data, saved_at FROM saves WHERE account_id = ?').get(who.account.id);
+  return row ? { data: row.data, savedAt: row.saved_at } : null;
+}
+/**
+ * Keep a saved game. body: { data: packed text, savedAt: ms on the device's clock }.
+ * A copy older than the one kept is not taken: { kept: false, savedAt: the newer one's time }.
+ */
+function putSave(db, who, body, now) {
+  body = body || {};
+  var t = now || Date.now();
+  if (typeof body.data !== 'string' || !body.data || body.data.length > MAX_SAVE) throw fail('invalid save');
+  if (!Number.isInteger(body.savedAt) || body.savedAt < 0 || body.savedAt > t + 24 * 3600 * 1000) throw fail('invalid save time');
+  return tx(db, function () {
+    var row = db.prepare('SELECT saved_at FROM saves WHERE account_id = ?').get(who.account.id);
+    if (row && row.saved_at > body.savedAt) return { kept: false, savedAt: row.saved_at };
+    db.prepare('INSERT INTO saves (account_id, data, saved_at, updated_at) VALUES (?, ?, ?, ?) ' +
+      'ON CONFLICT (account_id) DO UPDATE SET data = excluded.data, saved_at = excluded.saved_at, updated_at = excluded.updated_at')
+      .run(who.account.id, body.data, body.savedAt, nowIso());
+    return { kept: true, savedAt: body.savedAt };
+  });
+}
+
 module.exports = {
+  getSave: getSave, putSave: putSave, MAX_SAVE: MAX_SAVE,
   createAccount: createAccount, signedIn: signedIn, describe: describe, rename: rename,
   makeLink: makeLink, useLink: useLink, recover: recover, newRecovery: newRecovery,
   removeDevice: removeDevice, raiseBests: raiseBests, foldCode: foldCode,

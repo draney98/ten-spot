@@ -195,7 +195,7 @@ async function test(name, fn) {
     await built.context().close();
   });
 
-  await test('accounts: make one, add a second device with its code, and both see the same bests', async function () {
+  await test('accounts: make one, add devices with codes, share bests, and the saved game follows', async function () {
     // a real score server in this process, with an empty database; pages opened from files send Origin: null
     var scores = require('../server/scores.js'), api = require('../server/http.js');
     var server = api.createScoresServer({ db: scores.openScores(':memory:'), origin: 'null' });
@@ -236,6 +236,28 @@ async function test(name, fn) {
       assert.strictEqual(await b.getAttribute('#acctNameShown', 'data-text'), 'Ana');
       assert.strictEqual((await state(b)).best.easy, 640, 'the second device gets the account\'s best');
       assert.strictEqual(await b.locator('#acctDevices li').count(), 2);
+      // the saved game follows the account: A plays a pair and hides the page; a fresh device C picks it up
+      await a.evaluate(function () { window.__nm.openSettings(false); });   // Settings covers the board
+      var ids = await pairIds(a);
+      await tap(a, ids[0]); await tap(a, ids[1]);
+      await a.waitForTimeout(900);
+      var aGame = await state(a);
+      await a.evaluate(function () { document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('pagehide')); });
+      await a.waitForTimeout(500);
+      await a.evaluate(function () { window.__nm.openSettings(true); });
+      await a.click('#btnAcctAddDevice');   // a second code for device C
+      await a.waitForTimeout(400);
+      var code2 = await a.textContent('#acctLinkCode');
+      var c = await device();
+      await c.fill('#acctLinkInput', code2);
+      await c.click('#btnAcctLink');
+      await c.waitForSelector('#acctIn:not([hidden])');
+      // signing in takes a few calls (account, bests, then the saved game): wait for the pick-up
+      await c.waitForFunction(function () { return /Picked up your game/.test(document.getElementById('note').getAttribute('data-text') || ''); }, null, { timeout: 10000 });
+      var cGame = await state(c);
+      assert.strictEqual(cGame.runId, aGame.runId, 'C picked up A\'s game');
+      assert.strictEqual(cGame.cleared, aGame.cleared);
+      await c.context().close();
       await b.click('#btnAcctSignOut');
       await b.click('#confirmYes');
       await b.waitForSelector('#acctOut:not([hidden])');

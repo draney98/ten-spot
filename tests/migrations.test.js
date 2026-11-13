@@ -47,7 +47,7 @@ test('a new database is built from nothing', function () {
   var db = scores.openScores(':memory:');
   assert.strictEqual(migrations.versionOf(db), migrations.LATEST);
   assert.deepStrictEqual(db.migrated, { from: 0, to: migrations.LATEST, backup: null });
-  assert.deepStrictEqual(tables(db), ['accounts', 'best_log', 'boards', 'devices', 'link_codes', 'players', 'run_ends', 'run_seen']);
+  assert.deepStrictEqual(tables(db), ['accounts', 'best_log', 'boards', 'devices', 'link_codes', 'players', 'run_ends', 'run_seen', 'saves']);
 });
 
 test('the live database keeps everything, gets the new tables, and is backed up first', function () {

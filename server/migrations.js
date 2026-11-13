@@ -112,6 +112,21 @@ var CHANGES = [
       );
       db.exec('ALTER TABLE players ADD COLUMN linked_to TEXT');
     }
+  },
+  {
+    n: 5,
+    name: 'saved games',
+    // One saved game per account: the same packed text the game keeps on the device (save.js),
+    // and when the device saved it (its own clock), so an older copy never replaces a newer one.
+    up: function (db) {
+      db.exec(
+        'CREATE TABLE saves (' +
+        'account_id TEXT PRIMARY KEY,' +
+        'data TEXT NOT NULL,' +
+        'saved_at INTEGER NOT NULL,' +
+        'updated_at TEXT NOT NULL)'
+      );
+    }
   }
 ];
 
