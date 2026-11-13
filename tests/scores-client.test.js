@@ -158,6 +158,54 @@ test('putBests sends the rules version and run id with the bests', function () {
   });
 });
 
+test('link codes and recovery links are read from what people type or paste', function () {
+  assert.strictEqual(client.normalizeLink('AB3K-9MXQ'), 'ab3k-9mxq');
+  assert.strictEqual(client.normalizeLink(' ab3k 9mxq '), 'ab3k-9mxq');
+  assert.strictEqual(client.normalizeLink('https://ten-spot.onrender.com/?link=ab3k-9mxq'), 'ab3k-9mxq');
+  assert.strictEqual(client.normalizeLink('ab1k9mxq'), null, '1 is not in the alphabet');
+  var key = 'A'.repeat(20) + '_-' + 'z'.repeat(21);
+  assert.strictEqual(client.normalizeRecovery(key), key);
+  assert.strictEqual(client.normalizeRecovery('https://ten-spot.onrender.com/?recover=' + key), key);
+  assert.strictEqual(client.normalizeRecovery('short'), null);
+});
+
+test('the stored account is read safely', function () {
+  var text = client.writeAccount({ key: 'k'.repeat(43), name: 'Ana', extra: 1 });
+  assert.deepStrictEqual(client.readAccount(text), { key: 'k'.repeat(43), name: 'Ana' });
+  assert.strictEqual(client.readAccount('not json'), null);
+  assert.strictEqual(client.readAccount(null), null);
+  assert.strictEqual(client.readAccount(JSON.stringify({ key: 'short', name: 'x' })), null);
+});
+
+test('account calls send the device key as a Bearer header', function () {
+  var seen = [];
+  function fake(url, opts) {
+    seen.push([opts.method, url.replace('https://s.example', ''), opts.headers.authorization || '', opts.body ? JSON.parse(opts.body) : null]);
+    return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve({}); } });
+  }
+  var k = 'k'.repeat(43);
+  return Promise.all([
+    client.createAccount('https://s.example', { name: 'Ana' }, fake),
+    client.getMe('https://s.example', k, fake),
+    client.putMeBests('https://s.example', k, { easy: 5 }, fake, { version: 2, run: 'abcdefgh1234' }),
+    client.removeDevice('https://s.example', k, 'current', fake)
+  ]).then(function () {
+    assert.deepStrictEqual(seen, [
+      ['POST', '/v1/accounts', '', { name: 'Ana' }],
+      ['GET', '/v1/me', 'Bearer ' + k, null],
+      ['PUT', '/v1/me/bests', 'Bearer ' + k, { easy: 5, version: 2, run: 'abcdefgh1234' }],
+      ['DELETE', '/v1/me/devices/current', 'Bearer ' + k, null]
+    ]);
+  });
+});
+
+test('device labels', function () {
+  assert.strictEqual(client.deviceLabel('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'), 'iPhone · Safari');
+  assert.strictEqual(client.deviceLabel('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36'), 'Android phone · Chrome');
+  assert.strictEqual(client.deviceLabel('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'), 'Mac · Safari');
+  assert.strictEqual(client.deviceLabel(''), 'Browser');
+});
+
 setTimeout(function () {
   Promise.all(pending).then(function () {
     console.log(passed + ' passed, ' + failed + ' failed');

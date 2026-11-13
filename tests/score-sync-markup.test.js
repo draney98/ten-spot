@@ -12,7 +12,7 @@ function test(name, fn) {
 var html = fs.readFileSync('index.html', 'utf8');
 var css = fs.readFileSync('styles.css', 'utf8');
 // The page code: app.js and the helpers split out of it (Nov 12).
-var app = ['app.js', 'storage.js', 'sound.js', 'art.js'].map(function (f) { return fs.readFileSync(f, 'utf8'); }).join('\n');
+var app = ['app.js', 'storage.js', 'sound.js', 'art.js', 'account.js'].map(function (f) { return fs.readFileSync(f, 'utf8'); }).join('\n');
 
 test('the page loads the score client and points it at the score service', function () {
   assert.ok(html.indexOf('scores-client.js') !== -1);
@@ -25,14 +25,16 @@ test('the page loads the score client and points it at the score service', funct
   assert.ok(clientAt !== -1 && clientAt < appAt);
 });
 
-test('settings has a score code group and the scoreboard still has Best', function () {
-  assert.ok(html.indexOf('id="scoreCode"') !== -1);
-  assert.ok(html.indexOf('id="btnScoreCreate"') !== -1);
-  assert.ok(html.indexOf('id="btnScoreCopy"') !== -1);
-  assert.ok(html.indexOf('id="btnScoreForget"') !== -1);
-  assert.ok(html.indexOf('id="scoreCodeInput"') !== -1);
-  assert.ok(html.indexOf('id="scoreSyncError"') !== -1);
-  assert.ok(html.indexOf('id="best"') !== -1);
+test('settings has an Account group, and the scoreboard still has Best', function () {
+  ['acctOut', 'acctIn', 'acctCreateForm', 'acctName', 'acctLinkForm', 'acctLinkInput', 'btnAcctAddDevice', 'acctLinkBox',
+   'acctDevices', 'btnAcctRecovery', 'btnAcctSignOut', 'acctRecoveryBox', 'acctRecoveryLink', 'btnAcctRecoveryDone',
+   'scoreSync', 'scoreCode', 'btnScoreCopy', 'btnScoreForget', 'scoreSyncError', 'best'].forEach(function (id) {
+    assert.ok(html.indexOf('id="' + id + '"') !== -1, id);
+  });
+  assert.strictEqual(html.indexOf('id="btnScoreCreate"'), -1, 'new score codes are no longer made: accounts replace them');
+  assert.ok(html.indexOf('account.js?v=__V__') !== -1 && html.indexOf('account.js?v=') < html.indexOf('app.js?v='));
+  assert.ok(app.indexOf("account: 'numbermatch.account'") !== -1);
+  assert.ok(app.indexOf('account.isSignedIn()') !== -1, 'bests go through the account when signed in');
 });
 
 test('styles keep the score code readable on the paper theme', function () {

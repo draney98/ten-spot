@@ -91,14 +91,16 @@
     sendRunEnds();
   }
 
+  /* Bests go to the account when this device is signed in (account.js), otherwise to the
+     device's old score code if it has one, otherwise nowhere (they stay on the device). */
   function pushBests() {
+    if (account && account.isSignedIn()) { account.pushBests(loadBest()); return; }
     var code = store.get(KEY.player);
     if (!S || !S.shouldSync(SCORES_API, code)) return;
     // The run id says which run made the best. (If an earlier push failed, a best from an earlier run
     // can go up now and be logged with this run's id. Rare, and only the log is affected.)
     S.putBests(SCORES_API, code, loadBest(), fetch, { version: L.RULES_VERSION, run: state.runId }).then(function (res) {
       if (res.ok) adoptBests(res.body);
-      else { ui.scoreError = scoreError(res); render(); }
     });
   }
   var boardTok = 0;
@@ -127,10 +129,11 @@
     });
   }
   function pullBests() {
+    if (account && account.isSignedIn()) { account.pull(); return; }
     var code = store.get(KEY.player);
     if (!S || !S.shouldSync(SCORES_API, code)) return;
     S.getPlayer(SCORES_API, code, fetch).then(function (res) {
-      if (!res.ok) { ui.scoreError = scoreError(res); render(); return; }
+      if (!res.ok) return;
       var merged = S.mergeBests(loadBest(), res.body);
       adoptBests(merged);
       S.putBests(SCORES_API, code, merged, fetch);
@@ -158,6 +161,7 @@
     });
   }
   var saved = restored ? restored.extras : {};
+  var account = null;   // the Account group in Settings, made at start-up (see account.js)
   var ui = {                                      // UI-only state
     dark: loadDark(),
     sound: store.get(KEY.sound) === 'on',
@@ -171,7 +175,6 @@
     gain: 0,       // last points earned, shown in the score tag
     streakMult: 0, // multiplier that goes with a positive score tag
     note: typeof saved.note === 'string' ? saved.note : '',      // status line text ('' = default text)
-    scoreError: '',
     puzzleError: '',
     boardCode: typeof saved.boardCode === 'string' ? saved.boardCode : '',  // short code from the server; empty until that answer arrives
     saveFailed: false  // true when this browser won't let us save
@@ -613,13 +616,7 @@
     $('btnTheme').setAttribute('aria-pressed', String(ui.dark));
     $('settings').classList.toggle('open', ui.settingsOpen);
     $('btnSettings').setAttribute('aria-expanded', String(ui.settingsOpen));
-    var player = store.get(KEY.player) || '';
-    $('scoreCode').textContent = player;
-    $('scoreCode').hidden = !player;
-    $('btnScoreCreate').hidden = !!player;
-    $('btnScoreCopy').hidden = !player;
-    $('btnScoreForget').hidden = !player;
-    $('scoreSyncError').textContent = ui.scoreError || '';
+    if (account) account.render();
     setPressed('[data-diff]', 'data-diff', s.diff);
     document.querySelectorAll('[data-diff]').forEach(function (b) {
       var open = unlocked(b.dataset.diff);
@@ -777,11 +774,23 @@
     render();
     $('confirmNo').focus();
   }
+  /** Ask before doing something (the same dialog as confirmReset, but always shown). */
+  function ask(title, text, yesLabel, action) {
+    ui.confirm = { yes: action, returnFocus: document.activeElement };
+    $('confirmTitle').textContent = title;
+    $('confirmText').textContent = text;
+    $('confirmYes').textContent = yesLabel;
+    $('confirmNo').textContent = 'Cancel';
+    $('confirm').hidden = false;
+    render();
+    $('confirmNo').focus();
+  }
   function closeConfirm(run) {
     var c = ui.confirm;
     if (!c) return;
     ui.confirm = null;
     $('confirm').hidden = true;
+    $('confirmNo').textContent = 'Keep playing';   // ask() changes it; the game's own dialogs use this
     if (run) c.yes(); else render();
     if (!run && c.returnFocus && c.returnFocus.focus) c.returnFocus.focus();
   }
@@ -1253,41 +1262,6 @@
       });
     });
   });
-  $('btnScoreCreate').addEventListener('click', function () {
-    if (!SCORES_API) { ui.scoreError = "Couldn't reach the score server."; render(); return; }
-    ui.scoreError = '';
-    S.createPlayer(SCORES_API, fetch).then(function (res) {
-      if (!res.ok || !res.body || !res.body.code) { ui.scoreError = scoreError(res); render(); return; }
-      store.set(KEY.player, res.body.code);
-      pushBests();
-      render();
-    });
-  });
-  $('btnScoreCopy').addEventListener('click', function () {
-    var code = store.get(KEY.player) || '';
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code);
-  });
-  $('btnScoreForget').addEventListener('click', function () {
-    store.set(KEY.player, '');
-    try { window.localStorage.removeItem(KEY.player); } catch (e) { /* ignore */ }
-    ui.scoreError = '';
-    render();
-  });
-  $('scoreSyncForm').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var typed = S.normalizeCode($('scoreCodeInput').value);
-    if (!typed) { ui.scoreError = 'That code is not valid.'; render(); return; }
-    if (!SCORES_API) { ui.scoreError = "Couldn't reach the score server."; render(); return; }
-    ui.scoreError = '';
-    S.getPlayer(SCORES_API, typed, fetch).then(function (res) {
-      if (!res.ok) { ui.scoreError = scoreError(res); render(); return; }
-      store.set(KEY.player, res.body.code);
-      var merged = S.mergeBests(loadBest(), res.body);
-      adoptBests(merged);
-      S.putBests(SCORES_API, res.body.code, merged, fetch);
-      $('scoreCodeInput').value = '';
-    });
-  });
   $('btnEndPrimary').addEventListener('click', function () { if (state.status === 'clear') onNextLevel(); else newGame(); });
   $('btnEndUndo').addEventListener('click', onUndo);
   $('btnEndRetry').addEventListener('click', onRetry);
@@ -1324,6 +1298,16 @@
     if (ui.saveFailed && state.status === 'playing') { e.preventDefault(); e.returnValue = ''; }
   });
 
+  /* The Account group in Settings (account.js). */
+  account = window.TenSpotAccount ? window.TenSpotAccount.create({
+    api: SCORES_API, S: S, store: store, KEY: KEY, $: $, drawText: drawText,
+    loadBest: loadBest, adoptBests: adoptBests,
+    about: function () { return { version: L.RULES_VERSION, run: state.runId }; },
+    ask: ask, note: function (text) { ui.note = text; },
+    openSettings: function () { ui.settingsOpen = true; },
+    render: function () { render(); }
+  }) : null;
+
   startGuide();
   scheduleUpcoming();
   if (!ui.boardCode) publishBoard();   // a restored game already has its board code
@@ -1342,6 +1326,7 @@
     if (!spec) { ui.note = 'That board link is not valid.'; render(); return; }
     confirmReset('Play this board?', 'This link deals one board from its first deal.', 'Play this board', function () { startPuzzle(spec); });
   })();
+  if (account) account.handleIncoming();   // ?link=… and ?recover=… (see account.js)
 
   /* ---------- 12. OPTIONAL TEST HOOK ----------
      Lets automated tests and screenshots set up exact boards.

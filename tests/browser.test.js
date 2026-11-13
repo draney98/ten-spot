@@ -195,6 +195,55 @@ async function test(name, fn) {
     await built.context().close();
   });
 
+  await test('accounts: make one, add a second device with its code, and both see the same bests', async function () {
+    // a real score server in this process, with an empty database; pages opened from files send Origin: null
+    var scores = require('../server/scores.js'), api = require('../server/http.js');
+    var server = api.createScoresServer({ db: scores.openScores(':memory:'), origin: 'null' });
+    await new Promise(function (r) { server.listen(0, '127.0.0.1', r); });
+    var apiUrl = 'http://127.0.0.1:' + server.address().port;
+    async function device() {
+      var context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+      var p = await context.newPage();
+      await p.route('**/*', function (r) {
+        var u = r.request().url();
+        if (/config\.js/.test(u)) return r.fulfill({ contentType: 'text/javascript', body: "window.TENSPOT_CONFIG = { scoresApi: '" + apiUrl + "' };" });
+        return (u.startsWith('file:') || u.startsWith(apiUrl)) ? r.continue() : r.abort();
+      });
+      p.on('pageerror', function (e) { errors.push('account device: ' + e.message); });
+      await p.goto(game);
+      await p.evaluate(function () { localStorage.setItem('numbermatch.guide', 'done'); localStorage.setItem('numbermatch.best3.easy', '640'); });
+      await p.reload();
+      await p.waitForTimeout(300);
+      await p.evaluate(function () { window.__nm.openSettings(true); });
+      return p;
+    }
+    try {
+      var a = await device();
+      await a.fill('#acctName', 'Ana');
+      await a.click('#btnAcctCreate');
+      await a.waitForSelector('#acctIn:not([hidden])');
+      assert.ok(await a.isVisible('#acctRecoveryBox'), 'the recovery link is shown once');
+      assert.ok(/[?]recover=/.test(await a.inputValue('#acctRecoveryLink')));
+      await a.click('#btnAcctRecoveryDone');
+      await a.click('#btnAcctAddDevice');
+      await a.waitForSelector('#acctLinkBox:not([hidden])');
+      var code = await a.textContent('#acctLinkCode');
+      var b = await device();
+      await b.evaluate(function () { localStorage.setItem('numbermatch.best3.easy', '90'); });
+      await b.fill('#acctLinkInput', code);
+      await b.click('#btnAcctLink');
+      await b.waitForSelector('#acctIn:not([hidden])');
+      assert.strictEqual(await b.getAttribute('#acctNameShown', 'data-text'), 'Ana');
+      assert.strictEqual((await state(b)).best.easy, 640, 'the second device gets the account\'s best');
+      assert.strictEqual(await b.locator('#acctDevices li').count(), 2);
+      await b.click('#btnAcctSignOut');
+      await b.click('#confirmYes');
+      await b.waitForSelector('#acctOut:not([hidden])');
+      assert.strictEqual(await b.evaluate(function () { return localStorage.getItem('numbermatch.account'); }), null);
+      await a.context().close(); await b.context().close();
+    } finally { server.close(); }
+  });
+
   await test('no page threw an error', async function () {
     assert.deepStrictEqual(errors, []);
   });

@@ -12,7 +12,7 @@ function test(name, fn) {
 var html = fs.readFileSync('index.html', 'utf8');
 var css = fs.readFileSync('styles.css', 'utf8');
 // The page code: app.js and the helpers split out of it (Nov 12).
-var app = ['app.js', 'storage.js', 'sound.js', 'art.js'].map(function (f) { return fs.readFileSync(f, 'utf8'); }).join('\n');
+var app = ['app.js', 'storage.js', 'sound.js', 'art.js', 'account.js'].map(function (f) { return fs.readFileSync(f, 'utf8'); }).join('\n');
 
 test('the beatability label is gone', function () {
   assert.ok(html.indexOf('id="beatability"') === -1);
@@ -111,7 +111,8 @@ test('top-of-page text is drawn by CSS so it cannot be selected', function () {
 });
 
 test('the game is saved on this device and picked up again after a reload', function () {
-  assert.ok(html.indexOf('<script src="save.js?v=__V__"></script>\n<script src="app.js?v=__V__"></script>') !== -1);
+  assert.ok(html.indexOf('<script src="save.js?v=__V__"></script>') !== -1);
+  assert.ok(html.indexOf('save.js?v=') < html.indexOf('app.js?v='), 'save.js loads before app.js');
   assert.ok(html.indexOf('id="saveError"') !== -1);
   assert.ok(app.indexOf("'numbermatch.save1'") !== -1);
   assert.ok(app.indexOf("window.addEventListener('pagehide', saveNow)") !== -1);

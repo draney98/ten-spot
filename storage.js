@@ -12,6 +12,7 @@
     theme: 'numbermatch.theme', // 'light'|'dark'
     sound: 'numbermatch.sound', // 'on'|'off'; missing means off
     player: 'numbermatch.player',
+    account: 'numbermatch.account',   // the signed-in account: { key, name } (see account.js)
     save: 'numbermatch.save1', // the game in progress (see save.js)
     diff: 'numbermatch.diff', // where the last run started: easy|normal|hard
     reached: 'numbermatch.reached', // highest level reached on this device (unlocks Start at Normal / Hard)

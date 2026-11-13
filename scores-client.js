@@ -29,8 +29,12 @@
     return out;
   }
 
-  function send(base, method, path, body, fetchFn) {
+  /** One call to the score server. Resolves (never rejects) with { ok, status, body, error };
+      status 0 means the server couldn't be reached. `key`, optional: a device key, sent as
+      "Authorization: Bearer <key>" for the account routes. */
+  function send(base, method, path, body, fetchFn, key) {
     var opts = { method: method, headers: { 'content-type': 'application/json' } };
+    if (key) opts.headers.authorization = 'Bearer ' + key;
     if (body != null) opts.body = JSON.stringify(body);
     return Promise.resolve().then(function () { return fetchFn(base + path, opts); }).then(function (res) {
       return res.json().then(function (parsed) {
@@ -136,6 +140,58 @@
     return send(base, 'GET', '/v1/runs' + (version == null ? '' : '?version=' + version), null, fetchFn);
   }
 
+  /* ---- accounts (see server/accounts.js) ----
+     A signed-in device keeps { key, name } in storage. The key goes only to the score server. */
+  /** A link code as typed or pasted (with or without the dash, any case), or a link holding one. */
+  function normalizeLink(input) {
+    if (typeof input !== 'string') return null;
+    var m = input.match(/[?&]link=([^&#\s]+)/);
+    var raw = (m ? decodeURIComponent(m[1]) : input).toLowerCase().replace(/[\s-]/g, '');
+    if (!/^[23456789abcdefghjkmnpqrstuvwxyz]{8}$/.test(raw)) return null;
+    return raw.slice(0, 4) + '-' + raw.slice(4);
+  }
+  /** A recovery key, or a recovery link holding one. */
+  function normalizeRecovery(input) {
+    if (typeof input !== 'string') return null;
+    var m = input.match(/[?&]recover=([^&#\s]+)/);
+    var raw = (m ? decodeURIComponent(m[1]) : input).trim();
+    return /^[A-Za-z0-9_-]{43}$/.test(raw) ? raw : null;
+  }
+  /** The stored account, or null. Bad text reads as signed out. */
+  function readAccount(text) {
+    var a;
+    try { a = JSON.parse(text || 'null'); } catch (e) { return null; }
+    if (!a || typeof a.key !== 'string' || a.key.length < 20 || typeof a.name !== 'string') return null;
+    return { key: a.key, name: a.name };
+  }
+  function writeAccount(a) { return JSON.stringify({ key: a.key, name: a.name }); }
+
+  function createAccount(base, body, fetchFn) { return send(base, 'POST', '/v1/accounts', body, fetchFn); }
+  function useLink(base, body, fetchFn) { return send(base, 'POST', '/v1/links/use', body, fetchFn); }
+  function recover(base, body, fetchFn) { return send(base, 'POST', '/v1/recover', body, fetchFn); }
+  function getMe(base, key, fetchFn) { return send(base, 'GET', '/v1/me', null, fetchFn, key); }
+  function renameMe(base, key, name, fetchFn) { return send(base, 'PATCH', '/v1/me', { name: name }, fetchFn, key); }
+  function putMeBests(base, key, bests, fetchFn, about) {
+    var body = {};
+    for (var k in bests) if (Object.prototype.hasOwnProperty.call(bests, k)) body[k] = bests[k];
+    if (about && Number.isInteger(about.version)) body.version = about.version;
+    if (about && typeof about.run === 'string' && RUN_ID.test(about.run)) body.run = about.run;
+    return send(base, 'PUT', '/v1/me/bests', body, fetchFn, key);
+  }
+  function foldCode(base, key, code, fetchFn) { return send(base, 'POST', '/v1/me/fold', { code: code }, fetchFn, key); }
+  function makeLink(base, key, fetchFn) { return send(base, 'POST', '/v1/me/links', {}, fetchFn, key); }
+  function newRecovery(base, key, fetchFn) { return send(base, 'POST', '/v1/me/recovery', {}, fetchFn, key); }
+  function removeDevice(base, key, id, fetchFn) { return send(base, 'DELETE', '/v1/me/devices/' + encodeURIComponent(id), null, fetchFn, key); }
+
+  /** A short name for this device in the account's device list, from the browser's user agent. */
+  function deviceLabel(ua) {
+    ua = String(ua || '');
+    var what = /iPad/.test(ua) ? 'iPad' : /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? (/Mobile/.test(ua) ? 'Android phone' : 'Android tablet')
+      : /CrOS/.test(ua) ? 'Chromebook' : /Macintosh/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : /Linux/.test(ua) ? 'Linux' : 'Browser';
+    var app = /Edg\//.test(ua) ? 'Edge' : /(CriOS|Chrome)\//.test(ua) ? 'Chrome' : /(FxiOS|Firefox)\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
+    return app ? what + ' · ' + app : what;
+  }
+
   function shouldSync(api, code) {
     return typeof api === 'string' && api.length > 0 && typeof code === 'string' && code.length > 0;
   }
@@ -150,6 +206,21 @@
     saveBoard: saveBoard,
     getBoard: getBoard,
     shouldSync: shouldSync,
+    normalizeLink: normalizeLink,
+    normalizeRecovery: normalizeRecovery,
+    readAccount: readAccount,
+    writeAccount: writeAccount,
+    createAccount: createAccount,
+    useLink: useLink,
+    recover: recover,
+    getMe: getMe,
+    renameMe: renameMe,
+    putMeBests: putMeBests,
+    foldCode: foldCode,
+    makeLink: makeLink,
+    newRecovery: newRecovery,
+    removeDevice: removeDevice,
+    deviceLabel: deviceLabel,
     readRunEnds: readRunEnds,
     addRunEnd: addRunEnd,
     flushRunEnds: flushRunEnds,

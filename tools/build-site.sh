@@ -7,7 +7,7 @@
 set -eu
 OUT="${OUT:-public}"
 VERSION="${RENDER_GIT_COMMIT:-dev}"
-GAME_FILES="index.html styles.css config.js storage.js sound.js art.js save.js scores-client.js game-logic.js app.js"
+GAME_FILES="index.html styles.css config.js storage.js sound.js art.js save.js scores-client.js account.js game-logic.js app.js"
 TOOL_FILES="tools/tuner.html tools/tuner-core.js"
 
 rm -rf "$OUT"

@@ -55,19 +55,70 @@
         <button type="button" data-sound="on" aria-pressed="false">On</button>
       </div>
     </div>
-    <div class="set-group" id="scoreSync">
-      <h2 class="set-title">Score code</h2>
-      <p class="set-help">A code keeps your best scores in Easy, Normal, and Hard. Enter it on another browser to use the same bests.</p>
-      <p class="score-code" id="scoreCode" hidden></p>
-      <div class="score-sync-row">
-        <button type="button" class="btn" id="btnScoreCreate">Create a code</button>
-        <button type="button" class="btn" id="btnScoreCopy" hidden>Copy</button>
-        <button type="button" class="btn" id="btnScoreForget" hidden>Forget this code</button>
+    <div class="set-group" id="account">
+      <h2 class="set-title">Account</h2>
+
+      <!-- signed out -->
+      <div class="acct-part" id="acctOut">
+        <p class="set-help">An account keeps your bests on every device. No password, email or phone number: just a name.</p>
+        <form class="score-sync-row" id="acctCreateForm">
+          <input id="acctName" type="text" autocomplete="nickname" spellcheck="false" maxlength="24" placeholder="Your name" aria-label="Your name for the account">
+          <button type="submit" class="btn" id="btnAcctCreate">Make an account</button>
+        </form>
+        <p class="set-help">Already have one on another device? There, open Settings, press <b>Add a device</b>, and type its code here.</p>
+        <form class="score-sync-row" id="acctLinkForm">
+          <input id="acctLinkInput" type="text" autocomplete="off" spellcheck="false" maxlength="200" placeholder="xxxx-xxxx" aria-label="Code from your other device, or your recovery link">
+          <button type="submit" class="btn" id="btnAcctLink">Sign in</button>
+        </form>
+        <p class="set-help">Lost every device? Paste your recovery link in the same box.</p>
+        <div class="acct-legacy" id="scoreSync" hidden>
+          <p class="set-help">This device has a score code. Making an account brings its bests with you.</p>
+          <p class="score-code" id="scoreCode"></p>
+          <div class="score-sync-row">
+            <button type="button" class="btn" id="btnScoreCopy">Copy</button>
+            <button type="button" class="btn" id="btnScoreForget">Forget this code</button>
+          </div>
+        </div>
       </div>
-      <form class="score-sync-row" id="scoreSyncForm">
-        <input id="scoreCodeInput" type="text" inputmode="text" autocomplete="off" spellcheck="false" maxlength="19" placeholder="xxxx-xxxx-xxxx-xxxx" aria-label="Score code">
-        <button type="submit" class="btn" id="btnScoreUse">Use this code</button>
-      </form>
+
+      <!-- signed in -->
+      <div class="acct-part" id="acctIn" hidden>
+        <p class="acct-name">Signed in as <b class="drawn" id="acctNameShown" data-text=""></b></p>
+        <div class="score-sync-row">
+          <button type="button" class="btn" id="btnAcctAddDevice">Add a device</button>
+          <button type="button" class="btn" id="btnAcctRename">Change name</button>
+        </div>
+        <div class="acct-box" id="acctLinkBox" hidden>
+          <p class="set-help">On the other device, open this link, or type the code in Settings › Account. It works once, for 10 minutes.</p>
+          <p class="score-code" id="acctLinkCode"></p>
+          <p class="set-help" id="acctLinkTime"></p>
+          <div class="score-sync-row">
+            <button type="button" class="btn" id="btnAcctLinkShare">Share link</button>
+            <button type="button" class="btn" id="btnAcctLinkCopy">Copy link</button>
+          </div>
+        </div>
+        <form class="score-sync-row" id="acctRenameForm" hidden>
+          <input id="acctRenameInput" type="text" autocomplete="nickname" spellcheck="false" maxlength="24" aria-label="New name">
+          <button type="submit" class="btn" id="btnAcctRenameSave">Save</button>
+        </form>
+        <h3 class="acct-sub">Devices</h3>
+        <ul class="acct-devices" id="acctDevices"></ul>
+        <div class="score-sync-row">
+          <button type="button" class="btn" id="btnAcctRecovery">New recovery link</button>
+          <button type="button" class="btn" id="btnAcctSignOut">Sign out</button>
+        </div>
+      </div>
+
+      <!-- recovery link: shown once, when it is made -->
+      <div class="acct-box acct-recovery" id="acctRecoveryBox" hidden>
+        <p class="set-help"><b>Your recovery link.</b> If you lose every device, open it to get your account back. Keep it somewhere safe, like a note or a message to yourself. It is shown only now, and works once.</p>
+        <input id="acctRecoveryLink" type="text" readonly aria-label="Recovery link">
+        <div class="score-sync-row">
+          <button type="button" class="btn" id="btnAcctRecoveryShare">Share</button>
+          <button type="button" class="btn" id="btnAcctRecoveryCopy">Copy</button>
+          <button type="button" class="btn btn-primary" id="btnAcctRecoveryDone">I saved it</button>
+        </div>
+      </div>
       <p class="set-help" id="scoreSyncError" role="status"></p>
     </div>
     <div class="set-group">
@@ -182,6 +233,7 @@
 <script src="sound.js?v=__V__"></script>
 <script src="art.js?v=__V__"></script>
 <script src="save.js?v=__V__"></script>
+<script src="account.js?v=__V__"></script>
 <script src="app.js?v=__V__"></script>
 </body>
 </html>
