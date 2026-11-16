@@ -330,6 +330,51 @@ async function test(name, fn) {
     } finally { server.close(); }
   });
 
+  await test('the tile sheet tool makes a 4 x 4 sheet and cuts it back into the same 16 tiles', async function () {
+    // pictures read into a canvas need a real web address (a page opened from a file can't export them)
+    var http = require('http'), TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png' };
+    var web = http.createServer(function (q, r) {
+      var f = path.join(ROOT, decodeURIComponent(q.url.split('?')[0]));
+      if (f.indexOf(ROOT) !== 0 || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { r.writeHead(404); return r.end(); }
+      r.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream' });
+      fs.createReadStream(f).pipe(r);
+    });
+    await new Promise(function (ok) { web.listen(0, '127.0.0.1', ok); });
+    var context = await browser.newContext({ viewport: { width: 1000, height: 900 } });
+    var p = await context.newPage();
+    p.on('pageerror', function (e) { errors.push('tiles.html: ' + e.message); });
+    await p.goto('http://127.0.0.1:' + web.address().port + '/tools/tiles.html');
+    var r = await p.evaluate(async function () {
+      document.getElementById('set').value = document.getElementById('target').value = 'arcadehd';
+      var cv = await window.__tiles.makeSheet();
+      var blob = await new Promise(function (ok) { cv.toBlob(ok, 'image/png'); });
+      await window.__tiles.useFile(new File([blob], 'sheet.png', { type: 'image/png' }));
+      var ART = window.TenSpotArt, out = window.__tiles.results(), worst = 0, problems = [];
+      for (var k = 0; k < out.length; k++) {
+        var t = out[k], m = ART.SETS.arcadehd.list.findIndex(function (x) { return x && x.name === t.name; });
+        var img = await new Promise(function (ok) { var i = new Image(); i.onload = function () { ok(i); }; i.src = '../' + ART.SETS.arcadehd.list[m][t.solid ? 'night' : 'day'].img; });
+        var a = document.createElement('canvas'); a.width = a.height = 96; a.getContext('2d').drawImage(img, 0, 0);
+        var A = a.getContext('2d').getImageData(0, 0, 96, 96).data, B = t.canvas.getContext('2d').getImageData(0, 0, 96, 96).data, d = 0;
+        for (var i = 0; i < A.length; i += 4) d += (Math.abs(A[i] - B[i]) + Math.abs(A[i + 1] - B[i + 1]) + Math.abs(A[i + 2] - B[i + 2])) * A[i + 3] / 255;
+        worst = Math.max(worst, d / (A.length / 4) / 3);
+        if (!t.solid && B[3] !== 0) problems.push(t.name + ' day corner is not see-through');
+        if (t.solid && B[3] !== 255) problems.push(t.name + ' night corner is not solid');
+      }
+      var zip = await window.__tiles.zipResults();
+      var names = window.TenSpotTiles.unzip(zip).map(function (f) { return f.name; }).sort();
+      return { size: [cv.width, cv.height], tiles: out.length, worst: worst, problems: problems, names: names };
+    });
+    await context.close();
+    web.close();
+    assert.deepStrictEqual(r.size, [1776, 1776]);
+    assert.strictEqual(r.tiles, 16);
+    assert.deepStrictEqual(r.problems, []);
+    assert.ok(r.worst < 2, 'tiles come back as they went in (average difference ' + r.worst.toFixed(2) + ' of 255)');
+    assert.deepStrictEqual(r.names, ['bomb', 'clover', 'flame', 'gem', 'heart', 'potion', 'star', 'sword'].reduce(function (all, n) {
+      return all.concat(['art/arcade-hd/' + n + '-day.png', 'art/arcade-hd/' + n + '-night.png']);
+    }, []).sort());
+  });
+
   await test('no page threw an error', async function () {
     assert.deepStrictEqual(errors, []);
   });

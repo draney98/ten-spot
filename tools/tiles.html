@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ten-spot tile sheet</title>
+<style>
+/* The tile sheet tool. A tool page, not part of the game: it puts a set's 16 tiles on one picture for an
+   image AI, and cuts the picture that comes back into the 16 files the game uses. */
+:root {
+  --bg: #e3e9d8; --paper: #f2f6ea; --line: #b8c5a6; --grid: #c9d8b5; --ink: #161815; --muted: #343a2e;
+  --chalk: #1f2b25; --bad: #b23a2e;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+.wrap { max-width: 980px; margin: 0 auto; padding: 16px 16px 48px; }
+h1 { margin: 0; font-size: 24px; }
+h2 { margin: 0 0 4px; font-size: 18px; }
+p { margin: 0 0 10px; }
+.quiet { color: var(--muted); font-size: 14px; }
+a { color: var(--ink); }
+section { background: var(--paper); border: 1.5px solid var(--line); border-radius: 6px; padding: 14px; margin-top: 14px; }
+input, select, button, textarea { font: inherit; color: var(--ink); }
+select { min-height: 36px; padding: 2px 6px; border: 1.5px solid var(--line); border-radius: 4px; background: #fff; }
+input:focus-visible, select:focus-visible, button:focus-visible, textarea:focus-visible { outline: 2.5px solid #27466f; outline-offset: 1px; }
+button { min-height: 40px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 6px; background: transparent; font-weight: 700; cursor: pointer; }
+button.primary { background: var(--ink); color: var(--paper); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+.fields { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; margin-bottom: 10px; }
+.fields label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.fields input[type=range] { width: 160px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+canvas.sheet { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); margin: 10px 0; background: var(--grid); }
+textarea { width: 100%; min-height: 120px; padding: 8px; border: 1.5px solid var(--line); border-radius: 4px; background: #fff; font-size: 14px; }
+.drop { border: 2px dashed var(--line); border-radius: 6px; padding: 18px; text-align: center; color: var(--muted); }
+.drop.over { border-color: var(--ink); color: var(--ink); }
+.tiles { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; margin: 6px 0 12px; }
+.tiles canvas { width: 100%; height: auto; display: block; border-radius: 3px; }
+.tiles.paper { background: var(--paper); }
+.tiles.chalk { background: var(--chalk); padding: 4px; border-radius: 4px; }
+.tiles .label { font-size: 11px; color: var(--muted); text-align: center; }
+.msg { font-weight: 600; }
+.msg.bad { color: var(--bad); }
+ol { margin: 0 0 10px; padding-left: 20px; }
+code { font-size: 13px; background: #fff; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ten-spot tile sheet</h1>
+  <p class="quiet">Put a tile set on one picture for an image AI, then cut the picture it gives back into the 16 files the game uses.
+    Works for the pixel sets (Pixel, Arcade, Arcade HD). <a href="tuner.html">Tuner</a> · <a href="../index.html">Game</a></p>
+
+  <section aria-labelledby="h-combine">
+    <h2 id="h-combine">1. Combine: make a sheet</h2>
+    <p class="quiet">A square sheet, 4 × 4: the 8 day tiles on paper in the top two rows, the 8 night tiles in the bottom two. Each cell is enlarged so the AI has room to work. Square, because image AIs handle square pictures best.</p>
+    <div class="fields">
+      <label>Tile set <select id="set"></select></label>
+      <label>Cell size <select id="scale">
+        <option value="2">192 px (2 ×)</option>
+        <option value="4" selected>384 px (4 ×)</option>
+        <option value="6">576 px (6 ×)</option>
+      </select></label>
+      <button type="button" class="primary" id="make">Make sheet</button>
+      <button type="button" id="saveSheet" disabled>Download sheet</button>
+    </div>
+    <p class="msg" id="makeMsg" role="status"></p>
+    <canvas class="sheet" id="sheet" width="1" height="1" hidden></canvas>
+    <h3>A prompt to start from</h3>
+    <textarea id="prompt" spellcheck="false">Redraw every tile in this sheet as detailed pixel art with smooth shading, a thin dark outline, and a highlight from the top left.
+
+Keep the sheet exactly as it is: a square with 4 columns and 4 rows, the same cell positions and spacing, the same plain light-green gaps between cells. Top two rows: day tiles on the same plain pale paper background. Bottom two rows: the same objects in the same order, lighter and softer, each on its own dark tile colour as shown.
+
+One object per cell, centred, filling about 80% of the cell, in the same order. No text, no frames, no shadows outside the cells. Return a square PNG the same size as this one.</textarea>
+    <div class="row"><button type="button" id="copyPrompt">Copy prompt</button><span class="quiet">Change the first paragraph to the look you want.</span></div>
+  </section>
+
+  <section aria-labelledby="h-split">
+    <h2 id="h-split">2. Split: cut the sheet that came back</h2>
+    <p class="quiet">Any size is fine as long as the AI kept the 4 × 4 layout. PNG, JPEG or WebP. The red boxes show where the cuts fall; if they miss, use Trim.</p>
+    <div class="drop" id="drop">Drop the picture here, or <label><input type="file" id="file" accept="image/*"></label></div>
+    <div class="fields" style="margin-top:10px">
+      <label>Trim each cell <input type="range" id="inset" min="0" max="20" value="0"> <span id="insetV">0%</span></label>
+      <label>Day background removal <input type="range" id="tol" min="20" max="160" value="70"> <span id="tolV">70</span></label>
+      <label>Save as set <select id="target"></select></label>
+    </div>
+    <p class="msg" id="splitMsg" role="status"></p>
+    <canvas class="sheet" id="cutView" width="1" height="1" hidden></canvas>
+    <div id="results" hidden>
+      <p class="quiet">Day tiles on Paper, then on Chalkboard (no pale box should show), then the night tiles.</p>
+      <div class="tiles paper" id="dayPaper"></div>
+      <div class="tiles chalk" id="dayChalk"></div>
+      <div class="tiles chalk" id="night"></div>
+      <div class="row"><button type="button" class="primary" id="saveZip">Download the 16 tiles (.zip)</button></div>
+      <h3>Then</h3>
+      <ol id="then"></ol>
+    </div>
+  </section>
+</div>
+
+<script src="../art.js"></script>
+<script src="tiles-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ART = window.TenSpotArt, T = window.TenSpotTiles;
+  var PAPER = '#f2f6ea', GRID = '#c9d8b5', CHALK = '#1f2b25';
+  function $(id) { return document.getElementById(id); }
+
+  // The sets this tool can draw: the pixel ones (rows or pictures). Gridiron takes its colours from the game's styles.
+  var SETS = Object.keys(ART.SETS).filter(function (k) { return ART.SETS[k].pixel; });
+  function folderOf(key) {
+    var first = ART.SETS[key].list[1].day.img;
+    return first ? first.split('/')[1] : key;   // art/<folder>/heart-day.png, or a new folder named after the set
+  }
+  function names(key) { return ART.SETS[key].list.slice(1).map(function (t) { return t.name; }); }
+  SETS.forEach(function (k) {
+    ['set', 'target'].forEach(function (id) {
+      var o = document.createElement('option'); o.value = k; o.textContent = ART.SETS[k].label; $(id).appendChild(o);
+    });
+  });
+  $('set').value = $('target').value = SETS.indexOf('arcadehd') >= 0 ? 'arcadehd' : SETS[0];
+
+  function loadImage(src) {
+    return new Promise(function (ok, fail) {
+      var i = new Image();
+      i.onload = function () { ok(i); };
+      i.onerror = function () { fail(new Error('could not load ' + src.slice(0, 60))); };
+      i.src = src;
+    });
+  }
+  /** One tile as an image: the picture file, or the pixel rows drawn as an SVG. */
+  function tileImage(key, m, solid) {
+    var art = ART.SETS[key].list[m][solid ? 'night' : 'day'];
+    if (art.img) return loadImage('../' + art.img);
+    var svg = ART.mascotSVG(m, solid, key).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" ');
+    return loadImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg));
+  }
+
+  // ---- Combine ----
+  var sheetName = '';
+  function makeSheet() {
+    var key = $('set').value, scale = Number($('scale').value), cell = T.TILE * scale;
+    var L = T.layout(4, 4, cell), cv = $('sheet'), ctx = cv.getContext('2d');
+    $('makeMsg').textContent = 'Drawing…'; $('makeMsg').className = 'msg';
+    var jobs = [];
+    for (var m = 1; m <= 8; m++) { jobs.push(tileImage(key, m, false)); jobs.push(tileImage(key, m, true)); }
+    return Promise.all(jobs).then(function (imgs) {
+      cv.width = L.width; cv.height = L.height;
+      ctx.fillStyle = GRID; ctx.fillRect(0, 0, L.width, L.height);
+      ctx.imageSmoothingEnabled = false;   // keep pixel art crisp when it is enlarged
+      L.cells.forEach(function (c) {
+        var night = c.row >= 2, m = (c.row % 2) * 4 + c.col;   // 0..7 in set order
+        var img = imgs[m * 2 + (night ? 1 : 0)];
+        if (!night) { ctx.fillStyle = PAPER; ctx.fillRect(c.x, c.y, c.size, c.size); }
+        ctx.drawImage(img, c.x, c.y, c.size, c.size);
+      });
+      cv.hidden = false;
+      sheetName = 'ten-spot-' + folderOf(key) + '-sheet.png';
+      $('saveSheet').disabled = false;
+      $('makeMsg').textContent = 'Sheet ready: ' + L.width + ' × ' + L.height + ' px. Order: ' + names(key).join(', ') + '.';
+      return cv;
+    }).catch(function (e) { $('makeMsg').textContent = 'Could not draw the set: ' + e.message; $('makeMsg').className = 'msg bad'; });
+  }
+  function download(blob, name) {
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  }
+  $('make').addEventListener('click', makeSheet);
+  $('saveSheet').addEventListener('click', function () { $('sheet').toBlob(function (b) { download(b, sheetName); }, 'image/png'); });
+  $('copyPrompt').addEventListener('click', function () {
+    var t = $('prompt'); t.select();
+    (navigator.clipboard ? navigator.clipboard.writeText(t.value) : Promise.reject()).catch(function () { document.execCommand('copy'); });
+  });
+
+  // ---- Split ----
+  var source = null, results = [];   // results: [{ name, solid, canvas }]
+  /** Shrink in halves for a clean result, then to the exact size. */
+  function shrink(src, size) {
+    var cur = src;
+    while (cur.width > size * 2) {
+      var half = document.createElement('canvas');
+      half.width = Math.round(cur.width / 2); half.height = Math.round(cur.height / 2);
+      var hc = half.getContext('2d'); hc.imageSmoothingQuality = 'high'; hc.drawImage(cur, 0, 0, half.width, half.height);
+      cur = half;
+    }
+    var out = document.createElement('canvas'); out.width = out.height = size;
+    var oc = out.getContext('2d'); oc.imageSmoothingQuality = 'high'; oc.drawImage(cur, 0, 0, size, size);
+    return out;
+  }
+  function split() {
+    if (!source) return;
+    var key = $('target').value, nm = names(key), inset = Number($('inset').value) / 100, tol = Number($('tol').value);
+    var boxes = T.cutBoxes(source.width, source.height, 4, 4, inset);
+    // show where the cuts fall
+    var view = $('cutView'), vc = view.getContext('2d');
+    view.width = source.width; view.height = source.height; vc.drawImage(source, 0, 0);
+    vc.strokeStyle = '#e0263c'; vc.lineWidth = Math.max(2, source.width / 400);
+    boxes.forEach(function (b) { vc.strokeRect(b.x, b.y, b.w, b.h); });
+    view.hidden = false;
+    results = boxes.map(function (b) {
+      var w = Math.max(1, Math.round(b.w)), h = Math.max(1, Math.round(b.h));
+      var cut = document.createElement('canvas'); cut.width = w; cut.height = h;
+      var cc = cut.getContext('2d'); cc.drawImage(source, b.x, b.y, b.w, b.h, 0, 0, w, h);
+      var night = b.row >= 2;
+      if (!night) {
+        var data = cc.getImageData(0, 0, w, h);
+        T.clearBackground(data.data, w, h, tol);
+        cc.putImageData(data, 0, 0);
+      }
+      return { name: nm[(b.row % 2) * 4 + b.col], solid: night, canvas: shrink(cut, T.TILE) };
+    });
+    ['dayPaper', 'dayChalk', 'night'].forEach(function (id) { $(id).innerHTML = ''; });
+    results.slice().sort(function (p, q) { return nm.indexOf(p.name) - nm.indexOf(q.name); }).forEach(function (r) {
+      if (r.solid) { $('night').appendChild(copyOf(r.canvas)); return; }
+      $('dayPaper').appendChild(copyOf(r.canvas)); $('dayChalk').appendChild(copyOf(r.canvas));
+    });
+    var folder = folderOf(key);
+    $('then').innerHTML = '';
+    [
+      'Unzip it in the repo folder. It holds <code>art/' + folder + '/</code> with 16 files and replaces the ones there.',
+      ART.SETS[key].list[1].day.img
+        ? 'Commit and push: <code>git add art/' + folder + '</code>, then commit. Nothing else changes; the game picks them up.'
+        : 'This set is drawn from pixel rows today, so <code>art.js</code> must point at the new files. Send the zip to Claude to make that change.',
+      'The night tiles keep the background the AI drew. If a night colour drifted, the night picture still shows it.'
+    ].forEach(function (t) { var li = document.createElement('li'); li.innerHTML = t; $('then').appendChild(li); });
+    $('results').hidden = false;
+    $('splitMsg').textContent = 'Cut 16 tiles from a ' + source.width + ' × ' + source.height + ' picture.'; $('splitMsg').className = 'msg';
+    return results;
+  }
+  function copyOf(c) { var d = document.createElement('canvas'); d.width = c.width; d.height = c.height; d.getContext('2d').drawImage(c, 0, 0); return d; }
+  function useFile(file) {
+    if (!file) return Promise.resolve();
+    var url = URL.createObjectURL(file);
+    return loadImage(url).then(function (img) { source = img; return split(); })
+      .catch(function () { $('splitMsg').textContent = 'That file could not be read as a picture.'; $('splitMsg').className = 'msg bad'; });
+  }
+  $('file').addEventListener('change', function () { useFile(this.files[0]); });
+  var drop = $('drop');
+  drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', function () { drop.classList.remove('over'); });
+  drop.addEventListener('drop', function (e) { e.preventDefault(); drop.classList.remove('over'); useFile(e.dataTransfer.files[0]); });
+  $('inset').addEventListener('input', function () { $('insetV').textContent = this.value + '%'; split(); });
+  $('tol').addEventListener('input', function () { $('tolV').textContent = this.value; split(); });
+  $('target').addEventListener('change', split);
+
+  function pngBytes(canvas) {
+    return new Promise(function (ok) { canvas.toBlob(function (b) { b.arrayBuffer().then(function (a) { ok(new Uint8Array(a)); }); }, 'image/png'); });
+  }
+  function zipResults() {
+    var folder = folderOf($('target').value);
+    return Promise.all(results.map(function (r) { return pngBytes(r.canvas); })).then(function (all) {
+      return T.zip(results.map(function (r, i) { return { name: T.tileFile(folder, r.name, r.solid), bytes: all[i] }; }));
+    });
+  }
+  $('saveZip').addEventListener('click', function () {
+    zipResults().then(function (bytes) { download(new Blob([bytes], { type: 'application/zip' }), 'ten-spot-' + folderOf($('target').value) + '-tiles.zip'); });
+  });
+
+  // for the browser tests
+  window.__tiles = { makeSheet: makeSheet, useFile: useFile, split: split, zipResults: zipResults, results: function () { return results; } };
+})();
+</script>
+</body>
+</html>
