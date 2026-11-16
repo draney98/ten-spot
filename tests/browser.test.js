@@ -248,6 +248,14 @@ async function test(name, fn) {
     if (r.error) { console.log('      (no sh here; built site not checked)'); return; }
     var built = await openPage('file://' + path.join(out, 'index.html'));
     assert.strictEqual(await built.locator('button.c-tile').count(), 12);
+    var broken = await built.evaluate(function () {   // every Arcade HD picture loads from the built site
+      var urls = [];
+      window.TenSpotArt.ARCADE_HD.forEach(function (t) { if (t) urls.push(t.day.img, t.night.img); });
+      return Promise.all(urls.map(function (u) {
+        return new Promise(function (ok) { var i = new Image(); i.onload = function () { ok(i.naturalWidth === 96 ? null : u + ' is ' + i.naturalWidth + ' wide'); }; i.onerror = function () { ok(u + ' did not load'); }; i.src = u; });
+      })).then(function (r) { return r.filter(Boolean); });
+    });
+    assert.deepStrictEqual(broken, []);
     await built.context().close();
   });
 

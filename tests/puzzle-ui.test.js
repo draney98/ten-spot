@@ -2,6 +2,7 @@
 'use strict';
 var assert = require('assert');
 var fs = require('fs');
+var path = require('path');
 
 var passed = 0, failed = 0;
 function test(name, fn) {
@@ -244,8 +245,9 @@ test('Appearance has a tile set choice, and each pixel set has eight drawings', 
   for (var h = 1; h <= 8; h++) {
     ['day', 'night'].forEach(function (when) {
       var img = ART.ARCADE_HD[h][when].img;
-      assert.ok(/^data:image\/png;base64,[A-Za-z0-9+\/=]+$/.test(img), ART.ARCADE_HD[h].name + ' ' + when + ' is a PNG');
-      var bytes = Buffer.from(img.split(',')[1], 'base64');
+      assert.strictEqual(img, 'art/arcade-hd/' + ART.ARCADE_HD[h].name.toLowerCase() + '-' + when + '.png');
+      assert.ok(fs.existsSync(path.join(__dirname, '..', img)), img + ' is in the repo');
+      var bytes = fs.readFileSync(path.join(__dirname, '..', img));
       assert.strictEqual(bytes.toString('hex', 0, 8), '89504e470d0a1a0a', 'PNG signature');
       assert.deepStrictEqual([bytes.readUInt32BE(16), bytes.readUInt32BE(20)], [96, 96], '96 x 96');
     });

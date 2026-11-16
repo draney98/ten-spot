@@ -50,6 +50,16 @@ test('every file the game and the tuner load is in the build', function () {
   assert.deepStrictEqual(missing, []);
 });
 
+test('every tile picture art.js names is in the build', function () {
+  var art = fs.readFileSync('art.js', 'utf8'), missing = [], n = 0;
+  (art.match(/'art\/[^']+\.png'/g) || []).forEach(function (q) {
+    n++;
+    if (!fs.existsSync(path.join(out, q.slice(1, -1)))) missing.push(q);
+  });
+  assert.ok(n >= 16, 'found ' + n + ' pictures');
+  assert.deepStrictEqual(missing, []);
+});
+
 test('index.html is stamped with the commit', function () {
   var html = fs.readFileSync(path.join(out, 'index.html'), 'utf8');
   assert.strictEqual(html.indexOf('__V__'), -1);

@@ -9,11 +9,13 @@ OUT="${OUT:-public}"
 VERSION="${RENDER_GIT_COMMIT:-dev}"
 GAME_FILES="index.html styles.css config.js storage.js sound.js art.js save.js scores-client.js account.js game-logic.js app.js"
 TOOL_FILES="tools/tuner.html tools/tuner-core.js"
+ART_DIR="art"   # tile pictures (art/<set>/<name>-day.png, -night.png); copied whole
 
 rm -rf "$OUT"
 mkdir -p "$OUT/tools"
 for f in $GAME_FILES $TOOL_FILES; do
   cp "$f" "$OUT/$f"
 done
+cp -R "$ART_DIR" "$OUT/$ART_DIR"
 sed "s/__V__/$VERSION/g" index.html > "$OUT/index.html"
 echo "Built $OUT/ ($VERSION)"
