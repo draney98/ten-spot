@@ -1295,14 +1295,44 @@
   /** Drop every cleared tile and slide the live tiles together, still 9 across. */
   function packBoard(s) {
     if (!canCompact(s)) return { state: s, event: null };
+    var w = boardCols(s);
     var live = [];
     for (var i = 0; i < s.cells.length; i++) if (!s.cells[i].done) live.push(s.cells[i]);
+    // Sliding the tiles together can leave a wall with no tiles left in its column (or its row). It goes,
+    // as it would after a match, and pays its bonus. Repeat: one wall going shifts the tiles after it.
+    var wallIds = [], freed;
+    while ((freed = packFreedWalls(live, w)).length) {
+      wallIds = wallIds.concat(freed);
+      live = live.filter(function (c) { return freed.indexOf(c.id) < 0; });
+    }
+    var wallBonus = wallIds.length * wallBonusAt(s);
     var n = copy(s);
     n.history = snapshot(s);
     n.cells = live;
     n.selected = null;
     n.compactsLeft = s.compactsLeft - 1;   // Infinity - 1 === Infinity
-    return { state: n, event: { type: 'compact', compactsLeft: n.compactsLeft } };
+    if (wallIds.length) {
+      n.score = s.score + wallBonus;
+      var story = runStats(s);
+      story.walls += wallIds.length;
+      n.run = story;
+    }
+    return { state: n, event: { type: 'compact', compactsLeft: n.compactsLeft, wallsGone: wallIds.length, wallIds: wallIds, wallBonus: wallBonus } };
+  }
+
+  /** After a Pack (no cleared spots left): ids of the walls whose line has no tiles left.
+      row: its row; col: its column; either: one of them; both: both of them. */
+  function packFreedWalls(cells, w) {
+    var ids = [];
+    for (var i = 0; i < cells.length; i++) {
+      var kind = wallKind(cells[i]);
+      if (!kind) continue;
+      var lines = wallLines(cells, i, w);
+      var free = kind === 'row' ? lines.row : kind === 'col' ? lines.col
+        : kind === 'either' ? (lines.row || lines.col) : (lines.row && lines.col);
+      if (free) ids.push(cells[i].id);
+    }
+    return ids;
   }
 
   function canCompact(s) {
@@ -1311,13 +1341,12 @@
     return false;
   }
 
-  /* CLEAN SWEEP. Right after an Add or a Pack, the game OFFERS to finish the board, but only when
-     the finish is plain to see:
+  /* CLEAN SWEEP. The strictest kind of FINISH (below): it pays a bonus. It applies when
        1. the tiles left sit together with no gaps (no cleared spot, wall or blank between the
           first tile and the last, in reading order), and
        2. every tile can be paired with a tile it touches (each tile used once).
      With no gaps, the only legal pairs are touching ones, so rule 2 is a full pairing of legal pairs.
-     The player can say no and play on. Saying yes clears them all together for a bonus. */
+     It clears them all together for a bonus. */
   var SWEEP_BUDGET = 20000;
   /** A full pairing of the board's tiles, as index pairs, or null. */
   function sweepPairs(s) {
@@ -1381,6 +1410,84 @@
       gain += r2.event.gain;
     }
     return { state: n, event: { type: 'sweep', pairs: pairs, matches: matches, bonus: bonus, gain: gain, status: n.status, newBest: n.newBest } };
+  }
+
+  /* FINISH. When nothing is left to decide, the page shows a Finish button (never a pop-up).
+     "Nothing left to decide" = every possible order of play clears the board using only matches:
+     no pick can go wrong, so tapping it out is busywork. The game checks by trying every order on
+     the tiles left with the real moves (rows that empty are removed, as on the page; walls fall as
+     they do in play). Offered from 4 tiles (2 pairs) up to FINISH_MAX tiles; a search too big for
+     FINISH_BUDGET positions offers nothing. Finishing scores every pair as normal; when the board
+     is also a clean sweep (above), the sweep's bonus is added. */
+  var FINISH_MIN = 4, FINISH_MAX = 20, FINISH_BUDGET = 800;   // 800: the slowest check stays near 50 ms on a laptop, offered as often as 3000
+  function liveTileCount(cells) {
+    var n = 0;
+    for (var i = 0; i < cells.length; i++) if (!cells[i].done && !isWall(cells[i])) n++;
+    return n;
+  }
+  /** One match by index, then the row tidy-up the page does; null if it is not a match. */
+  function afterPair(s, a, b) {
+    var r = select(select(s, s.cells[a].id).state, s.cells[b].id);
+    if (!r.event || r.event.type !== 'match') return null;
+    return r.state.status === 'playing' ? compactBoard(r.state) : r.state;
+  }
+  /** true: every order of matches clears the board; false: some order gets stuck; null: too big to tell. */
+  function everyOrderClears(s) {
+    var memo = {}, seen = 0;
+    function rec(t) {
+      if (t.status === 'clear') return true;
+      if (t.status !== 'playing') return false;
+      var w = boardCols(t), k = w + '|' + positionKey(t.cells);
+      if (k in memo) return memo[k];
+      if (++seen > FINISH_BUDGET) throw FINISH_BUDGET;
+      var pairs = allPairs(t.cells, DIAG, t.rules, w);
+      if (!pairs.length) return (memo[k] = false);   // stuck without an Add: not decided
+      for (var i = 0; i < pairs.length; i++) {
+        var n = afterPair(t, pairs[i][0], pairs[i][1]);
+        if (!n || !rec(n)) return (memo[k] = false);
+      }
+      return (memo[k] = true);
+    }
+    try { return rec(s); } catch (e) { if (e === FINISH_BUDGET) return null; throw e; }
+  }
+  /** The board as the player sees it once emptied rows are gone, with nothing selected. */
+  function settledForFinish(s) {
+    var n = compactBoard(s);
+    if (n.selected == null) return n;
+    if (n === s) n = copy(s);
+    n.selected = null;
+    return n;
+  }
+  /** What Finish would do: { pairs, clean, bonus }, or null when there is nothing to offer. */
+  function finishPlan(s) {
+    if (s.status !== 'playing') return null;
+    var tiles = liveTileCount(s.cells);
+    if (tiles < FINISH_MIN || tiles > FINISH_MAX || tiles % 2) return null;
+    var base = settledForFinish(s);
+    if (everyOrderClears(base) !== true) return null;
+    var sweep = sweepOffer(base);
+    return { pairs: tiles / 2, clean: !!sweep, bonus: sweep ? sweep.bonus : 0 };
+  }
+  /** Play the board out. event: { type: 'sweep', clean, pairs (id pairs), matches, bonus, gain, status }. */
+  function finishBoard(s) {
+    var plan = finishPlan(s);
+    if (!plan) return { state: s, event: null };
+    var base = settledForFinish(s);
+    if (plan.clean) {
+      var r = cleanSweep(base);
+      if (r.event) { r.event.clean = true; return r; }
+    }
+    var n = base, pairs = [], matches = [], gain = 0;
+    while (n.status === 'playing') {
+      var p = allPairs(n.cells, DIAG, n.rules, boardCols(n))[0];
+      if (!p) return { state: s, event: null };   // should not happen: every order clears
+      var ids = [n.cells[p[0]].id, n.cells[p[1]].id];
+      var r2 = select(select(n, ids[0]).state, ids[1]);
+      if (!r2.event || r2.event.type !== 'match') return { state: s, event: null };
+      n = r2.state.status === 'playing' ? compactBoard(r2.state) : r2.state;
+      pairs.push(ids); matches.push(r2.event); gain += r2.event.gain;
+    }
+    return { state: n, event: { type: 'sweep', clean: false, pairs: pairs, matches: matches, bonus: 0, gain: gain, status: n.status, newBest: n.newBest } };
   }
 
   /** Copy every not-done value, in order, onto the end of the board. */
@@ -1632,6 +1739,7 @@
     RAMP: RAMP, TOOLS: TOOLS, PACK_FROM: PACK_FROM, rampAt: rampAt, toolsAt: toolsAt, stageOf: stageOf, tilesAt: tilesAt, widthAt: widthAt,
     RULES_VERSION: RULES_VERSION, runStats: runStats, retryLevel: retryLevel, carryOver: carryOver,
     GUIDE_STEPS: GUIDE_STEPS, guideTarget: guideTarget, guideDone: guideDone,
-    startLevel: startLevel, BLANK: BLANK, isBlank: isBlank, sweepPairs: sweepPairs, sweepOffer: sweepOffer, cleanSweep: cleanSweep
+    startLevel: startLevel, BLANK: BLANK, isBlank: isBlank, sweepPairs: sweepPairs, sweepOffer: sweepOffer, cleanSweep: cleanSweep,
+    finishPlan: finishPlan, finishBoard: finishBoard, everyOrderClears: everyOrderClears
   };
 });

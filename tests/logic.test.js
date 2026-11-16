@@ -798,6 +798,90 @@ test('par is stored and shown as a whole number', function () {
   assert.strictEqual(p.under, 22);
 });
 
+test('a Pack that leaves a wall alone in its column takes the wall away and pays its bonus', function () {
+  // the board from the bug report: 9 across; a column wall in row 1 whose column empties when the tiles slide together
+  var W = L.WALL_V;
+  var vals = [2, 0, 6, 2, W.col, 6, 0, 10, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0,  9, 13];
+  var s = stateWith(vals.map(function (v) { return v || 1; }), 'normal', { compactsLeft: 2, score: 1000, level: 54, cols: 9, wallPairs: 10 });
+  vals.forEach(function (v, i) { if (!v) s.cells[i].done = true; });
+  var wallId = s.cells[4].id;
+  var r = L.packBoard(s);
+  assert.strictEqual(r.event.wallsGone, 1);
+  assert.deepStrictEqual(r.event.wallIds, [wallId]);
+  assert.ok(r.state.cells.every(function (c) { return c.v > 0; }), 'no wall left on the board');
+  assert.strictEqual(r.event.wallBonus, L.wallBonusAt(s));
+  assert.strictEqual(r.state.score, 1000 + L.wallBonusAt(s));
+  assert.strictEqual(r.state.run.walls, (s.run && s.run.walls || 0) + 1);
+  var back = L.undo(r.state);
+  assert.strictEqual(back.state.score, 1000 - back.event.cost, 'undo takes the bonus back (and charges the usual undo cost)');
+  assert.ok(back.state.cells.some(function (c) { return c.id === wallId && c.v === W.col; }), 'undo brings the wall back');
+});
+
+test('a Pack keeps a wall whose line still has tiles, and frees row, either and both walls by their own rule', function () {
+  var W = L.WALL_V;
+  function packed(vals, cols) {
+    var s = stateWith(vals.map(function (v) { return v || 1; }), 'normal', { compactsLeft: 1, cols: cols });
+    vals.forEach(function (v, i) { if (!v) s.cells[i].done = true; });
+    return L.packBoard(s);
+  }
+  // 3 across. After packing: [1, wall, 3] / [5]: the wall's column has nothing under it.
+  assert.strictEqual(packed([1, W.col, 3, 0, 5], 3).event.wallsGone, 1);
+  // [1, wall, 3] / [5, 7]: the column still has the 7 under it.
+  assert.strictEqual(packed([1, W.col, 3, 0, 5, 7], 3).event.wallsGone, 0);
+  // a row wall stays while its row has tiles
+  assert.strictEqual(packed([1, W.row, 3, 0, 5], 3).event.wallsGone, 0);
+  // a row wall alone in the last row goes
+  assert.strictEqual(packed([1, 3, 5, 0, W.row], 3).event.wallsGone, 1);
+  // either: its column is empty, so it goes; both: its row still has tiles, so it stays
+  assert.strictEqual(packed([1, W.either, 3, 0, 5], 3).event.wallsGone, 1);
+  assert.strictEqual(packed([1, W.both, 3, 0, 5], 3).event.wallsGone, 0);
+  // a Pack with no walls changes nothing about the score
+  var plain = packed([1, 0, 3, 5], 3);
+  assert.strictEqual(plain.event.wallsGone, 0);
+  assert.strictEqual(plain.event.wallBonus, 0);
+});
+
+test('finish: offered only when every order of play clears the board', function () {
+  function board(vals, cols, done, extra) {
+    var s = stateWith(vals.map(function (v) { return v || 1; }), 'normal', Object.assign({ cols: cols, level: 30 }, extra || {}));
+    vals.forEach(function (v, i) { if (!v || (done && done.indexOf(i) >= 0)) s.cells[i].done = true; });
+    s.cleared = s.cells.filter(function (c) { return c.done; }).length;
+    return s;
+  }
+  // the reported board (level 39): stars and potions with a gap; any order clears it
+  var a = board([4, 7, 4, 0, 0, 0, 0, 0, 4, 7, 4, 0, 0, 0], 8, null, { level: 39 });
+  assert.deepStrictEqual(L.finishPlan(a), { pairs: 3, clean: false, bonus: 0 });
+  var r = L.finishBoard(a);
+  assert.strictEqual(r.state.status, 'clear');
+  assert.strictEqual(r.event.pairs.length, 3);
+  assert.strictEqual(r.event.bonus, 0);
+  assert.strictEqual(r.event.gain, r.event.matches.reduce(function (t, m) { return t + m.gain; }, 0), 'each pair scores as normal');
+  // one mascot left, gaps and all
+  assert.ok(L.finishPlan(board([5, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6], 9)));
+  // can be cleared, but a wrong pick strands two tiles: no offer
+  var c = board([1, 1, 2, 2, 6, 4, 5, 5, 6, 3], 5, null, { addsLeft: 0 });
+  assert.strictEqual(L.canClear(c.cells, true, c.rules, null, 5), true);
+  assert.strictEqual(L.everyOrderClears(c), false);
+  assert.strictEqual(L.finishPlan(c), null);
+  assert.strictEqual(L.finishBoard(c).event, null);
+  // fewer than two pairs: nothing to offer
+  assert.strictEqual(L.finishPlan(board([1, 2], 5)), null);
+  // the lost board from Nov 14 (one diagonal pair, then stuck): no offer
+  var lost = []; for (var i = 0; i < 39; i++) lost.push(0);
+  [[1, 1], [5, 9], [6, 5], [7, 8], [8, 3], [12, 7], [18, 9], [32, 5], [34, 1], [35, 5], [37, 4], [38, 5]].forEach(function (p) { lost[p[0]] = p[1]; });
+  assert.strictEqual(L.finishPlan(board(lost, 9, null, { level: 57, addsLeft: 0 })), null);
+});
+
+test('finish on a clean-sweep board pays the sweep bonus', function () {
+  var s = stateWith([1, 2, 3, 4, 5, 6], 'normal', { cols: 5, level: 12 });
+  var plan = L.finishPlan(s);
+  assert.deepStrictEqual(plan, { pairs: 3, clean: true, bonus: Math.round(25 * 3 * L.pointMult(12)) });
+  var r = L.finishBoard(s);
+  assert.strictEqual(r.event.clean, true);
+  assert.strictEqual(r.event.bonus, plan.bonus);
+  assert.strictEqual(r.state.status, 'clear');
+});
+
 test('compact drops cleared tiles, spends one, and undo puts the gaps back', function () {
   var s = stateWith([1, 2, 3, 4, 5], 'normal', { compactsLeft: 1, score: 40 });
   s.cells[1].done = true;

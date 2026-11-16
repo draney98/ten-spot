@@ -58,12 +58,12 @@ async function test(name, fn) {
     await tap(page, ids[0]); await tap(page, ids[1]);
     await page.waitForTimeout(1000);
   }
-  /** Play the current level to the end the plain way: pairs, then Add, saying yes to a sweep. */
+  /** Play the current level to the end the plain way: pairs, then Add, tapping Finish when it shows. */
   async function playOut(page) {
     for (var i = 0; i < 60; i++) {
       var s = await state(page);
       if (s.status !== 'playing') return s.status;
-      if (await page.isVisible('#confirm')) { await page.click('#confirmYes'); await page.waitForTimeout(1100); continue; }
+      if (await page.isVisible('#btnFinish')) { await page.click('#btnFinish'); await page.waitForTimeout(1100); continue; }
       var ids = await pairIds(page);
       if (ids) { await tap(page, ids[0]); await tap(page, ids[1]); await page.waitForTimeout(950); continue; }
       await page.click('#btnAdd'); await page.waitForTimeout(1100);
@@ -195,11 +195,35 @@ async function test(name, fn) {
     await p.evaluate(function () { window.__nm.openSettings(true); });
     await p.click('button[data-tiles="arcadehd"]');
     assert.strictEqual(await p.getAttribute('button[data-tiles="arcadehd"]', 'aria-pressed'), 'true');
-    assert.strictEqual(await p.locator('button.c-tile svg[viewBox="-4 -4 40 40"]').count(), tiles, 'every tile is drawn at 32 x 32');
+    assert.strictEqual(await p.locator('button.c-tile svg.pixel image').count(), tiles, 'every tile shows its picture');
     await p.evaluate(function () { window.__nm.openSettings(true); });
     await p.click('button[data-tiles="gridiron"]');
     assert.strictEqual(await p.locator('button.c-tile svg.pixel').count(), 0);
     await p.context().close();
+  });
+
+  await test('Finish shows only when nothing is left to decide, never as a pop-up, and clears the board', async function () {
+    // every mascot twice, each pair side by side: decided, and a clean sweep
+    await page.evaluate(function () { window.__nm.load([1, 2, 3, 4, 5, 6], { cols: 5, level: 12, addsLeft: 1 }); window.__nm.openSettings(false); });
+    await page.waitForTimeout(150);
+    assert.ok(await page.isVisible('#btnFinish'), 'Finish shows');
+    assert.ok(!(await page.isVisible('#confirm')), 'no pop-up');
+    assert.strictEqual(await page.getAttribute('#btnFinish', 'aria-label'), 'Clean sweep: clear 3 pairs for a +158 bonus');
+    // can be cleared, but a wrong pick loses: no Finish
+    await page.evaluate(function () { window.__nm.load([1, 1, 2, 2, 6, 4, 5, 5, 6, 3], { cols: 5, level: 12, addsLeft: 0 }); window.__nm.openSettings(false); });
+    await page.waitForTimeout(150);
+    assert.ok(!(await page.isVisible('#btnFinish')), 'no Finish when the order matters');
+    // decided but not a clean sweep (gaps): Finish clears it with no bonus
+    await page.evaluate(function () { window.__nm.load([3, 1, 1, 3, 1, 1], { cols: 6, level: 12, addsLeft: 1 }); window.__nm.openSettings(false); });
+    await page.waitForTimeout(150);
+    assert.strictEqual(await page.textContent('#finishMain'), 'Finish the board');
+    var before = (await state(page)).score;
+    await page.click('#btnFinish');
+    await page.waitForTimeout(300);
+    var s = await state(page);
+    assert.strictEqual(s.status, 'clear');
+    assert.ok(s.score > before, 'each pair scores');
+    assert.ok(/^Finished: 3 pairs, \+/.test(await page.textContent('#noteSr')));
   });
 
   await test('a board code from a shared link deals that board, walls and all', async function () {

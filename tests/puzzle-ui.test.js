@@ -158,10 +158,12 @@ test('the ramp on screen: stage in the caption, Start at, milestones, sweep, fre
   assert.ok(app.indexOf('function unlocked(diff)') !== -1);
   assert.ok(app.indexOf("'Wider board: '") !== -1);
   assert.ok(app.indexOf("' reached!'") !== -1);
-  assert.ok(app.indexOf('function trySweep(delay)') !== -1);
-  assert.ok(app.indexOf("'Finish the board?'") !== -1);
-  assert.ok(app.indexOf('L.sweepOffer(state)') !== -1);
-  assert.ok(html.indexOf('the game offers to finish the board for you') !== -1);
+  assert.ok(app.indexOf('function onFinish()') !== -1);
+  assert.ok(app.indexOf('L.finishPlan(state)') !== -1);
+  assert.ok(app.indexOf("'Finish the board?'") === -1, 'no pop-up: the finish is a button');
+  assert.ok(html.indexOf('id="btnFinish"') !== -1 && html.indexOf('id="btnFinish" hidden') !== -1);
+  assert.ok(css.indexOf('.btn-finish {') !== -1);
+  assert.ok(html.indexOf('a Finish button appears above the buttons') !== -1);
   assert.ok(app.indexOf("'numbermatch.best3.'") !== -1);
   assert.ok(app.indexOf("'That board code is from an older version of the game.'") !== -1);
 });
@@ -210,7 +212,7 @@ test('app.js and game-logic.js parse as scripts', function () {
   new Function(fs.readFileSync('game-logic.js', 'utf8'));
 });
 
-test('Appearance has a tile set choice, and each pixel set has eight square drawings (16 or 32 across)', function () {
+test('Appearance has a tile set choice, and each pixel set has eight drawings', function () {
   assert.ok(html.indexOf('data-tiles="gridiron"') !== -1 && html.indexOf('data-tiles="pixel"') !== -1 && html.indexOf('data-tiles="arcade"') !== -1 && html.indexOf('data-tiles="arcadehd"') !== -1);
   assert.ok(app.indexOf("tiles: 'numbermatch.tiles'") !== -1);
   assert.ok(css.indexOf('.glyph.mascot.pixel') !== -1);
@@ -219,7 +221,7 @@ test('Appearance has a tile set choice, and each pixel set has eight square draw
   var ART = global.window.TenSpotArt;
   assert.deepStrictEqual(Object.keys(ART.SETS), ['gridiron', 'pixel', 'arcade', 'arcadehd']);
   assert.deepStrictEqual(Object.keys(ART.SETS).map(function (k) { return ART.SETS[k].pixel; }), [false, true, true, true]);
-  [[ART.PIXEL, 16], [ART.ARCADE, 16], [ART.ARCADE_HD, 32]].forEach(function (pair) {
+  [[ART.PIXEL, 16], [ART.ARCADE, 16]].forEach(function (pair) {
     var LIST = pair[0], size = pair[1];
     assert.strictEqual(LIST.length, 9);
     for (var m = 1; m <= 8; m++) {
@@ -239,9 +241,20 @@ test('Appearance has a tile set choice, and each pixel set has eight square draw
   assert.ok(/class="glyph mascot pixel"/.test(ART.mascotSVG(8, true, 'arcade')));
   assert.notStrictEqual(ART.mascotSVG(1, false, 'arcade'), ART.mascotSVG(1, false, 'pixel'));
   assert.deepStrictEqual([1, 2, 3, 4, 5, 6, 7, 8].map(function (m) { return ART.mascotName(m, 'arcadehd'); }), names, 'HD has the same pick-ups in the same order');
+  for (var h = 1; h <= 8; h++) {
+    ['day', 'night'].forEach(function (when) {
+      var img = ART.ARCADE_HD[h][when].img;
+      assert.ok(/^data:image\/png;base64,[A-Za-z0-9+\/=]+$/.test(img), ART.ARCADE_HD[h].name + ' ' + when + ' is a PNG');
+      var bytes = Buffer.from(img.split(',')[1], 'base64');
+      assert.strictEqual(bytes.toString('hex', 0, 8), '89504e470d0a1a0a', 'PNG signature');
+      assert.deepStrictEqual([bytes.readUInt32BE(16), bytes.readUInt32BE(20)], [96, 96], '96 x 96');
+    });
+    assert.ok(/^#[0-9a-f]{6}$/.test(ART.ARCADE_HD[h].night.bg));
+  }
   var hd = ART.mascotSVG(2, true, 'arcadehd');
-  assert.ok(hd.indexOf('viewBox="-4 -4 40 40"') !== -1, 'a 32 x 32 sprite keeps the same 80% size');
-  assert.ok(hd.indexOf('<rect x="-4" y="-4" width="40" height="40" fill="' + ART.ARCADE_HD[2].night.bg + '"/>') !== -1, 'HD night fills the tile');
+  assert.ok(hd.indexOf('<image href="' + ART.ARCADE_HD[2].night.img + '"') !== -1, 'HD night shows the night picture');
+  assert.ok(ART.mascotSVG(2, false, 'arcadehd').indexOf(ART.ARCADE_HD[2].day.img) !== -1, 'HD day shows the day picture');
+  assert.ok(/class="glyph mascot pixel"/.test(hd));
   assert.ok(app.indexOf("ui.tiles === 'pixel'") === -1, 'the page asks the set, not its name');
   assert.strictEqual(ART.mascotName(1, 'pixel'), 'Wizard');
   assert.strictEqual(ART.mascotName(1), ART.MASCOTS[1].name);
