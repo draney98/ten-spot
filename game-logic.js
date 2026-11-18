@@ -115,7 +115,7 @@
     perGap: 2,         // per crossed-out cell between the two tiles
     diagonal: 5,       // extra for a diagonal pair
     wrap: 5,           // extra for a pair joined across the end of a row
-    sameStyle: 2,      // two outlines, or two shaded: points x2
+    sameStyle: 1,      // two outlines, or two shaded. Was x2; 1 while every dealt tile is a day tile (rules 3)
     streakStep: 0.1,   // streak multiplier grows 0.1 per pair in a row
     streakMax: 2,      // ...up to x2
     row: 30,           // row bonus = 30 x (rows emptied by this pair)^2
@@ -141,8 +141,10 @@
   function mascotOf(v) { return Math.ceil(v / 2); }   // 1..8
   function isSolid(v) { return v % 2 === 0; }
 
-  /** Gridiron board: an even share of pairs per mascot. Each pair prefers one version (3/8 both outline,
-      3/8 both solid, 1/4 one of each). Shuffle. */
+  /** An even share of pairs per mascot, all day tiles (outline, odd v), shuffled.
+      Night tiles (solid, even v) are not dealt for now: they are kept for special pieces later on the
+      ramp (see the ideas board, "Night tiles as special pieces"). The random draw that used to pick each
+      pair's shades is still made, so a seed deals the same mascots in the same places as before. */
   function pairsBoard(level, rng, diff) {
     var fams = mascots(level, diff);
     var pairCount = boardSize(level, diff) / 2;
@@ -155,12 +157,10 @@
     for (var e = 0; e < extra; e++) counts[order[e]]++;
     var vals = [];
     for (var m = 0; m < fams; m++) {
-      var outline = 2 * m + 1, solid = 2 * m + 2;
+      var outline = 2 * m + 1;
       for (var p = 0; p < counts[m]; p++) {
-        var roll = rng();
-        if (roll < 0.375) vals.push(outline, outline);
-        else if (roll < 0.75) vals.push(solid, solid);
-        else vals.push(outline, solid);
+        rng();   // was the shade draw; kept so boards stay where they were
+        vals.push(outline, outline);
       }
     }
     return shuffle(vals, rng);
@@ -1688,9 +1688,9 @@
 
   /* ---- guided first level: which pair to point at, and whether a match did what the pointer said ----
      steps: 'match' = any pair (best: two the same, side by side),
-            'twin'  = an outline with its solid twin,
-            'reach' = a pair that is not side by side in one row (across cleared spots, a row end, a column or a diagonal). */
-  var GUIDE_STEPS = ['match', 'twin', 'reach'];
+            'reach' = a pair that is not side by side in one row (across cleared spots, a row end, a column or a diagonal),
+            'twin'  = an outline with its solid twin (not used while only day tiles are dealt). */
+  var GUIDE_STEPS = ['match', 'reach'];
   function guideFits(step, same, kind, gaps) {
     if (step === 'twin') return !same;
     if (step === 'reach') return kind !== 'row' || gaps > 0;
@@ -1717,7 +1717,8 @@
 
   /* Goes up by one whenever the difficulty numbers (RAMP, TOOLS, tiles, walls) change,
      so run-end counts from different tunings are kept apart. */
-  var RULES_VERSION = 2;   // 2: four kinds of wall on the ramp from level 53, wall bonus that grows
+  var RULES_VERSION = 3;   // 2: four kinds of wall on the ramp from level 53, wall bonus that grows
+                           // 3: day tiles only, no same-shade double
 
   return {
     colsFor: colsFor, LEVELS: LEVELS, MAX_MASCOTS: MAX_MASCOTS,

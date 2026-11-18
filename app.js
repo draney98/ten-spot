@@ -633,7 +633,6 @@
      They show once per device (KEY.guide), and never to someone who has been past level 1. */
   var GUIDE_TEXT = {
     match: 'Tap two tiles with the same mascot.',
-    twin: 'An outline and its solid twin match too.',
     reach: "A pair doesn't have to touch. It can reach across crossed-out spots, around the end of a row, or on a diagonal.",
     add: 'No pairs left. Press Add: it copies the tiles that are left onto the bottom.'
   };
@@ -1100,7 +1099,6 @@
     var shown = Math.round(ev.streakMult * 10) / 10;
     if (shown === 2) return 'Streak ×2!';
     if (shown === 1.5) return 'Streak ×1.5!';
-    if (ev.same) return (ev.shade === 'solid' ? 'Both shaded' : 'Both outlines') + ': double points.';
     if (ev.gaps >= 3) return 'Long pair: +' + ev.gain + '.';
     return '';
   }

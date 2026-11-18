@@ -131,21 +131,21 @@ test('point multiplier grows 0.1 a level', function () {
 });
 
 /* ---------------- actions ---------------- */
-test('a same-shade column pair scores 30 on Normal', function () {
+test('a same-shade column pair scores 15 on Normal', function () {
   var s = stateWith([1, 3, 3, 3, 3, 3, 3, 3, 1, 5], 'normal');
   var r = L.select(L.select(s, 1).state, 9);
   assert.strictEqual(r.event.type, 'match');
   assert.strictEqual(r.event.kind, 'col');
-  assert.strictEqual(r.event.gain, 30);
+  assert.strictEqual(r.event.gain, 15);                    // 10 x 1.5 (rules 3: no same-shade double)
   assert.strictEqual(r.event.shade, 'outline');
-  assert.strictEqual(r.state.score, 30);
+  assert.strictEqual(r.state.score, 15);
   assert.strictEqual(r.state.cleared, 2);
   assert.strictEqual(r.state.moves, 1);
 });
 test('streak grows by a tenth and a mismatch resets it', function () {
   var s = stateWith([1,1,2,2,3,3,4,6,4,4], 'easy');
-  s = L.select(L.select(s, 1).state, 2).state; assert.strictEqual(s.score, 20);   // 10 x 2
-  s = L.select(L.select(s, 3).state, 4).state; assert.strictEqual(s.score, 42);   // + 20 x 1.1
+  s = L.select(L.select(s, 1).state, 2).state; assert.strictEqual(s.score, 10);   // 10
+  s = L.select(L.select(s, 3).state, 4).state; assert.strictEqual(s.score, 21);   // + 10 x 1.1
   var r = L.select(L.select(s, 5).state, 8);   // 3 and 6: not a match
   assert.strictEqual(r.event.type, 'bad'); assert.strictEqual(r.event.reason, 'value');
   assert.strictEqual(r.state.streak, 0);
@@ -173,7 +173,7 @@ test('clearing a full row awards the row bonus', function () {
   assert.deepStrictEqual(r.event.rowsCleared, [0]);
   assert.strictEqual(r.event.rowBonus, 30);
   assert.strictEqual(r.event.kind, 'wrap');
-  assert.strictEqual(r.event.gain, 69);
+  assert.strictEqual(r.event.gain, 50);                    // (10 + 5) x 1.3 = 20, + the row 30
 });
 test('add numbers appends copies of active values and spends an add', function () {
   var s = stateWith([1,2,3], 'normal');
@@ -225,7 +225,7 @@ test('no adds and no pairs left = game over', function () {
   var r = L.select(L.select(s, 1).state, 2);
   assert.strictEqual(r.state.status, 'lose');
   assert.strictEqual(r.state.reason, 'nopairs');
-  assert.strictEqual(r.state.final, 30);
+  assert.strictEqual(r.state.final, 15);
 });
 test('next level deals a bigger board, keeps score, resets adds', function () {
   var s = L.select(L.select(stateWith([1, 2], 'normal', { level: 10 }), 1).state, 2).state;
@@ -252,7 +252,7 @@ test('Hard allows a diagonal pair', function () {
   var r = L.select(L.select(s, 1).state, 11);
   assert.strictEqual(r.event.type, 'match');
   assert.strictEqual(r.event.kind, 'diag');
-  assert.strictEqual(r.event.gain, 75);        // (10 + 5) x 2 x 2.5
+  assert.strictEqual(r.event.gain, 38);        // (10 + 5) x 2.5
 });
 
 /* ---------------- Gridiron ('pairs' rules) ---------------- */
@@ -277,16 +277,22 @@ test('pairs: boards have the ramp size and use only the allowed mascots', functi
     b.forEach(function (v) { assert.ok(v >= 1 && v <= 2 * t[2], 'value ' + v + ' on level ' + t[0]); });
   });
 });
-test('pairs: prefer both outline or both solid', function () {
+test('pairs: only day tiles are dealt, whatever the draw', function () {
   function constant(x) { return function () { return x; }; }
-  function shades(x) {
-    var outline = 0, solid = 0;
-    L.pairsBoard(1, constant(x)).forEach(function (v) { if (v % 2) outline++; else solid++; });
-    return [outline, solid];
-  }
-  assert.deepStrictEqual(shades(0), [12, 0]);
-  assert.deepStrictEqual(shades(0.5), [0, 12]);
-  assert.deepStrictEqual(shades(0.8), [6, 6]);
+  [0, 0.5, 0.8, 0.99].forEach(function (x) {
+    assert.ok(L.pairsBoard(1, constant(x)).every(function (v) { return v % 2 === 1; }), 'draw ' + x);
+  });
+  [1, 30, 60, 90].forEach(function (level) {
+    var s = L.dealPuzzle({ diff: 'easy', level: level, seed: 12345 + level, score: 0 });
+    assert.ok(s.cells.every(function (c) { return c.v < 0 || c.v % 2 === 1; }), 'level ' + level + ' has no night tiles');
+  });
+});
+
+test('rules 3: a pair of two outlines scores like any other pair (no same-shade double)', function () {
+  var a = stateWith([1, 1, 3, 3], 'normal'), b = stateWith([1, 2, 3, 3], 'normal');
+  var ra = L.select(L.select(a, 1).state, 2), rb = L.select(L.select(b, 1).state, 2);
+  assert.strictEqual(ra.event.gain, rb.event.gain);
+  assert.strictEqual(L.RULES_VERSION, 3);
 });
 function mascotTiles(board) {
   var count = {};
@@ -347,10 +353,10 @@ test('shadeOf: odd outline, even solid', function () {
   assert.ok(L.mixedShade(1, 2));
   assert.ok(!L.mixedShade(2, 4));
 });
-test('two outlines earn the style bonus', function () {
+test('two outlines are a same-shade pair (no bonus under rules 3)', function () {
   var light = L.select(L.select(stateWith([1, 1, 2], 'easy'), 1).state, 2);
   assert.strictEqual(light.event.same, true);
-  assert.strictEqual(light.event.gain, 20);
+  assert.strictEqual(light.event.gain, 10);
   assert.strictEqual(light.event.shade, 'outline');
   var hinted = L.hint(stateWith([1, 1, 2, 2], 'normal'));
   assert.deepStrictEqual(hinted.event.ids, [1, 2]);
@@ -392,16 +398,16 @@ test('hint prefers a pair with no mixed penalty', function () {
   var only = L.hint(stateWith([1, 2, 3, 5], 'normal'));
   assert.deepStrictEqual(only.event.ids, [1, 2]);
 });
-test('Gridiron: two solids earn the style bonus, outline + solid is a mixed pair', function () {
+test('Gridiron: two solids are a same-shade pair, outline + solid is a mixed pair, both score the same', function () {
   var two = L.select(L.select(stateWith([2, 2, 5], 'easy'), 1).state, 2);
-  assert.strictEqual(two.event.gain, 20); assert.strictEqual(two.event.shade, 'solid');
+  assert.strictEqual(two.event.gain, 10); assert.strictEqual(two.event.shade, 'solid');
   var mix = L.select(L.select(stateWith([1, 2, 5], 'easy', { score: 100 }), 1).state, 2);
   assert.strictEqual(mix.event.gain, 10); assert.strictEqual(mix.event.same, false);
 });
 test('mismatch subtracts half of what the pair would have scored', function () {
-  // 1 and 3 are both outlines and different mascots: (10 x 2) x 1.5 = 30, penalty 15
+  // 1 and 3 are both outlines and different mascots: 10 x 1.5 = 15, penalty 8
   var r = L.select(L.select(stateWith([1, 3], 'normal', { score: 100 }), 1).state, 2);
-  assert.strictEqual(r.event.penalty, 15); assert.strictEqual(r.state.score, 85);
+  assert.strictEqual(r.event.penalty, 8); assert.strictEqual(r.state.score, 92);
   // 2 and 3 are mixed shades: 10 x 1.5 = 15, penalty 8
   var r2 = L.select(L.select(stateWith([2, 3], 'normal', { score: 100 }), 1).state, 2);
   assert.strictEqual(r2.event.penalty, 8);
@@ -414,9 +420,9 @@ test('mismatch penalty never takes the score below 0; unreachable pairs cost not
 });
 test('undo does not give back mismatch penalties', function () {
   var s = stateWith([1, 1, 2, 3, 5, 5], 'easy');
-  s = L.select(L.select(s, 1).state, 2).state;            // +20
+  s = L.select(L.select(s, 1).state, 2).state;            // +10
   s = L.select(L.select(s, 3).state, 4).state;            // 2 vs 3, mixed, streak 2: round(11 / 2) = 6
-  assert.strictEqual(s.score, 14);
+  assert.strictEqual(s.score, 4);
   s = L.undo(s).state;
   assert.strictEqual(s.score, 0);
 });
@@ -567,9 +573,9 @@ test('pairs: a large board past the budget stays in play', function () {
 /* ---------------- distance, streak, and the new level bonus ---------------- */
 function near(m, want) { assert.ok(Math.abs(m - want) < 1e-9, m + ' !== ' + want); }
 
-test('1 neighbours that share a shade score 30', function () {
+test('1 neighbours that share a shade score 15', function () {
   var r = L.select(L.select(stateWith([1, 1, 2], 'normal'), 1).state, 2);
-  assert.strictEqual(r.event.gain, 30);
+  assert.strictEqual(r.event.gain, 15);
   assert.strictEqual(r.event.same, true);
   assert.strictEqual(r.state.streak, 1);
 });
@@ -593,20 +599,20 @@ test('a wrap stroke goes right, through the gutter, then right into the lower ce
   assert.strictEqual(spanned, 'M 80 10 L 90 10 L 90 25 L 0 25 L 0 40 L 90 40 L 90 55 L 0 55 L 0 70 L 20 70');
 });
 
-test('4 a wrap of two outlines scores 45', function () {
+test('4 a wrap of two outlines scores 23', function () {
   var vals = [3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 3];
   var r = L.select(L.select(stateWith(vals, 'normal', { cols: 9 }), 9).state, 10);
   assert.strictEqual(r.event.kind, 'wrap');
-  assert.strictEqual(r.event.gain, 45);
+  assert.strictEqual(r.event.gain, 23);                    // (10 + 5) x 1.5
 });
-test('5 a blocked reading order that is diagonal scores 45', function () {
+test('5 a blocked reading order that is diagonal scores 23', function () {
   var vals = [1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3];
   var r = L.select(L.select(stateWith(vals, 'normal', { cols: 9 }), 1).state, 11);
   assert.strictEqual(r.event.kind, 'diag');
   assert.strictEqual(r.event.gaps, 0);
-  assert.strictEqual(r.event.gain, 45);
+  assert.strictEqual(r.event.gain, 23);                    // (10 + 5) x 1.5
 });
-test('6 a column with one crossed-out cell between scores 36', function () {
+test('6 a column with one crossed-out cell between scores 18', function () {
   var vals = [];
   for (var i = 0; i < 20; i++) vals.push(3);
   vals[0] = 4; vals[18] = 4;
@@ -615,7 +621,7 @@ test('6 a column with one crossed-out cell between scores 36', function () {
   var r = L.select(L.select(s, 1).state, 19);
   assert.strictEqual(r.event.kind, 'col');
   assert.strictEqual(r.event.gaps, 1);
-  assert.strictEqual(r.event.gain, 36);
+  assert.strictEqual(r.event.gain, 18);                    // (10 + 2) x 1.5
 });
 test('7 the streak multiplier reaches 1.2 on the third pair and stops at 2', function () {
   var vals = [];
@@ -634,11 +640,11 @@ test('7 the streak multiplier reaches 1.2 on the third pair and stops at 2', fun
     if (n === 11) twelfth = r.event;
   });
   near(third.streakMult, 1.2);
-  assert.strictEqual(third.gain, 36);
+  assert.strictEqual(third.gain, 18);                      // 10 x 1.2 x 1.5
   near(eleventh.streakMult, 2);
   near(twelfth.streakMult, 2);
-  assert.strictEqual(eleventh.gain, 60);
-  assert.strictEqual(twelfth.gain, 60);
+  assert.strictEqual(eleventh.gain, 30);                   // 10 x 2 x 1.5
+  assert.strictEqual(twelfth.gain, 30);
 });
 test('8 Add knocks the streak back one step', function () {
   var s = stateWith([1, 2], 'normal', { streak: 3 });
@@ -646,8 +652,8 @@ test('8 Add knocks the streak back one step', function () {
 });
 test('9 a mismatch costs half of the new pair score and breaks the streak', function () {
   var r = L.select(L.select(stateWith([1, 3, 5], 'normal', { score: 100, streak: 2 }), 1).state, 2);
-  assert.strictEqual(r.event.penalty, 18);
-  assert.strictEqual(r.state.score, 82);
+  assert.strictEqual(r.event.penalty, 9);                  // half of 10 x 1.2 x 1.5
+  assert.strictEqual(r.state.score, 91);
   assert.strictEqual(r.state.streak, 0);
 });
 test('10 two rows emptied at once pay 180', function () {
@@ -679,7 +685,7 @@ test('13 a hint costs 38 points, a hint count, and one streak step', function ()
 });
 test('14 undo restores the pair then charges 8, and never goes below 0', function () {
   var cleared = L.select(L.select(stateWith([1, 1, 2], 'normal', { score: 100 }), 1).state, 2).state;
-  assert.strictEqual(cleared.score, 130);
+  assert.strictEqual(cleared.score, 115);
   var back = L.undo(cleared);
   assert.strictEqual(back.event.cost, 8);
   assert.strictEqual(back.state.score, 92);
@@ -689,13 +695,13 @@ test('14 undo restores the pair then charges 8, and never goes below 0', functio
 test('15 mismatch and hint costs do not come back on undo', function () {
   var s = L.select(L.select(stateWith([1, 1, 3, 5, 7, 7], 'normal', { score: 100 }), 1).state, 2).state;
   var missed = L.select(L.select(s, 3).state, 4);
-  assert.strictEqual(missed.event.penalty, 17);
+  assert.strictEqual(missed.event.penalty, 9);
   s = missed.state;
   var hinted = L.hint(s);
   assert.strictEqual(hinted.event.cost, 38);
   s = hinted.state;
   var back = L.undo(s);
-  assert.strictEqual(back.state.score, 37);
+  assert.strictEqual(back.state.score, 45);                // 100 - 9 - 38 - 8: costs never come back
   assert.strictEqual(back.event.cost, 8);
 });
 test('16 tidyAdds is the same number twice on one board', function () {
@@ -1176,8 +1182,6 @@ test('guided first level: the pointer picks a pair that fits each step', functio
   var s = stateWith([1, 1, 2, 3, 5, 7, 9, 3], 'normal');
   var ids = L.guideTarget(s, 'match');
   assert.deepStrictEqual(ids, [1, 2]);                      // two the same, side by side
-  var twin = L.guideTarget(s, 'twin');
-  assert.ok(twin && L.mixedShade(s.cells[twin[0] - 1].v, s.cells[twin[1] - 1].v));
   assert.strictEqual(L.guideTarget(s, 'reach'), null);      // nothing reaches yet
   s.cells[4].done = s.cells[5].done = s.cells[6].done = true;   // now the two 3s reach across cleared spots
   assert.deepStrictEqual(L.guideTarget(s, 'reach'), [4, 8]);
@@ -1189,7 +1193,7 @@ test('guided first level: a match only finishes the step it fits', function () {
   var side = { type: 'match', same: true, kind: 'row', gaps: 0 };
   var twin = { type: 'match', same: false, kind: 'row', gaps: 0 };
   var far = { type: 'match', same: true, kind: 'diag', gaps: 0 };
-  assert.deepStrictEqual(L.GUIDE_STEPS, ['match', 'twin', 'reach']);
+  assert.deepStrictEqual(L.GUIDE_STEPS, ['match', 'reach'], 'no twin step while only day tiles are dealt');
   assert.strictEqual(L.guideDone('match', side), true);
   assert.strictEqual(L.guideDone('twin', side), false);
   assert.strictEqual(L.guideDone('twin', twin), true);
