@@ -25,6 +25,7 @@ and the score server uses only what ships with Node 22.
 | `game-logic.js` | All the rules, as pure functions: `state` in, `{ state, event }` out. No page code. The difficulty numbers are the `RAMP`, `TOOLS` and `TUNE` tables near the top. |
 | `app.js` | The page: draws the state, plays sounds and animations, handles taps, saves the game. It never changes game fields itself; it asks `game-logic.js`. |
 | `save.js` | Turns a game into text for browser storage and back. |
+| `daily.js` | The Daily's rules, with no page code: the day (US Eastern), the three boards (the server's, or dealt from the date), Adds against par, the share grid, the streak and the calendar. |
 | `scores-client.js` | Talks to the score server: bests, shared boards, run ends. |
 | `index.html`, `styles.css` | The page and its looks. |
 | `storage.js`, `sound.js`, `art.js` | Helpers for `app.js`: browser storage and its keys, the sound ticks, and the tile drawings (the Gridiron mascots, the Pixel characters, the Arcade pick-ups as pixel rows, the walls; Arcade HD points at its pictures). |
@@ -55,6 +56,16 @@ The score server keeps them by slot: `daily/YYYY-MM-DD/1` to `/3` (three a day, 
 The admin sends `Authorization: Bearer <key>`, where the key is `TENSPOT_ADMIN_KEY` on the score service
 (Render → ten-spot-scores → Environment). Without it, or with a key under 24 characters, the admin routes
 answer 503. Ten wrong keys a minute from one address and it must wait.
+
+## The Daily
+
+The game opens on today's Daily until it has been played (a first visit opens on Solitaire's guided first level
+instead, and a shared link opens what it links to). The ⊞ button opens the start screen: Daily, Solitaire, Saga.
+Three boards zoom out, 3 × 3, 5 × 5 and 7 × 7, with an empty centre that paths pass through. They share 3 hints,
+2 undos and 1 Pack; each has its own Adds. The score is Adds used against par: the first try counts, replays are
+practice. Results stay on the device (`numbermatch.daily`), with the day in progress in `numbermatch.dailysave`;
+Solitaire's game, bests and server copy are left alone while the Daily is on screen. A streak forgives one missed
+day a week (Monday to Sunday).
 
 ## Rules of the house
 

@@ -17,6 +17,9 @@
   <!-- ============ HEADER ============ -->
   <header class="a-head">
     <h1 id="title" class="drawn" data-text="ten-spot" aria-label="ten-spot"></h1>
+    <button type="button" class="icon-btn" id="btnHome" aria-label="Choose a game: Daily, Solitaire or Saga">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></svg>
+    </button>
     <button type="button" class="icon-btn" id="btnNew" aria-label="New game">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>
     </button>
@@ -138,7 +141,7 @@
     </div>
     <div class="set-group">
       <h2 class="set-title">How to play</h2>
-      <p class="how">Clear two tiles with the same mascot. They must touch, or have only crossed-out cells between them, including across the end of a row and on a diagonal. Clear the board to reach the next level. Every game climbs one ramp: you start on a small 5 × 5 board, and as you go the board grows, new mascots arrive, brick walls appear, and your buttons shrink. A wall can't be cleared and blocks the way. Its arrows show how it goes: left and right, when the rest of its row is cleared; up and down, when every tile in its column is cleared (tiles you add below count); four separate arrows, when either happens; a cross with a solid centre, only when both do. A wall pays a bonus when it goes, shown under its bricks. The bonus grows with every pair you clear while it stands, and doubles if the wall lasts to the level's final pair. Easy runs to level 36, Normal from 37, Hard from 53. Stuck? Add copies everything left onto the bottom, but only once you are down to your last pairs, and each level allows only a few; from level 30, pressing it too soon counts as a wrong pick. Pack (from level 10) slides the tiles together. When nothing is left to decide (any order of play would clear the board), a Finish button appears above the buttons: tap it to clear the rest, or ignore it and play on. If the tiles left also sit together with each match right beside it, it is a clean sweep, for bonus points. Pairs score more the farther apart they are. Clear pairs in a row to build a streak, up to double points. A wrong pick breaks your streak and costs points. Hints and undos cost a few points. Finish a level in fewer matches than par for a bonus. Points grow with every level.</p>
+      <p class="how"><b>Daily:</b> three boards a day, the same for everyone: 3 × 3, 5 × 5 and 7 × 7, each zooming out from the last. You share 3 hints, 2 undos and 1 pack across the three. The score is the Adds you use against par, and your first try is the one that counts. <b>Solitaire:</b> clear two tiles with the same mascot. They must touch, or have only crossed-out cells between them, including across the end of a row and on a diagonal. Clear the board to reach the next level. Every game climbs one ramp: you start on a small 5 × 5 board, and as you go the board grows, new mascots arrive, brick walls appear, and your buttons shrink. A wall can't be cleared and blocks the way. Its arrows show how it goes: left and right, when the rest of its row is cleared; up and down, when every tile in its column is cleared (tiles you add below count); four separate arrows, when either happens; a cross with a solid centre, only when both do. A wall pays a bonus when it goes, shown under its bricks. The bonus grows with every pair you clear while it stands, and doubles if the wall lasts to the level's final pair. Easy runs to level 36, Normal from 37, Hard from 53. Stuck? Add copies everything left onto the bottom, but only once you are down to your last pairs, and each level allows only a few; from level 30, pressing it too soon counts as a wrong pick. Pack (from level 10) slides the tiles together. When nothing is left to decide (any order of play would clear the board), a Finish button appears above the buttons: tap it to clear the rest, or ignore it and play on. If the tiles left also sit together with each match right beside it, it is a clean sweep, for bonus points. Pairs score more the farther apart they are. Clear pairs in a row to build a streak, up to double points. A wrong pick breaks your streak and costs points. Hints and undos cost a few points. Finish a level in fewer matches than par for a bonus. Points grow with every level.</p>
       <p class="how credits">Pixel and Arcade tiles drawn for ten-spot. Gridiron icons: <a href="https://game-icons.net" target="_blank" rel="noopener">Game Icons</a> by Lorc, Delapouite and contributors (CC BY 3.0), and <a href="https://pictogrammers.com/library/mdi/" target="_blank" rel="noopener">Material Design Icons</a> (Apache 2.0).</p>
     </div>
   </section>
@@ -175,12 +178,17 @@
       <span class="end-detail" id="endDetail"></span>
       <span class="end-best" id="endBest"></span>
       <dl class="end-stats" id="endStats" hidden></dl>
+      <pre class="daily-grid" id="dailyGrid" hidden></pre>
+      <div class="daily-cal" id="dailyCal" aria-label="Last two weeks" hidden></div>
       <div class="end-buttons">
         <button type="button" class="btn btn-primary" id="btnEndRetry" hidden>Try that board again</button>
         <button type="button" class="btn btn-primary" id="btnEndPrimary">Next level</button>
         <button type="button" class="btn" id="btnEndShare" hidden>Share</button>
         <button type="button" class="btn" id="btnEndUndo" hidden>Undo last move</button>
+        <button type="button" class="btn" id="btnEndAgain" hidden>Play again (practice)</button>
+        <button type="button" class="btn" id="btnEndSolo" hidden>Solitaire</button>
       </div>
+      <textarea class="daily-share" id="dailyShareText" readonly aria-label="Your result to share" hidden></textarea>
       <div class="end-share" id="endShare" hidden>
         <input type="text" id="shareText" readonly aria-label="Message to share">
         <button type="button" class="btn" id="btnShareCopy">Copy</button>
@@ -228,6 +236,26 @@
 </main>
 </div>
 
+<!-- ============ START SCREEN: choose Daily, Solitaire or Saga ============ -->
+<div class="home" id="home" hidden>
+  <div class="home-inner" role="dialog" aria-modal="true" aria-labelledby="homeTitle">
+    <h2 class="home-title" id="homeTitle">ten-spot</h2>
+    <button type="button" class="home-card" id="homeDaily">
+      <span class="home-name">Daily</span>
+      <span class="home-line" id="homeDailyLine">Three boards, the same for everyone</span>
+    </button>
+    <button type="button" class="home-card" id="homeSolo">
+      <span class="home-name">Solitaire</span>
+      <span class="home-line" id="homeSoloLine">One climb, as high as you can go</span>
+    </button>
+    <button type="button" class="home-card" id="homeSaga" disabled>
+      <span class="home-name">Saga</span>
+      <span class="home-line">Coming soon: hand-made boards, chapter by chapter</span>
+    </button>
+    <button type="button" class="btn home-close" id="homeClose">Back to the game</button>
+  </div>
+</div>
+
 <!-- ============ CONFIRMATION (anything that would reset the board) ============ -->
 <div class="confirm-backdrop" id="confirm" hidden>
   <div class="confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmText">
@@ -242,6 +270,7 @@
 <script src="config.js?v=__V__"></script>
 <script src="scores-client.js?v=__V__"></script>
 <script src="game-logic.js?v=__V__"></script>
+<script src="daily.js?v=__V__"></script>
 <script src="storage.js?v=__V__"></script>
 <script src="sound.js?v=__V__"></script>
 <script src="art.js?v=__V__"></script>

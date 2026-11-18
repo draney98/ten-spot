@@ -18,7 +18,10 @@
     diff: 'numbermatch.diff', // where the last run started: easy|normal|hard
     reached: 'numbermatch.reached', // highest level reached on this device (unlocks Start at Normal / Hard)
     guide: 'numbermatch.guide', // 'done' once the first-level pointers have been seen or skipped
-    ends: 'numbermatch.ends' // run ends waiting to be sent to the score server (see scores-client.js)
+    ends: 'numbermatch.ends', // run ends waiting to be sent to the score server (see scores-client.js)
+    mode: 'numbermatch.mode', // the game on screen: 'solitaire' or 'daily'
+    daily: 'numbermatch.daily', // the Daily's results by day (see daily.js)
+    dailySave: 'numbermatch.dailysave' // the Daily in progress: { day, game } (game is packed by save.js)
   };
   window.TenSpotStorage = { store: store, KEYS: KEYS };
 })();

@@ -36,6 +36,7 @@
   function unlocked(diff) { return reached() >= L.startLevel(diff); }
   var SV = window.NumberMatchSave;
   var S = window.NumberMatchScores;
+  var DY = window.TenSpotDaily;   // the Daily's rules (daily.js)
   var SCORES_API = ((window.TENSPOT_CONFIG && window.TENSPOT_CONFIG.scoresApi) || '').replace(/\/$/, '');   // see config.js
 
   function loadBest() {
@@ -47,6 +48,7 @@
     return b;
   }
   function saveBestIfHigher() {
+    if (mode !== 'solitaire') return;   // Daily boards never touch Solitaire bests
     var d = state.diff, v = state.best[d] || 0;
     if (v > (Number(store.get(KEY.best + d)) || 0)) store.set(KEY.best + d, String(v));
     pushBests();
@@ -85,6 +87,7 @@
   /** Call just before the current game is thrown away. Counts it only if it was lost,
       and only if it was a run (not a board played from a puzzle code). */
   function noteRunEnd() {
+    if (mode !== 'solitaire') return;
     if (!S || !state || state.status !== 'lose' || state.fromCode) return;
     if (L.runStats(state).retries > 0) return;   // this run was already counted, at its first loss
     store.set(KEY.ends, S.addRunEnd(store.get(KEY.ends), { start: state.diff, level: state.level, version: L.RULES_VERSION, run: state.runId }));
@@ -115,7 +118,7 @@
   function publishBoard() {
     var token = ++boardTok;
     ui.boardCode = '';
-    if (!S || !SCORES_API || state.seed == null) return;
+    if (mode !== 'solitaire' || !S || !SCORES_API || state.seed == null) return;
     S.saveBoard(SCORES_API, {
       diff: state.diff,
       level: state.level,
@@ -146,7 +149,11 @@
     try { return window.matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) { return false; }
   }
 
-  /* ---------- 2. STATE ---------- */
+  /* ---------- 2. STATE ----------
+     mode: the game on screen, 'solitaire' or 'daily'. While the Daily is on screen, Solitaire's game
+     waits in soloState (and in its own save), untouched: its save, bests, run counts and server copy
+     never see a Daily board. day: the Daily in progress (see section 10b). */
+  var mode = 'solitaire', soloState = null, day = null, pendingPull = false;
   // Pick up where the player left off: the saved game if there is a good one, else a new board at the last difficulty.
   var restored = SV ? SV.unpack(store.get(KEY.save)) : null;
   var startDiff = store.get(KEY.diff);
@@ -178,7 +185,9 @@
     note: typeof saved.note === 'string' ? saved.note : '',      // status line text ('' = default text)
     puzzleError: '',
     boardCode: typeof saved.boardCode === 'string' ? saved.boardCode : '',  // short code from the server; empty until that answer arrives
-    saveFailed: false  // true when this browser won't let us save
+    saveFailed: false, // true when this browser won't let us save
+    homeOpen: false,   // the start screen (Daily, Solitaire, Saga)
+    dayLoading: false  // fetching today's Daily boards
   };
 
   /* ---------- 2a. SAVE THE GAME ON THIS DEVICE ----------
@@ -187,6 +196,12 @@
   function saveNow() {
     clearTimeout(saveTimer); saveTimer = 0;
     if (!SV) return;
+    store.set(KEY.mode, mode);
+    if (mode === 'daily') {   // the Daily keeps its own save; Solitaire's stays as it was
+      var okDay = !day || store.set(KEY.dailySave, JSON.stringify({ day: day, game: SV.pack(state, { note: ui.note }) }));
+      ui.saveFailed = !okDay;
+      return;
+    }
     // Only a game played on this page counts as newer: a board just dealt or reopened, not yet
     // touched, must not hide a newer game saved from another device.
     if (gameSig(state) !== startSig) lastLocalSave = Date.now();
@@ -224,7 +239,7 @@
       Math.max(0, SERVER_SAVE_GAP - (Date.now() - lastServerPush)));
   }
   function serverSaveNow(closing) {
-    if (!SV || !account || !account.isSignedIn()) return;
+    if (mode !== 'solitaire' || !SV || !account || !account.isSignedIn()) return;   // the server keeps Solitaire's game
     clearTimeout(serverTimer); serverTimer = 0;
     // A game never played on this device (just dealt, or just opened) is not sent: it would
     // otherwise look newer than a game played on another device.
@@ -239,7 +254,9 @@
   }
   function pullServerSave() {
     if (!SV || !account || !account.isSignedIn()) return;
+    if (mode !== 'solitaire') { pendingPull = true; return; }   // picked up when Solitaire is back on screen
     account.pullSave().then(function (saved) {
+      if (mode !== 'solitaire') { pendingPull = true; return; }
       if (!saved || saved.savedAt <= lastLocalSave) return;   // this device's game is as new or newer
       if (gameSig(state) !== startSig) return;                // played here since opening: this game wins
       var r = SV.unpack(saved.data);
@@ -641,7 +658,7 @@
     return store.get(KEY.guide) !== 'done' && reached() <= 1 &&
       state.level === 1 && state.diff === 'easy' && !state.fromCode;
   }
-  function startGuide() { guide.on = guideWanted(); guide.step = 0; }
+  function startGuide() { guide.on = mode === 'solitaire' && guideWanted(); guide.step = 0; }
   function endGuide() { guide.on = false; store.set(KEY.guide, 'done'); }
   /** Called with every match while the pointers are on: move to the next pointer if this match did what the current one said. */
   function guideSaw(ev) {
@@ -693,8 +710,12 @@
     $('diffInfo').textContent = startInfo();
     $('grid').style.setProperty('--cols', String(s.cols || L.colsFor(s.diff)));
 
-    // while settings (or a confirmation) are open, the board and its controls are switched off
-    var off = ui.settingsOpen || !!ui.confirm;
+    // while settings, a confirmation or the start screen are open, the board and its controls are switched off
+    var off = ui.settingsOpen || !!ui.confirm || ui.homeOpen;
+    var daily = mode === 'daily' && !!day;
+    renderHome();
+    $('btnNew').hidden = daily;   // the Daily has no "new game"; the start screen switches games
+    document.querySelectorAll('[data-diff]').forEach(function (b) { if (daily) { b.disabled = true; b.title = 'Start points are for Solitaire'; } });
     ['board', 'actions', 'note'].forEach(function (id) {
       $(id).inert = off;
       $(id).classList.toggle('is-off', off);
@@ -713,6 +734,12 @@
     document.querySelector('.stat-best').classList.toggle('is-passed', s.score > record || !!s.newBest);
     var capText = 'Level ' + s.level + ' · ' + stageLabel + ', ×' + mult.toFixed(1) + ', ';
     var capCode = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, seed: s.seed });
+    if (daily) {
+      var dPar = day.boards[day.index].par || 0;
+      capText = 'Daily ' + DY.dayNumber(day.date) + (day.practice ? ' practice' : '') + ' · board ' + (day.index + 1) + ' of 3 · par ' + plural(dPar, 'Add', 'Adds');
+      capCode = '';
+    }
+    $('puzzleCode').classList.toggle('is-daily', daily);
     drawText($('captionText'), capText);
     drawText($('captionCode'), capCode);
     $('captionSr').textContent = capText + 'board ' + capCode;
@@ -720,7 +747,11 @@
 
     // scoreboard
     drawText($('score'), fmt(s.score), 'Score ' + fmt(s.score));
-    drawText($('best'), fmt(s.best[s.diff] || 0), 'Best ' + fmt(s.best[s.diff] || 0));
+    if (daily) {
+      var soFar = DY.signed(DY.total(day.results));
+      drawText($('best'), '⛳ ' + soFar, 'Against par so far: ' + soFar);
+      document.querySelector('.stat-best').classList.remove('is-passed');
+    } else drawText($('best'), fmt(s.best[s.diff] || 0), 'Best ' + fmt(s.best[s.diff] || 0));
     var tag = '';
     if (ui.gain < 0) tag = '−' + fmt(Math.abs(ui.gain));
     else if ((s.streak || 0) >= 2) tag = '(' + L.streakMult(s.streak).toFixed(1) + 'x)';
@@ -765,7 +796,7 @@
     $('addMain').textContent = 'Add';
     $('addSub').textContent = (addWhy === 'tooManyPairs')
       ? 'Clear pairs first'
-      : s.addsLeft + ' of ' + L.addsFor(s.level) + ' left';
+      : s.addsLeft + ' of ' + (s.design ? s.design.adds : L.addsFor(s.level)) + ' left';
 
     renderOverlay();
     saveSoon();
@@ -802,8 +833,12 @@
     if (s.status !== 'lose') stopWindDown();
     lastStatus = s.status;
     $('board').classList.toggle('ended', s.status !== 'playing');
-    $('board').classList.toggle('lost', s.status === 'lose');
+    $('board').classList.toggle('lost', s.status === 'lose' && mode === 'solitaire');   // room for the run summary
+    $('board').classList.toggle('day-done', mode === 'daily' && !!day && day.done);     // room for the day's result
+    ov.classList.toggle('is-daily', mode === 'daily');
+    ['dailyGrid', 'dailyCal', 'btnEndAgain', 'btnEndSolo', 'dailyShareText'].forEach(function (id) { $(id).hidden = true; });
     if (s.status === 'playing') { ov.hidden = true; ui.shareOpen = false; return; }
+    if (mode === 'daily' && day) { renderDailyEnd(s); if (ov.hidden) ov.hidden = false; return; }
     var clear = s.status === 'clear';
     $('endKicker').hidden = clear;
     $('endKicker').textContent = clear ? '' : 'Out of moves on level ' + s.level;
@@ -1151,6 +1186,7 @@
   var prepareTimer = 0;
   function scheduleUpcoming() {
     clearTimeout(prepareTimer);
+    if (mode !== 'solitaire') { upcoming = null; return; }
     var spec = {
       diff: state.diff,
       level: state.level + 1,
@@ -1242,6 +1278,201 @@
     } else { box.select(); done(false); }
   }
 
+  /* ---------- 10b. THE DAILY (rules in daily.js) ----------
+     day: { date, boards: [3 designs], index (0..2), results: [one per board played], tools: { hints, undos,
+     packs } shared by the three boards, score, practice (a replay: not recorded), done }. */
+  function readBook() { return DY.readBook(store.get(KEY.daily)); }
+  function today() { return DY.dayOf(Date.now()); }
+  function readDailySave() {
+    var raw = store.get(KEY.dailySave), saved = null;
+    try { saved = raw ? JSON.parse(raw) : null; } catch (e) { saved = null; }
+    if (!saved || !saved.day || !Array.isArray(saved.day.boards) || saved.day.boards.length !== 3 || !SV) return null;
+    var r = SV.unpack(saved.game);
+    return r ? { day: saved.day, state: r.state } : null;
+  }
+  /** The server's boards for a day (null where not set), or null; never waits more than 4 seconds. */
+  function fetchDay(date) {
+    if (!SCORES_API || typeof fetch !== 'function') return Promise.resolve(null);
+    var timeout = new Promise(function (ok) { setTimeout(function () { ok(null); }, 4000); });
+    var get = fetch(SCORES_API + '/v1/daily/' + date)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return j && Array.isArray(j.boards) ? j.boards : null; })
+      .catch(function () { return null; });
+    return Promise.race([get, timeout]);
+  }
+  function freshDay(date, boards, practice) {
+    var T = L.DAILY_TOOLS;
+    return { date: date, boards: boards, index: 0, results: [], tools: { hints: T.hints, undos: T.undos, packs: T.packs }, score: 0, practice: !!practice, done: false };
+  }
+  /** The day's current board as a game, with the day's shared hints, undos and pack. */
+  function boardState() {
+    var s = L.stateFromDesign(day.boards[day.index], { mode: 'daily', diff: 'easy', score: day.score });
+    s.hintsLeft = day.tools.hints; s.undosLeft = day.tools.undos; s.compactsLeft = day.tools.packs;
+    return s;
+  }
+  function boardNote() {
+    var n = day.index + 1, d = day.boards[day.index];
+    if (n === 1) return (day.practice ? 'Practice: ' : '') + 'Board 1 of 3. Clear it using as few Adds as you can: par is ' + plural(d.par || 0, 'Add', 'Adds') + '.';
+    return 'Zoomed out: board ' + n + ' of 3, par ' + plural(d.par || 0, 'Add', 'Adds') + '.';
+  }
+  function zoomIn() {
+    if (!motionOk()) return;
+    var el = $('boardInner');
+    el.classList.remove('zoom'); void el.offsetWidth; el.classList.add('zoom');
+    setTimeout(function () { el.classList.remove('zoom'); }, 700);
+  }
+  /** Put the Daily on screen: a saved day for today, or today's boards from the server (dealt from the
+      date where the designer left a gap). */
+  function enterDaily() {
+    var date = today(), saved = readDailySave();
+    if (saved && saved.day.date === date) { switchToDaily(saved.day, saved.state); return Promise.resolve(); }
+    ui.dayLoading = true; ui.homeOpen = true; render();
+    return fetchDay(date).then(function (fromServer) {
+      ui.dayLoading = false;
+      switchToDaily(freshDay(date, DY.boardsFor(date, fromServer), !!readBook().results[date]), null);
+    });
+  }
+  function switchToDaily(d, s) {
+    if (mode === 'solitaire') { saveNow(); soloState = state; }
+    mode = 'daily'; day = d; ui.homeOpen = false; ui.settingsOpen = false;
+    resetAll();
+    guide.on = false;
+    upcoming = null;
+    state = s || boardState();
+    if (!s) { ui.note = boardNote(); zoomIn(); }
+    render();
+  }
+  /** Back to Solitaire's game, as it was. */
+  function enterSolitaire() {
+    ui.homeOpen = false;
+    if (mode === 'solitaire') { render(); return; }
+    saveNow();
+    mode = 'solitaire'; day = null;
+    resetAll();
+    if (soloState) state = soloState;
+    soloState = null;
+    startGuide();
+    scheduleUpcoming();
+    publishBoard();
+    store.set(KEY.mode, 'solitaire');
+    render();
+    if (pendingPull) { pendingPull = false; pullServerSave(); }
+  }
+  /** After a board ends: keep its result, then zoom out to the next board, or finish the day. */
+  function dailyNext() {
+    if (mode !== 'daily' || !day || day.done || state.status === 'playing') return;
+    day.results[day.index] = DY.boardResult(day.boards[day.index], state);
+    day.tools = { hints: state.hintsLeft, undos: state.undosLeft, packs: state.compactsLeft };
+    day.score = state.score;
+    if (day.index < 2) {
+      day.index++;
+      resetAll();
+      state = boardState();
+      ui.note = boardNote();
+      play('stage');
+      zoomIn();
+      render();
+      return;
+    }
+    day.done = true;
+    if (!day.practice) {
+      var book = readBook();
+      if (DY.record(book, day.date, day.results, Date.now())) store.set(KEY.daily, JSON.stringify(book));
+    }
+    play('clear');
+    render();
+  }
+  function dailyPractice() {
+    if (mode !== 'daily' || !day) return;
+    day = freshDay(day.date, day.boards, true);
+    resetAll();
+    state = boardState();
+    ui.note = boardNote();
+    zoomIn();
+    render();
+  }
+  /** The share text: today's first try (a practice run never replaces it), and the address. */
+  function dailyShareText() {
+    var book = readBook(), rec = book.results[day.date];
+    var boards = rec ? rec.boards : day.results;
+    return DY.shareText(day.date, boards, DY.streak(book, today()).days) + '\n' + window.location.origin + window.location.pathname;
+  }
+  function onDailyShare() {
+    var text = dailyShareText();
+    function fallback() { var box = $('dailyShareText'); box.value = text; box.hidden = false; box.focus(); box.select(); ui.note = 'Copy your result from the box.'; render(); box.hidden = false; }
+    var phone = false;
+    try { phone = window.matchMedia('(pointer: coarse)').matches; } catch (e) { phone = false; }
+    if (phone && navigator.share) {
+      navigator.share({ text: text }).catch(function (e) { if (!e || e.name !== 'AbortError') fallback(); });
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { ui.note = 'Copied your result. Paste it anywhere.'; render(); }, fallback);
+    } else fallback();
+  }
+  /** The end card for the Daily: one board's result, or the day's. */
+  function renderDailyEnd(s) {
+    var n = day.index + 1;
+    ['btnEndRetry', 'btnEndShare', 'btnEndUndo', 'endStats', 'endShare', 'endBest'].forEach(function (id) { $(id).hidden = true; });
+    $('btnEndPrimary').classList.add('btn-primary');
+    $('endKicker').hidden = false;
+    if (!day.done) {
+      var res = DY.boardResult(day.boards[day.index], s);
+      $('endKicker').textContent = 'Daily ' + DY.dayNumber(day.date) + (day.practice ? ' practice' : '') + ' · board ' + n + ' of 3';
+      $('endTitle').textContent = res.lost ? 'This board beat you' : 'Board ' + n + ' clear!';
+      $('endNumber').textContent = res.lost ? '✖' : DY.row(res);
+      $('endDetail').textContent = res.lost
+        ? 'It counts as ✖ in today’s result.'
+        : plural(res.adds, 'Add', 'Adds') + ' used, par ' + res.par + '.' + (res.perfect ? '\nPerfect: no mistakes, hints or undos.' : '');
+      $('btnEndPrimary').textContent = n < 3 ? 'Next board' : 'See today’s result';
+      $('btnEndUndo').hidden = !(s.status === 'lose' && L.canUndo(s));
+      return;
+    }
+    var book = readBook(), rec = book.results[day.date];
+    var shown = day.practice || !rec ? day.results : rec.boards;
+    var st = DY.streak(book, today());
+    $('endKicker').textContent = 'Daily ' + DY.dayNumber(day.date) + (day.practice ? ' practice' : '');
+    $('endTitle').textContent = day.practice ? 'Practice done' : 'Today’s boards done';
+    $('endNumber').textContent = '⛳ ' + DY.signed(DY.total(shown));
+    $('endDetail').textContent = (day.practice ? 'Practice doesn’t change your result. ' : '') + 'Adds against par, three boards. ' +
+      (st.days > 1 ? '🔥 ' + st.days + ' days in a row. ' : '') + 'Three new boards tomorrow.';
+    $('dailyGrid').textContent = shown.map(DY.row).join('\n');
+    $('dailyGrid').hidden = false;
+    var cal = $('dailyCal');
+    cal.textContent = '';
+    DY.calendar(book, today(), 14).forEach(function (c) {
+      var dot = document.createElement('span');
+      dot.className = 'cal-dot cal-' + c.state;
+      dot.title = c.day + (c.state === 'played' ? ': played' : c.state === 'today' ? ': today' : ': missed');
+      cal.appendChild(dot);
+    });
+    cal.hidden = false;
+    $('btnEndPrimary').textContent = 'Share';
+    $('btnEndAgain').hidden = false;
+    $('btnEndSolo').hidden = false;
+  }
+
+  /* The start screen: Daily, Solitaire, Saga. */
+  function renderHome() {
+    var home = $('home');
+    home.hidden = !ui.homeOpen;
+    if (!ui.homeOpen) return;
+    var book = readBook(), date = today(), rec = book.results[date], st = DY.streak(book, date);
+    var dailyLine = ui.dayLoading ? 'Getting today’s boards…'
+      : rec ? '⛳ ' + DY.signed(DY.total(rec.boards)) + ' today. Three new boards tomorrow.'
+      : 'Three boards, the same for everyone.';
+    if (!ui.dayLoading && st.days > 1) dailyLine += ' 🔥 ' + st.days + ' days.';
+    $('homeDailyLine').textContent = dailyLine;
+    $('homeDaily').disabled = ui.dayLoading;
+    var solo = mode === 'solitaire' ? state : soloState;
+    $('homeSoloLine').textContent = solo && (solo.level > 1 || solo.score > 0)
+      ? 'Level ' + solo.level + ' · ' + plural(Math.round(solo.score), 'point', 'points') + '. Carry on.'
+      : 'One climb, as high as you can go.';
+    $('homeDaily').classList.toggle('is-current', mode === 'daily');
+    $('homeSolo').classList.toggle('is-current', mode === 'solitaire');
+  }
+  function openHome() { ui.homeOpen = true; render(); $('homeDaily').disabled ? $('homeSolo').focus() : $('homeDaily').focus(); }
+
   function setTheme(dark) { ui.dark = dark; store.set(KEY.theme, dark ? 'dark' : 'light'); render(); }
   function setTiles(set) {
     if (!ART.SETS[set]) return;
@@ -1251,6 +1482,7 @@
   }
 
   function setDifficulty(diff) {
+    if (mode !== 'solitaire') return;
     if (diff === state.diff || !unlocked(diff)) return;
     var label = L.LEVELS[diff].label;
     confirmReset('Start at ' + label + '?', 'This starts a new game at level ' + L.startLevel(diff) + '.', 'Start at ' + label,
@@ -1312,6 +1544,7 @@
       render();
       return;
     }
+    if (mode !== 'solitaire') enterSolitaire();   // a puzzle code plays in Solitaire
     var best = state.best;
     ui.settingsOpen = false;
     ui.puzzleError = '';
@@ -1338,7 +1571,17 @@
       });
     });
   });
-  $('btnEndPrimary').addEventListener('click', function () { if (state.status === 'clear') onNextLevel(); else newGame(); });
+  $('btnEndPrimary').addEventListener('click', function () {
+    if (mode === 'daily' && day) { if (day.done) onDailyShare(); else dailyNext(); return; }
+    if (state.status === 'clear') onNextLevel(); else newGame();
+  });
+  $('btnEndAgain').addEventListener('click', dailyPractice);
+  $('btnEndSolo').addEventListener('click', enterSolitaire);
+  $('btnHome').addEventListener('click', openHome);
+  $('homeDaily').addEventListener('click', function () { enterDaily(); });
+  $('homeSolo').addEventListener('click', enterSolitaire);
+  $('homeClose').addEventListener('click', function () { ui.homeOpen = false; render(); });
+  $('home').addEventListener('keydown', function (e) { if (e.key === 'Escape' && !ui.dayLoading) { ui.homeOpen = false; render(); } });
   $('btnEndUndo').addEventListener('click', onUndo);
   $('btnEndRetry').addEventListener('click', onRetry);
   $('guideSkip').addEventListener('click', function () { endGuide(); render(); });
@@ -1396,6 +1639,20 @@
   pullServerSave();
   sendRunEnds();
 
+  /* Opening the game: today's Daily first if it hasn't been played (not on a first visit, which starts
+     with the guided first level, and not when a link was opened); otherwise straight back to wherever
+     the player was. Decided before the links below take their codes off the address. */
+  (function () {
+    var search = '';
+    try { search = window.location.search || ''; } catch (e) { search = ''; }
+    var viaLink = /[?&](board|link|recover)=/.test(search);
+    var firstVisit = store.get(KEY.guide) !== 'done' && reached() <= 1;
+    if (!DY || viaLink || firstVisit) return;
+    var date = today(), saved = readDailySave();
+    if (!readBook().results[date]) { enterDaily(); return; }
+    if (store.get(KEY.mode) === 'daily' && saved && saved.day.date === date) switchToDaily(saved.day, saved.state);
+  })();
+
   /* A shared link (?board=41-1a2b3c4d) deals that board. The code is taken off the address
      so a reload goes back to the saved game. */
   (function () {
@@ -1408,6 +1665,7 @@
     confirmReset('Play this board?', 'This link deals one board from its first deal.', 'Play this board', function () { startPuzzle(spec); });
   })();
   if (account) account.handleIncoming();   // ?link=… and ?recover=… (see account.js)
+
 
   /* ---------- 12. OPTIONAL TEST HOOK ----------
      Lets automated tests and screenshots set up exact boards.
@@ -1438,6 +1696,11 @@
       render();
     },
     setTheme: setTheme,
+    mode: function () { return mode; },
+    day: function () { return day; },
+    /** Start a Daily with these three designs (tests): no server, no waiting. */
+    startDaily: function (boards, date) { switchToDaily(freshDay(date || today(), boards, !!readBook().results[date || today()]), null); },
+    dailyNext: dailyNext,
     openSettings: function (open) { ui.settingsOpen = open; render(); },
     beatable: function () { return L.isBeatable(state); }
   };

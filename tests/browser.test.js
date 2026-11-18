@@ -33,7 +33,19 @@ async function test(name, fn) {
     process.exit(0);
   }
   var errors = [];
-  async function openPage(url) {
+  /* A new device opens on the guided first level, never the Daily. Once a test marks the guide done and
+     reloads, the game would open on today's Daily, so openPage marks today's Daily played (as the older
+     tests expect Solitaire) unless asked for { daily: true }. Seeded after the page has loaded, not by
+     an init script: one that touches storage before the page can read it stale across a reload. */
+  function seedDailyPlayed(page) {
+    return page.evaluate(function () {
+      if (localStorage.getItem('numbermatch.daily')) return;
+      var day = window.TenSpotDaily.dayOf(Date.now()), book = { results: {} };
+      book.results[day] = { boards: [{ adds: 0, par: 0, perfect: true, lost: false }], at: Date.now() };
+      localStorage.setItem('numbermatch.daily', JSON.stringify(book));
+    });
+  }
+  async function openPage(url, opts) {
     var context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     var page = await context.newPage();
     // nothing leaves the computer: no score server, no fonts
@@ -41,6 +53,7 @@ async function test(name, fn) {
     page.on('pageerror', function (e) { errors.push(url + ': ' + e.message); });
     await page.goto(url);
     await page.waitForTimeout(300);
+    if (!(opts && opts.daily) && url.indexOf('index.html') >= 0) await seedDailyPlayed(page);
     return page;
   }
   var game = 'file://' + path.join(ROOT, 'index.html');
@@ -275,6 +288,7 @@ async function test(name, fn) {
       });
       p.on('pageerror', function (e) { errors.push('account device: ' + e.message); });
       await p.goto(game);
+      await seedDailyPlayed(p);
       await p.evaluate(function () { localStorage.setItem('numbermatch.guide', 'done'); localStorage.setItem('numbermatch.best3.easy', '640'); });
       await p.reload();
       await p.waitForTimeout(300);
@@ -416,6 +430,101 @@ async function test(name, fn) {
     assert.deepStrictEqual(r.names, ['bomb', 'clover', 'flame', 'gem', 'heart', 'potion', 'star', 'sword'].reduce(function (all, n) {
       return all.concat(['art/arcade-hd/' + n + '-day.png', 'art/arcade-hd/' + n + '-night.png']);
     }, []).sort());
+  });
+
+  await test('Daily: a new day opens on three zoom-out boards, and the result is a share grid', async function () {
+    var p = await openPage(game, { daily: true });
+    await p.evaluate(function () { localStorage.setItem('numbermatch.guide', 'done'); localStorage.setItem('numbermatch.reached', '12'); });
+    var solo = await state(p);
+    await p.reload();
+    // no score server here: the boards are dealt from the date once the request fails
+    await p.waitForFunction(function () { return window.__nm.mode() === 'daily'; }, null, { timeout: 6000 });
+    await p.waitForTimeout(300);
+    assert.ok(await p.isHidden('#home'));
+    assert.ok(await p.isHidden('#btnNew'), 'no New game in the Daily');
+    assert.ok(/^Daily \d+ · board 1 of 3 · par /.test(await p.getAttribute('#captionText', 'data-text')));
+    var sizes = [];
+    for (var n = 1; n <= 3; n++) {
+      var s = await state(p);
+      sizes.push(s.cols);
+      assert.strictEqual(s.cells[(s.cells.length - 1) / 2].v, 0, 'the centre is empty');
+      var status = await playOut(p);
+      assert.ok(status === 'clear' || status === 'lose');
+      await p.waitForSelector('#overlay:not([hidden])');
+      assert.ok(new RegExp('board ' + n + ' of 3').test(await p.textContent('#endKicker')));
+      assert.strictEqual(await p.textContent('#btnEndPrimary'), n < 3 ? 'Next board' : 'See today’s result');
+      await p.click('#btnEndPrimary');
+      await p.waitForTimeout(400);
+    }
+    assert.deepStrictEqual(sizes, [3, 5, 7], 'each board zooms out');
+    assert.strictEqual(await p.textContent('#endTitle'), 'Today’s boards done');
+    assert.ok(/^⛳ /.test(await p.textContent('#endNumber')));
+    var grid = (await p.textContent('#dailyGrid')).split('\n');
+    assert.strictEqual(grid.length, 3);
+    grid.forEach(function (r) { assert.ok(/^([⬜🟩🟥]+( ⭐)?|✖)$/u.test(r), r); });
+    assert.strictEqual(await p.locator('#dailyCal .cal-played').count(), 1);
+    var book = JSON.parse(await p.evaluate(function () { return localStorage.getItem('numbermatch.daily'); }));
+    assert.strictEqual(Object.keys(book.results).length, 1, 'today is recorded');
+    // Share: no clipboard in a test browser, so the text shows in a box to copy
+    await p.click('#btnEndPrimary');
+    await p.waitForTimeout(300);
+    var shared = await p.evaluate(function () { return document.getElementById('dailyShareText').value; });
+    assert.ok(/^ten-spot Daily \d+ ⛳ (E|[+−]\d+)\n/.test(shared), shared);
+    assert.strictEqual(shared.split('\n').slice(1, 4).join('\n'), grid.join('\n'));
+    // a reload comes back to today's result; Solitaire is where it was left
+    await p.reload();
+    await p.waitForTimeout(400);
+    assert.strictEqual(await p.evaluate(function () { return window.__nm.mode(); }), 'daily');
+    assert.strictEqual(await p.textContent('#endTitle'), 'Today’s boards done');
+    await p.click('#btnEndSolo');
+    await p.waitForTimeout(300);
+    var back = await state(p);
+    assert.strictEqual(back.runId, solo.runId, 'the same Solitaire game');
+    assert.strictEqual(back.level, solo.level);
+    assert.ok(await p.isVisible('#btnNew'));
+    // a practice run never changes the result
+    await p.click('#btnHome');
+    assert.ok(/^⛳ /.test(await p.textContent('#homeDailyLine')));
+    await p.click('#homeDaily');
+    await p.waitForTimeout(400);
+    await p.click('#btnEndAgain');
+    await p.waitForTimeout(300);
+    assert.ok(/practice/.test(await p.getAttribute('#captionText', 'data-text')));
+    assert.ok(await p.isHidden('#overlay'));
+    var book2 = await p.evaluate(function () { return localStorage.getItem('numbermatch.daily'); });
+    assert.strictEqual(book2, JSON.stringify(book));
+    await p.context().close();
+  });
+
+  await test('Daily: the three boards share 3 hints, 2 undos and 1 pack; Solitaire keeps its own', async function () {
+    var p = await openPage(game);
+    var soloHints = (await state(p)).hintsLeft;
+    await p.evaluate(function () {
+      var L = window.NumberMatchLogic;
+      var boards = L.DAILY_SHAPES.map(function (h) {
+        var n = h.cols * h.rows, cells = []; for (var i = 0; i < n; i++) cells.push(i === (n - 1) / 2 ? 0 : 1);
+        return { v: 1, level: h.level, cols: h.cols, cells: cells, adds: h.adds, par: 1 };
+      });
+      window.__nm.startDaily(boards);
+    });
+    await p.waitForTimeout(300);
+    var s = await state(p);
+    assert.deepStrictEqual([s.hintsLeft, s.undosLeft, s.compactsLeft], [3, 2, 1]);
+    await p.click('#btnHint');
+    await p.waitForTimeout(200);
+    assert.strictEqual((await state(p)).hintsLeft, 2);
+    await playOut(p);
+    await p.click('#btnEndPrimary');
+    await p.waitForTimeout(300);
+    s = await state(p);
+    assert.strictEqual(s.cols, 5);
+    assert.strictEqual(s.hintsLeft, 2, 'the hint used on board 1 is gone on board 2');
+    assert.strictEqual(s.addsLeft, 2, 'Adds are per board');
+    await p.click('#btnHome');
+    await p.click('#homeSolo');
+    await p.waitForTimeout(300);
+    assert.strictEqual((await state(p)).hintsLeft, soloHints);
+    await p.context().close();
   });
 
   await test('no page threw an error', async function () {
