@@ -12,6 +12,7 @@ and the score server uses only what ships with Node 22.
   `tests/browser.test.js` opens the real game in a headless browser and presses the buttons. It needs
   Playwright (`npm install --no-save playwright && npx playwright install chromium`); without it, it says SKIP.
 - **The score server:** `SCORES_DB=./scores.sqlite node server/index.js` (port 8787, or `PORT`).
+  Add `TENSPOT_ADMIN_KEY=<24 or more characters>` to turn on the admin routes that save Daily and Saga boards.
 - **The bot:** `node tools/sim.js 100` plays 100 runs and prints how far they get.
 - **The configurator:** open `tools/tuner.html` to try other difficulty numbers with the bot.
 - **New tile art:** open `tools/tiles.html` on the live site (it needs a web address, not a file). *Combine* puts a pixel set's 16 tiles on one square sheet for an image AI, with a prompt to start from; *Split* cuts the picture that comes back into 16 PNGs and downloads them as a zip that unzips into `art/<set>/`.
@@ -29,10 +30,30 @@ and the score server uses only what ships with Node 22.
 | `art/` | Tile pictures, one folder per set (`art/arcade-hd/heart-day.png`, `heart-night.png`, …), 96 × 96 PNG. To change a tile, replace its PNG with another of the same name and size. Published as-is by `tools/build-site.sh`. |
 | `account.js` | The Account group in Settings: making an account, adding a device with a code, the recovery link, signing out. |
 | `config.js` | Settings shared by the game and the tuner: the score server's address. |
-| `server/` | The score server: `scores.js` (SQLite), `http.js` (routes), `limits.js` (posting limits), `migrations.js` (numbered database changes), `accounts.js` (accounts: device keys, link codes, recovery), `index.js` (start-up). |
+| `server/` | The score server: `scores.js` (SQLite), `http.js` (routes), `limits.js` (posting limits), `migrations.js` (numbered database changes), `accounts.js` (accounts: device keys, link codes, recovery), `designs.js` (Daily and Saga boards, and the admin key), `index.js` (start-up). |
 | `tools/` | `tuner.html` and `tuner-core.js` (configurator and bot), `tiles.html` and `tiles-core.js` (tile sheet tool), `sim.js` (the bot from the command line). |
 | `tests/` | Plain node scripts, one per area. `run.js` runs them all. |
 | `design-info/`, `docs/`, `number-match.html` | Earlier design notes and the original single-file version. Kept in the repo, not published. |
+
+## Daily and Saga boards
+
+A board for Daily or Saga is written down rather than dealt: the format (cells, width 3 to 9, level, buttons, Adds par)
+is described in `game-logic.js` under "DESIGNED BOARDS", with `checkDesign`, `stateFromDesign` and `designFromState`.
+The score server keeps them by slot: `daily/YYYY-MM-DD/1` to `/3` (three a day, easiest first) and
+`saga/<chapter>/<1..10>` (chapters of ten).
+
+| Route | Who | What |
+| --- | --- | --- |
+| `GET /v1/daily/<date>` | anyone | `{ date, boards: [b1, b2, b3] }`, `null` where a board isn't set |
+| `GET /v1/saga` | anyone | every chapter and its boards, in order |
+| `GET /v1/admin` | admin | `{ admin: true }`: checks the key |
+| `GET /v1/admin/boards?prefix=daily/2026-11` | admin | the boards saved under a prefix |
+| `PUT /v1/admin/boards/<slot>` | admin | save a board (checked: format, and it can be cleared with its own Adds) |
+| `DELETE /v1/admin/boards/<slot>` | admin | remove a board |
+
+The admin sends `Authorization: Bearer <key>`, where the key is `TENSPOT_ADMIN_KEY` on the score service
+(Render → ten-spot-scores → Environment). Without it, or with a key under 24 characters, the admin routes
+answer 503. Ten wrong keys a minute from one address and it must wait.
 
 ## Rules of the house
 

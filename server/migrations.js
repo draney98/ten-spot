@@ -127,6 +127,21 @@ var CHANGES = [
         'updated_at TEXT NOT NULL)'
       );
     }
+  },
+  {
+    n: 6,
+    name: 'designed boards',
+    // Boards made in the board designer for Daily and Saga. slot names where a board plays:
+    // daily/YYYY-MM-DD/1..3 (three a day) or saga/<chapter>/<board> (chapters of 10).
+    // design is the board as JSON (format in game-logic.js, "DESIGNED BOARDS").
+    up: function (db) {
+      db.exec(
+        'CREATE TABLE designs (' +
+        'slot TEXT PRIMARY KEY,' +
+        'design TEXT NOT NULL,' +
+        'updated_at TEXT NOT NULL)'
+      );
+    }
   }
 ];
 

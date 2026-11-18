@@ -33,6 +33,10 @@ services:
         value: /var/data/scores.sqlite
       - key: SCORES_ORIGIN
         sync: false
+      # The admin key for saving Daily and Saga boards. Set it in Render's dashboard (24+ characters);
+      # it is never written in this file.
+      - key: TENSPOT_ADMIN_KEY
+        sync: false
     disk:
       name: scores
       mountPath: /var/data

@@ -4,6 +4,8 @@ var api = require('./http.js');
 
 var path = process.env.SCORES_DB || '/var/data/scores.sqlite';
 var origin = process.env.SCORES_ORIGIN || '';
+var adminKey = process.env.TENSPOT_ADMIN_KEY || '';
+var designs = require('./designs.js');
 var port = Number(process.env.PORT) || 8787;
 
 var db;
@@ -19,6 +21,8 @@ var m = db.migrated;
 if (m.to !== m.from) console.log('Database changes ' + (m.from + 1) + ' to ' + m.to + ' applied. Copy of the old database: ' + m.backup);
 else console.log('Database is up to date (change ' + m.to + ').');
 
-api.createScoresServer({ db: db, origin: origin }).listen(port, '0.0.0.0', function () {
+if (!designs.adminKeyUsable(adminKey)) console.log('Admin routes are off: set TENSPOT_ADMIN_KEY (' + designs.MIN_KEY + ' characters or more) to turn them on.');
+
+api.createScoresServer({ db: db, origin: origin, adminKey: adminKey }).listen(port, '0.0.0.0', function () {
   console.log('Score server listening on ' + port);
 });

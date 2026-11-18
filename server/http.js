@@ -3,6 +3,7 @@ var http = require('http');
 var scores = require('./scores.js');
 var limits = require('./limits.js');
 var accounts = require('./accounts.js');
+var designs = require('./designs.js');
 
 var MAX_BODY = 8192;
 
@@ -48,9 +49,11 @@ function bearer(req) {
   return m ? m[1] : null;
 }
 
-/** opts: { db, origin, limits (rules for limits.js; tests pass small ones), now (a clock, tests) } */
+/** opts: { db, origin, limits (rules for limits.js; tests pass small ones), now (a clock, tests),
+    adminKey (TENSPOT_ADMIN_KEY: turns on the admin routes when 24 characters or longer) } */
 function createScoresServer(opts) {
   var db = opts.db;
+  var adminKey = opts.adminKey || '';
   var origin = opts.origin || '';
   var clock = opts.now || Date.now;
   var limiter = limits.createLimiter(opts.limits, opts.now);
@@ -85,6 +88,20 @@ function createScoresServer(opts) {
     req.resume();
     send(req, res, 401, { error: 'not signed in' }, origin);
     return null;
+  }
+
+  /** True for the admin; otherwise answers (503 admin off, 401 wrong key, 429 too many wrong tries). */
+  function admin(req, res) {
+    if (!designs.adminKeyUsable(adminKey)) {
+      req.resume();
+      send(req, res, 503, { error: 'admin is not set up on this server' }, origin);
+      return false;
+    }
+    if (designs.isAdmin(adminKey, bearer(req))) return true;
+    if (!allowed('adminfail', req, res)) return false;
+    req.resume();
+    send(req, res, 401, { error: 'not the admin key' }, origin);
+    return false;
   }
 
   return http.createServer(function (req, res) {
@@ -127,6 +144,33 @@ function createScoresServer(opts) {
       if (method === 'PUT') {
         if (!allowed('bests', req, res)) return;
         return json(req, res, 200, function (patch) { return scores.raiseBests(db, code, patch); });
+      }
+    }
+
+    /* ---- designed boards: Daily and Saga (see designs.js) ---- */
+    if (method === 'GET' && (m = path.match(/^\/v1\/daily\/([^/]+)$/))) {
+      try { return send(req, res, 200, designs.getDaily(db, decodeURIComponent(m[1])), origin); }
+      catch (e) { return send(req, res, e.status || 400, { error: e.message }, origin); }
+    }
+    if (method === 'GET' && path === '/v1/saga') return send(req, res, 200, designs.getSaga(db), origin);
+    if (path === '/v1/admin' || path.indexOf('/v1/admin/') === 0) {
+      if (!admin(req, res)) return;
+      if (method === 'GET' && path === '/v1/admin') return send(req, res, 200, { admin: true }, origin);
+      if (method === 'GET' && path === '/v1/admin/boards') {
+        try { return send(req, res, 200, designs.listDesigns(db, url.searchParams.get('prefix') || ''), origin); }
+        catch (e) { return send(req, res, e.status || 400, { error: e.message }, origin); }
+      }
+      if ((m = path.match(/^\/v1\/admin\/boards\/(.+)$/))) {
+        var slot = decodeURIComponent(m[1]);
+        if (method === 'PUT') {
+          if (!allowed('admin', req, res)) return;
+          return json(req, res, 200, function (body) { return designs.putDesign(db, slot, body, clock()); }, 16 * 1024);
+        }
+        if (method === 'DELETE') {
+          req.resume();
+          try { return send(req, res, 200, designs.removeDesign(db, slot), origin); }
+          catch (e) { return send(req, res, e.status || 400, { error: e.message }, origin); }
+        }
       }
     }
 

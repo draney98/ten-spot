@@ -1055,6 +1055,26 @@
     return n;
   }
 
+  /** Board values (a number, or { v, done, solid }) as playing cells with ids 1, 2, 3… */
+  function cellsOf(vals) {
+    return vals.map(function (tile, i) {
+      var v = (tile && typeof tile === 'object') ? tile.v : tile;
+      var cell = { id: i + 1, v: v, done: !!(tile && typeof tile === 'object' && tile.done) };
+      if (tile && typeof tile === 'object' && typeof tile.solid === 'boolean') cell.solid = tile.solid;
+      return cell;
+    });
+  }
+  /** The same values as the level's opening layout (what Retry and puzzle codes deal again). */
+  function openingOf(vals) {
+    return vals.map(function (tile) {
+      var v = (tile && typeof tile === 'object') ? tile.v : tile;
+      var tile0 = { v: v };
+      if (tile && typeof tile === 'object' && tile.done) tile0.done = true;
+      if (tile && typeof tile === 'object' && typeof tile.solid === 'boolean') tile0.solid = tile.solid;
+      return tile0;
+    });
+  }
+
   function levelFields(diff, level, rng) {
     var T = toolsAt(level);
     var cols = widthAt(level);
@@ -1066,12 +1086,7 @@
       level: level,
       rules: 'pairs',
       cols: cols,
-      cells: vals.map(function (tile, i) {
-        var v = (tile && typeof tile === 'object') ? tile.v : tile;
-        var cell = { id: i + 1, v: v, done: !!(tile && typeof tile === 'object' && tile.done) };
-        if (tile && typeof tile === 'object' && typeof tile.solid === 'boolean') cell.solid = tile.solid;
-        return cell;
-      }),
+      cells: cellsOf(vals),
       nextId: vals.length + 1,
       dealtIds: vals.length + 1,   // cells with a lower id were dealt with the level (Add hands out higher ones)
       wallPairs: 0,                // pairs of dealt tiles cleared this level: what the wall bonus grows with
@@ -1090,13 +1105,7 @@
       bonus: 0,
       final: 0,
       newBest: false,
-      opening: vals.map(function (tile) {
-        var v = (tile && typeof tile === 'object') ? tile.v : tile;
-        var tile0 = { v: v };
-        if (tile && typeof tile === 'object' && tile.done) tile0.done = true;
-        if (tile && typeof tile === 'object' && typeof tile.solid === 'boolean') tile0.solid = tile.solid;
-        return tile0;
-      })
+      opening: openingOf(vals)
     };
   }
 
@@ -1715,6 +1724,103 @@
     return !!ev && ev.type === 'match' && guideFits(step, !!ev.same, ev.kind, ev.gaps);
   }
 
+  /* ---- DESIGNED BOARDS (Daily and Saga) ----
+     A board written down, not dealt from a seed. The score server stores them; the board designer
+     makes them. Format version 1, plain JSON:
+       { v: 1,
+         name:  text, up to 40 characters (optional),
+         level: 1..150   the point multiplier, and the buttons when they are not given,
+         cols:  3..9     tiles across (3 allows small boards such as a 3 x 3 with an empty centre),
+         cells: reading order: 1..16 a mascot tile (odd = day, even = night), -1..-4 a wall
+                (row, column, either, both), 0 an empty spot,
+         adds, packs, hints, undos: 0..9 (optional; default: the ramp's for that level),
+         par:   0..20 (optional) the Adds par for Daily, measured by the designer's bots }
+     Every mascot must have an even number of tiles. */
+  var DESIGN_VERSION = 1, DESIGN_MAX_CELLS = 9 * 18, DESIGN_TOOLS = ['adds', 'packs', 'hints', 'undos'];
+  function isInt(x) { return typeof x === 'number' && Number.isInteger(x); }
+  /** { ok, errors: [plain sentences] } */
+  function checkDesign(d) {
+    var errors = [];
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return { ok: false, errors: ['A board must be an object.'] };
+    if (d.v !== DESIGN_VERSION) errors.push('Unknown board format (v must be ' + DESIGN_VERSION + ').');
+    if (d.name != null && (typeof d.name !== 'string' || d.name.length > 40)) errors.push('The name must be text of up to 40 characters.');
+    if (!isInt(d.level) || d.level < 1 || d.level > 150) errors.push('The level must be a whole number from 1 to 150.');
+    if (!isInt(d.cols) || d.cols < 3 || d.cols > 9) errors.push('The width (cols) must be 3 to 9.');
+    if (!Array.isArray(d.cells) || d.cells.length < 2 || d.cells.length > DESIGN_MAX_CELLS) {
+      errors.push('cells must be a list of 2 to ' + DESIGN_MAX_CELLS + ' values.');
+    } else {
+      var count = {}, tiles = 0, bad = 0;
+      d.cells.forEach(function (v) {
+        if (!isInt(v) || v < -4 || v > 2 * MAX_MASCOTS) { bad++; return; }
+        if (v > 0) { tiles++; count[mascotOf(v)] = (count[mascotOf(v)] || 0) + 1; }
+      });
+      if (bad) errors.push(bad + ' cell value' + (bad > 1 ? 's are' : ' is') + ' not a tile (1 to 16), a wall (-1 to -4) or an empty spot (0).');
+      if (tiles < 2) errors.push('A board needs at least two tiles.');
+      var odd = Object.keys(count).filter(function (m) { return count[m] % 2; });
+      if (odd.length) errors.push('Every mascot needs an even number of tiles; mascot ' + odd.join(', ') + (odd.length > 1 ? ' have' : ' has') + ' an odd number.');
+    }
+    DESIGN_TOOLS.forEach(function (k) {
+      if (d[k] != null && (!isInt(d[k]) || d[k] < 0 || d[k] > 9)) errors.push(k + ' must be a whole number from 0 to 9.');
+    });
+    if (d.par != null && (typeof d.par !== 'number' || !(d.par >= 0 && d.par <= 20))) errors.push('par must be a number from 0 to 20.');
+    return { ok: !errors.length, errors: errors };
+  }
+  /** A playing state for a designed board. spec: { diff, mode, score, best } (all optional).
+      Throws on a board that fails checkDesign. */
+  function stateFromDesign(d, spec) {
+    var c = checkDesign(d);
+    if (!c.ok) throw new Error(c.errors[0]);
+    spec = spec || {};
+    var T = toolsAt(d.level);
+    var tools = {
+      adds: d.adds != null ? d.adds : addsFor(d.level),
+      packs: d.packs != null ? d.packs : T.packs,
+      hints: d.hints != null ? d.hints : T.hints,
+      undos: d.undos != null ? d.undos : T.undos
+    };
+    var vals = d.cells.map(function (v) { return v === BLANK ? { v: BLANK, done: true } : v; });
+    var play = tidyPlay(vals, DIAG, 'pairs', tools.adds, null, d.cols);
+    var s = {
+      level: d.level, rules: 'pairs', cols: d.cols, cells: cellsOf(vals),
+      nextId: vals.length + 1, dealtIds: vals.length + 1, wallPairs: 0,
+      selected: null, streak: 0,
+      par: Math.round(play.matches), refClear: play.cleared || play.timedOut,
+      cleared: 0, total: d.cells.filter(function (v) { return v > 0; }).length,
+      addsLeft: tools.adds, hintsLeft: tools.hints, undosLeft: tools.undos, compactsLeft: tools.packs,
+      history: [], status: 'playing', bonus: 0, final: 0, newBest: false,
+      opening: openingOf(vals),
+      design: { name: d.name || '', par: d.par == null ? null : d.par, adds: tools.adds, packs: tools.packs, hints: tools.hints, undos: tools.undos }
+    };
+    s.diff = spec.diff || 'easy';
+    s.seed = 0;
+    s.moves = 0;
+    s.score = spec.score || 0;
+    s.penalties = 0;
+    s.best = spec.best ? copy(spec.best) : { easy: 0, normal: 0, hard: 0 };
+    if (spec.mode) s.mode = spec.mode;
+    return markEntry(s);
+  }
+  /** The board a state was dealt with, as a designed board (for the designer and bug reports).
+      opts.now: the board as it stands now (cleared tiles become empty spots, buttons as left). */
+  function designFromState(s, opts) {
+    var now = !!(opts && opts.now);
+    var src = now ? s.cells : (s.opening || s.cells);
+    var d = { v: DESIGN_VERSION, level: s.level, cols: boardCols(s), cells: src.map(function (t) { return t.done ? BLANK : t.v; }) };
+    var T = toolsAt(s.level), given = s.design;
+    var start = given || { adds: addsFor(s.level), packs: T.packs, hints: T.hints, undos: T.undos };
+    var left = { adds: s.addsLeft, packs: s.compactsLeft, hints: s.hintsLeft, undos: s.undosLeft };
+    DESIGN_TOOLS.forEach(function (k) {
+      var x = now ? left[k] : start[k];
+      d[k] = (x === Infinity || x > 9) ? 9 : Math.max(0, x | 0);   // unlimited (Easy) is written as 9, the most a board can hold
+    });
+    if (given && given.name) d.name = given.name;
+    if (given && given.par != null) d.par = given.par;
+    return d;
+  }
+  /** Can a designed board be cleared with its own Adds? true, false, or true when the search ran out
+      of time (isBeatable never calls an unfinished search a dead board). */
+  function designBeatable(d) { return isBeatable(stateFromDesign(d)); }
+
   /* Goes up by one whenever the difficulty numbers (RAMP, TOOLS, tiles, walls) change,
      so run-end counts from different tunings are kept apart. */
   var RULES_VERSION = 3;   // 2: four kinds of wall on the ramp from level 53, wall bonus that grows
@@ -1741,6 +1847,8 @@
     RULES_VERSION: RULES_VERSION, runStats: runStats, retryLevel: retryLevel, carryOver: carryOver,
     GUIDE_STEPS: GUIDE_STEPS, guideTarget: guideTarget, guideDone: guideDone,
     startLevel: startLevel, BLANK: BLANK, isBlank: isBlank, sweepPairs: sweepPairs, sweepOffer: sweepOffer, cleanSweep: cleanSweep,
-    finishPlan: finishPlan, finishBoard: finishBoard, everyOrderClears: everyOrderClears
+    finishPlan: finishPlan, finishBoard: finishBoard, everyOrderClears: everyOrderClears,
+    DESIGN_VERSION: DESIGN_VERSION, checkDesign: checkDesign, stateFromDesign: stateFromDesign,
+    designFromState: designFromState, designBeatable: designBeatable
   };
 });
