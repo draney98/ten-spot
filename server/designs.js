@@ -6,7 +6,8 @@
      saga/<chapter>/<board>        chapter 1..99, board 1..10 (chapters of 10, played in order)
 
    Anyone may read them. Only someone with the admin key may save or remove them.
-   A board is checked with the game's own rules before it is saved: its format (checkDesign) and
+   A board is checked with the game's own rules before it is saved: its format (checkDesign), that a
+   Daily board has its slot's shape (3 x 3, 5 x 5, 7 x 7 with an empty centre: fitsDailyShape), and
    that it can be cleared with its own Adds (designBeatable). */
 var crypto = require('crypto');
 var L = require('../game-logic.js');
@@ -34,11 +35,16 @@ function fail(status, message) { return Object.assign(new Error(message), { stat
 
 /** Save (or replace) the board in a slot. Throws a 400 with a plain reason for a bad slot or board. */
 function putDesign(db, slot, design, now) {
-  if (!parseSlot(slot)) throw fail(400, 'unknown slot (daily/YYYY-MM-DD/1..3 or saga/<chapter>/<1..10>)');
+  var where = parseSlot(slot);
+  if (!where) throw fail(400, 'unknown slot (daily/YYYY-MM-DD/1..3 or saga/<chapter>/<1..10>)');
   var text = JSON.stringify(design);
   if (text.length > MAX_DESIGN_BYTES) throw fail(413, 'board too large');
   var check = L.checkDesign(design);
   if (!check.ok) throw fail(400, check.errors.join(' '));
+  if (where.kind === 'daily' && !L.fitsDailyShape(design, where.n)) {
+    var sh = L.DAILY_SHAPES[where.n - 1];
+    throw fail(400, 'Daily board ' + where.n + ' must be ' + sh.cols + ' x ' + sh.rows + ' with an empty centre.');
+  }
   if (!L.designBeatable(design)) throw fail(400, 'This board cannot be cleared, even with its Adds.');
   db.prepare('INSERT INTO designs (slot, design, updated_at) VALUES (?, ?, ?) ' +
     'ON CONFLICT(slot) DO UPDATE SET design = excluded.design, updated_at = excluded.updated_at')

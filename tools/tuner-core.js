@@ -181,6 +181,34 @@
     };
   }
 
+  /** How hard a designed board is (the board designer). Each bot plays it `plays` times from
+      different random choices. Per bot: { wins, plays, adds: median Adds used in its wins }.
+      par: what a typical player needs, the casual bot's median Adds over its wins, or all of the
+      board's Adds when it wins fewer than half (the careful bot plays like an expert and needs 0 on
+      most small boards). label: Easy / Medium / Hard / Brutal from the win rates. */
+  function measureBoard(L, design, opts) {
+    opts = opts || {};
+    var plays = opts.plays || 30, seed = opts.seed || 1;
+    var out = { bots: {} };
+    ['careful', 'casual', 'random'].forEach(function (style, si) {
+      var wins = 0, used = [];
+      for (var p = 0; p < plays; p++) {
+        var s = L.stateFromDesign(design);
+        var start = s.addsLeft;
+        var played = playLevel(L, s, { style: style, pack: true, undos: 0 }, mulberry((seed + si * 100003 + p * 7919) >>> 0));
+        if (played.state.status === 'clear') { wins++; used.push(start - played.state.addsLeft); }
+      }
+      used.sort(function (a, b) { return a - b; });
+      out.bots[style] = { wins: wins, plays: plays, adds: used.length ? used[(used.length - 1) >> 1] : null };
+    });
+    var careful = out.bots.careful, casual = out.bots.casual;
+    var adds = L.stateFromDesign(design).addsLeft;
+    out.par = casual.wins * 2 >= casual.plays && casual.adds != null ? casual.adds : adds;
+    var cw = careful.wins / careful.plays, xw = casual.wins / casual.plays;
+    out.label = cw >= 0.9 && xw >= 0.8 ? 'Easy' : cw >= 0.9 && xw >= 0.4 ? 'Medium' : cw >= 0.7 ? 'Hard' : 'Brutal';
+    return out;
+  }
+
   /** The target curve the ramp was tuned to: the share of runs that should reach a level. */
   function targetReach(level) { return Math.exp(-Math.pow((level - 1) / 57, 4)); }
 
@@ -256,7 +284,7 @@
   return {
     WALLS: WALLS, STYLES: STYLES,
     readConfig: readConfig, checkConfig: checkConfig, applyConfig: applyConfig,
-    playLevel: playLevel, makeClimb: makeClimb, targetReach: targetReach,
+    playLevel: playLevel, makeClimb: makeClimb, targetReach: targetReach, measureBoard: measureBoard,
     summarize: summarize, reachAt: reachAt, reportText: reportText, realReach: realReach
   };
 });

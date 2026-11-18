@@ -330,6 +330,49 @@ async function test(name, fn) {
     } finally { server.close(); }
   });
 
+  await test('the board designer checks the key, deals a Daily board, measures it and saves it', async function () {
+    var http = require('http'), scores = require('../server/scores.js'), api = require('../server/http.js');
+    var TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png' };
+    var KEY = 'browser-test-admin-key-0123456789';
+    var web = http.createServer(function (q, r) {
+      var f = path.join(ROOT, decodeURIComponent(q.url.split('?')[0]));
+      if (f.indexOf(ROOT) !== 0 || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { r.writeHead(404); return r.end(); }
+      r.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream' });
+      fs.createReadStream(f).pipe(r);
+    });
+    await new Promise(function (ok) { web.listen(0, '127.0.0.1', ok); });
+    var site = 'http://127.0.0.1:' + web.address().port;
+    var srv = api.createScoresServer({ db: scores.openScores(':memory:'), origin: site, adminKey: KEY });
+    await new Promise(function (ok) { srv.listen(0, '127.0.0.1', ok); });
+    var apiUrl = 'http://127.0.0.1:' + srv.address().port;
+    var context = await browser.newContext({ viewport: { width: 1000, height: 1000 } });
+    var p = await context.newPage();
+    p.on('pageerror', function (e) { errors.push('designer.html: ' + e.message); });
+    await p.goto(site + '/tools/designer.html?api=' + apiUrl);
+    await p.fill('#key', KEY);
+    await p.click('#checkKey');
+    await p.waitForFunction(function () { return /works|Not accepted/.test(document.getElementById('keyMsg').textContent); });
+    assert.ok(/works/.test(await p.textContent('#keyMsg')));
+    await p.selectOption('#dailyN', '3');
+    await p.click('#deal');
+    assert.strictEqual(await p.locator('#board .cell').count(), 49, 'a 7 x 7 board');
+    assert.strictEqual(await p.locator('#board .cell.empty').count(), 1, 'with an empty centre');
+    await p.selectOption('#plays', '20');
+    await p.click('#measure');
+    await p.waitForFunction(function () { return !document.getElementById('measureTable').hidden; });
+    assert.ok(/Par \d+ Adds?\./.test(await p.textContent('#measureMsg')));
+    await p.fill('#name', 'Browser test');
+    await p.click('#save');
+    await p.waitForFunction(function () { return /Saved|Not saved/.test(document.getElementById('saveMsg').textContent); });
+    assert.ok(/^Saved to daily\/\d{4}-\d{2}-\d{2}\/3\.$/.test(await p.textContent('#saveMsg')), await p.textContent('#saveMsg'));
+    var date = await p.inputValue('#date');
+    var day = await new Promise(function (ok) { http.get(apiUrl + '/v1/daily/' + date, function (r) { var t = ''; r.on('data', function (c) { t += c; }); r.on('end', function () { ok(JSON.parse(t)); }); }); });
+    assert.strictEqual(day.boards[2].name, 'Browser test');
+    assert.ok(day.boards[2].par >= 0);
+    await context.close();
+    srv.close(); web.close();
+  });
+
   await test('the tile sheet tool makes a 4 x 4 sheet and cuts it back into the same 16 tiles', async function () {
     // pictures read into a canvas need a real web address (a page opened from a file can't export them)
     var http = require('http'), TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png' };

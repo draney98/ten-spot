@@ -1821,6 +1821,55 @@
       of time (isBeatable never calls an unfinished search a dead board). */
   function designBeatable(d) { return isBeatable(stateFromDesign(d)); }
 
+  /* The Daily's three boards zoom out: 3 x 3, then 5 x 5, then 7 x 7, each with its centre left empty
+     (an empty spot paths pass through), so 8, 24 and 48 tiles. mascots and adds are the defaults the
+     designer starts from. Hints, undos and the pack are shared by the whole day (3, 2 and 1). */
+  var DAILY_SHAPES = [
+    { cols: 3, rows: 3, mascots: 3, adds: 1, level: 10 },
+    { cols: 5, rows: 5, mascots: 5, adds: 2, level: 25 },
+    { cols: 7, rows: 7, mascots: 7, adds: 3, level: 40 }
+  ];
+  var DAILY_TOOLS = { hints: 3, undos: 2, packs: 1 };
+  /** Does a board have Daily board n's shape (1..3): its size, and an empty centre? */
+  function fitsDailyShape(d, n) {
+    var sh = DAILY_SHAPES[n - 1];
+    if (!sh || !d || d.cols !== sh.cols || !Array.isArray(d.cells) || d.cells.length !== sh.cols * sh.rows) return false;
+    return d.cells[(sh.cols * sh.rows - 1) / 2] === BLANK;   // the middle cell of an odd square
+  }
+
+  /** Deal a designed board: { cols, rows, level, mascots (1..8), walls: [kinds], centre (leave the middle
+      empty when both sides are odd), adds, name, seed }. Day tiles only, an even share of pairs per
+      mascot. Tries seeds from `seed` until the board can be cleared with its Adds; null if none in 200. */
+  function dealDesign(spec) {
+    var cols = spec.cols, rows = spec.rows, n = cols * rows;
+    var mascotsN = Math.max(1, Math.min(MAX_MASCOTS, spec.mascots || 4));
+    var centre = spec.centre && cols % 2 && rows % 2 ? ((rows - 1) / 2) * cols + (cols - 1) / 2 : -1;
+    var kinds = spec.walls || [];
+    for (var t = 0; t < 200; t++) {
+      var rng = mulberry32(((spec.seed >>> 0) + t * 7919) >>> 0);
+      var free = [];
+      for (var i = 0; i < n; i++) if (i !== centre) free.push(i);
+      shuffle(free, rng);
+      var walls = free.splice(0, Math.min(kinds.length, free.length - 2));
+      if (free.length % 2) free.pop();   // an odd spot left over stays empty
+      var pairs = free.length / 2, counts = [], order = [];
+      for (var m = 0; m < mascotsN; m++) { counts.push(Math.floor(pairs / mascotsN)); order.push(m); }
+      shuffle(order, rng);
+      for (var e = 0; e < pairs % mascotsN; e++) counts[order[e]]++;
+      var vals = [];
+      counts.forEach(function (c, m) { for (var p = 0; p < c; p++) vals.push(2 * m + 1, 2 * m + 1); });
+      shuffle(vals, rng);
+      var cells = [];
+      for (var k = 0; k < n; k++) cells.push(BLANK);
+      walls.forEach(function (at, w) { cells[at] = WALL_V[kinds[w]] || WALL_V.row; });
+      free.forEach(function (at, j) { cells[at] = vals[j]; });
+      var d = { v: DESIGN_VERSION, level: spec.level || 1, cols: cols, cells: cells, adds: spec.adds != null ? spec.adds : 1 };
+      if (spec.name) d.name = spec.name;
+      if (checkDesign(d).ok && designBeatable(d)) return d;
+    }
+    return null;
+  }
+
   /* Goes up by one whenever the difficulty numbers (RAMP, TOOLS, tiles, walls) change,
      so run-end counts from different tunings are kept apart. */
   var RULES_VERSION = 3;   // 2: four kinds of wall on the ramp from level 53, wall bonus that grows
@@ -1849,6 +1898,7 @@
     startLevel: startLevel, BLANK: BLANK, isBlank: isBlank, sweepPairs: sweepPairs, sweepOffer: sweepOffer, cleanSweep: cleanSweep,
     finishPlan: finishPlan, finishBoard: finishBoard, everyOrderClears: everyOrderClears,
     DESIGN_VERSION: DESIGN_VERSION, checkDesign: checkDesign, stateFromDesign: stateFromDesign,
-    designFromState: designFromState, designBeatable: designBeatable
+    designFromState: designFromState, designBeatable: designBeatable,
+    DAILY_SHAPES: DAILY_SHAPES, DAILY_TOOLS: DAILY_TOOLS, fitsDailyShape: fitsDailyShape, dealDesign: dealDesign
   };
 });

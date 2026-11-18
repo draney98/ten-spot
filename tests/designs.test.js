@@ -15,6 +15,9 @@ function test(name, fn) {
 
 // a small board: two pairs side by side, a wall, and an empty spot
 var SMALL = { v: 1, name: 'Warm-up', level: 12, cols: 5, cells: [1, 1, 3, 3, -1, 0, 5, 5, 7, 7], adds: 1, par: 0 };
+// Daily boards of the right shapes (3 x 3 and 7 x 7 with an empty centre)
+var DAY1 = Object.assign(L.dealDesign({ cols: 3, rows: 3, mascots: 3, centre: true, adds: 1, level: 10, seed: 11 }), { name: 'Warm-up' });
+var DAY3 = L.dealDesign({ cols: 7, rows: 7, mascots: 7, centre: true, adds: 3, level: 40, seed: 13 });
 
 test('a good board passes the check', function () {
   assert.deepStrictEqual(L.checkDesign(SMALL), { ok: true, errors: [] });
@@ -93,6 +96,23 @@ test('beatable: with its own Adds, yes or no', function () {
   assert.strictEqual(L.designBeatable(SMALL), true);
 });
 
+test('dealing a board: the shape asked for, day tiles in pairs, and always clearable', function () {
+  L.DAILY_SHAPES.forEach(function (sh, i) {
+    var d = L.dealDesign({ cols: sh.cols, rows: sh.rows, mascots: sh.mascots, centre: true, adds: sh.adds, level: sh.level, seed: 42 + i });
+    assert.ok(L.fitsDailyShape(d, i + 1), 'Daily board ' + (i + 1));
+    assert.ok(!L.fitsDailyShape(d, ((i + 1) % 3) + 1), 'not another board\'s shape');
+    assert.strictEqual(d.cells.filter(function (v) { return v > 0; }).length, sh.cols * sh.rows - 1);
+    assert.ok(d.cells.every(function (v) { return v <= 0 || v % 2 === 1; }), 'day tiles only');
+    assert.strictEqual(new Set(d.cells.filter(function (v) { return v > 0; })).size, sh.mascots);
+    assert.strictEqual(L.designBeatable(d), true);
+    assert.deepStrictEqual(L.dealDesign({ cols: sh.cols, rows: sh.rows, mascots: sh.mascots, centre: true, adds: sh.adds, level: sh.level, seed: 42 + i }), d, 'same seed, same board');
+  });
+  var walled = L.dealDesign({ cols: 9, rows: 6, mascots: 6, walls: ['row', 'col', 'both'], adds: 3, level: 55, seed: 7 });
+  assert.deepStrictEqual(walled.cells.filter(function (v) { return v < 0; }).sort(), [-1, -2, -4].sort());
+  assert.ok(L.checkDesign(walled).ok && L.designBeatable(walled));
+  assert.deepStrictEqual(L.DAILY_TOOLS, { hints: 3, undos: 2, packs: 1 });
+});
+
 test('slots: three a day, chapters of ten', function () {
   assert.deepStrictEqual(D.parseSlot('daily/2026-11-18/2'), { kind: 'daily', date: '2026-11-18', n: 2 });
   assert.deepStrictEqual(D.parseSlot('saga/3/10'), { kind: 'saga', chapter: 3, board: 10 });
@@ -114,12 +134,14 @@ test('saving: checked first, then stored; a day reads back in order with gaps as
   var db = scores.openScores(':memory:');
   assert.throws(function () { D.putDesign(db, 'daily/2026-11-18/9', SMALL); }, /unknown slot/);
   assert.throws(function () { D.putDesign(db, 'daily/2026-11-18/1', { v: 1, level: 1, cols: 5, cells: [1, 3] }); }, /even number/);
-  assert.throws(function () { D.putDesign(db, 'daily/2026-11-18/1', { v: 1, level: 12, cols: 5, cells: [1, 3, 1, 3], adds: 0 }); }, /cannot be cleared/);
-  D.putDesign(db, 'daily/2026-11-18/3', SMALL, 1000);
-  D.putDesign(db, 'daily/2026-11-18/1', Object.assign({}, SMALL, { name: 'First' }), 1000);
+  assert.throws(function () { D.putDesign(db, 'saga/1/1', { v: 1, level: 12, cols: 5, cells: [1, 3, 1, 3], adds: 0 }); }, /cannot be cleared/);
+  assert.throws(function () { D.putDesign(db, 'daily/2026-11-18/1', SMALL); }, /must be 3 x 3 with an empty centre/);
+  assert.throws(function () { D.putDesign(db, 'daily/2026-11-18/2', DAY1); }, /must be 5 x 5/);
+  D.putDesign(db, 'daily/2026-11-18/3', Object.assign({}, DAY3, { name: 'Last' }), 1000);
+  D.putDesign(db, 'daily/2026-11-18/1', Object.assign({}, DAY1, { name: 'First' }), 1000);
   var day = D.getDaily(db, '2026-11-18');
-  assert.deepStrictEqual(day.boards.map(function (b) { return b && b.name; }), ['First', null, 'Warm-up']);
-  D.putDesign(db, 'daily/2026-11-18/1', Object.assign({}, SMALL, { name: 'Replaced' }), 2000);
+  assert.deepStrictEqual(day.boards.map(function (b) { return b && b.name; }), ['First', null, 'Last']);
+  D.putDesign(db, 'daily/2026-11-18/1', Object.assign({}, DAY1, { name: 'Replaced' }), 2000);
   assert.strictEqual(D.getDaily(db, '2026-11-18').boards[0].name, 'Replaced');
   assert.deepStrictEqual(D.getDaily(db, '2026-11-19').boards, [null, null, null]);
   assert.strictEqual(D.removeDesign(db, 'daily/2026-11-18/3').removed, true);

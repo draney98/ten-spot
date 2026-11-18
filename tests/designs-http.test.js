@@ -36,7 +36,9 @@ async function start(opts) {
   await new Promise(function (r) { server.listen(0, '127.0.0.1', r); });
   return { server: server, port: server.address().port };
 }
+var L = require('../game-logic.js');
 var BOARD = { v: 1, name: 'Warm-up', level: 12, cols: 5, cells: [1, 1, 3, 3, -1, 0, 5, 5, 7, 7], adds: 1, par: 0 };
+var DAY2 = Object.assign(L.dealDesign({ cols: 5, rows: 5, mascots: 5, centre: true, adds: 2, level: 25, seed: 3 }), { name: 'Middle', par: 1 });
 
 (async function () {
   var off = await start({});
@@ -70,12 +72,15 @@ var BOARD = { v: 1, name: 'Warm-up', level: 12, cols: 5, cells: [1, 1, 3, 3, -1,
   });
 
   await test('the admin saves a Daily board; everyone reads it', async function () {
-    var r = await call(on.port, 'PUT', '/v1/admin/boards/daily/2026-11-18/2', BOARD, KEY);
+    var r = await call(on.port, 'PUT', '/v1/admin/boards/daily/2026-11-18/2', DAY2, KEY);
     assert.strictEqual(r.status, 200);
     assert.deepStrictEqual(r.json, { slot: 'daily/2026-11-18/2', saved: true });
     var day = await call(on.port, 'GET', '/v1/daily/2026-11-18');
     assert.deepStrictEqual(day.json.boards[0], null);
-    assert.deepStrictEqual(day.json.boards[1], BOARD);
+    assert.deepStrictEqual(day.json.boards[1], DAY2);
+    r = await call(on.port, 'PUT', '/v1/admin/boards/daily/2026-11-18/1', BOARD, KEY);
+    assert.strictEqual(r.status, 400, 'a Daily board must have its slot\'s shape');
+    assert.ok(/3 x 3/.test(r.json.error));
     assert.strictEqual(day.headers['access-control-allow-origin'], ORIGIN);
   });
 

@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ten-spot board designer</title>
+<style>
+/* The board designer. A tool page, not part of the game: deal a board for a Daily day or a Saga slot,
+   see how hard the bots find it, and save it to the score server (needs the admin key). */
+:root {
+  --bg: #e3e9d8; --paper: #f2f6ea; --line: #b8c5a6; --grid: #c9d8b5; --ink: #161815; --muted: #343a2e;
+  --bad: #b23a2e; --good: #1d7a2c;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+.wrap { max-width: 980px; margin: 0 auto; padding: 16px 16px 48px; }
+h1 { margin: 0; font-size: 24px; }
+h2 { margin: 0 0 8px; font-size: 18px; }
+p { margin: 0 0 10px; }
+.quiet { color: var(--muted); font-size: 14px; }
+a { color: var(--ink); }
+section { background: var(--paper); border: 1.5px solid var(--line); border-radius: 6px; padding: 14px; margin-top: 14px; }
+input, select, button { font: inherit; color: var(--ink); }
+input[type=text], input[type=password], input[type=number], input[type=date], select {
+  min-height: 36px; padding: 2px 8px; border: 1.5px solid var(--line); border-radius: 4px; background: #fff;
+}
+input[type=number] { width: 80px; }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2.5px solid #27466f; outline-offset: 1px; }
+button { min-height: 40px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 6px; background: transparent; font-weight: 700; cursor: pointer; }
+button.primary { background: var(--ink); color: var(--paper); }
+button.small { min-height: 32px; padding: 0 10px; font-size: 14px; }
+button:disabled { opacity: .4; cursor: not-allowed; }
+.fields { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; margin-bottom: 10px; }
+.fields label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.fields label.inline { flex-direction: row; align-items: center; gap: 6px; font-size: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.msg { font-weight: 600; min-height: 1.4em; }
+.msg.bad { color: var(--bad); }
+.msg.good { color: var(--good); }
+.board { display: grid; gap: 0; border-top: 1px solid var(--grid); border-left: 1px solid var(--grid); background: var(--paper); max-width: 520px; margin: 8px 0; }
+.cell { aspect-ratio: 1; border-right: 1px solid var(--grid); border-bottom: 1px solid var(--grid); display: flex; align-items: center; justify-content: center; }
+.cell svg { width: 80%; height: 80%; }
+.cell.wall { background: var(--grid); color: #6f7867; }
+.cell.empty { background: repeating-linear-gradient(45deg, transparent 0 6px, rgba(0,0,0,.05) 6px 8px); }
+input, select { max-width: 100%; }
+.fields label { max-width: 100%; min-width: 0; }
+.keybox { width: 22em; }
+#key { width: 100%; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 13px; color: var(--muted); }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 10px; background: var(--grid); font-size: 13px; font-weight: 700; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ten-spot board designer</h1>
+  <p class="quiet">Deal a board for a Daily day or a Saga slot, see how hard the bots find it, and save it. Saving needs the admin key.
+    <a href="tuner.html">Tuner</a> · <a href="tiles.html">Tile sheet</a> · <a href="../index.html">Game</a></p>
+
+  <section aria-labelledby="h-key">
+    <h2 id="h-key">Admin key</h2>
+    <div class="fields">
+      <label class="keybox">Key <input type="password" id="key" autocomplete="off" spellcheck="false"></label>
+      <label class="inline"><input type="checkbox" id="remember"> Remember on this device</label>
+      <button type="button" id="checkKey">Check</button>
+    </div>
+    <p class="msg" id="keyMsg" role="status"></p>
+  </section>
+
+  <section aria-labelledby="h-slot">
+    <h2 id="h-slot">Where it plays</h2>
+    <div class="fields">
+      <label>Mode <select id="kind"><option value="daily">Daily</option><option value="saga">Saga</option></select></label>
+      <label data-for="daily">Day <input type="date" id="date"></label>
+      <label data-for="daily">Board <select id="dailyN">
+        <option value="1">1: 3 × 3 warm-up</option><option value="2">2: 5 × 5</option><option value="3">3: 7 × 7</option>
+      </select></label>
+      <label data-for="saga" hidden>Chapter <input type="number" id="chapter" min="1" max="99" value="1"></label>
+      <label data-for="saga" hidden>Board <input type="number" id="sagaN" min="1" max="10" value="1"></label>
+    </div>
+    <p class="quiet" id="slotLine"></p>
+  </section>
+
+  <section aria-labelledby="h-deal">
+    <h2 id="h-deal">Deal a board</h2>
+    <div class="fields">
+      <label data-for="saga" hidden>Across <input type="number" id="cols" min="3" max="9" value="9"></label>
+      <label data-for="saga" hidden>Rows <input type="number" id="rows" min="2" max="18" value="6"></label>
+      <label>Mascots <input type="number" id="mascots" min="1" max="8" value="3"></label>
+      <label>Adds <input type="number" id="adds" min="0" max="9" value="1"></label>
+      <label>Level (points) <input type="number" id="level" min="1" max="150" value="10"></label>
+      <label class="inline"><input type="checkbox" class="wall" value="row"> Row wall</label>
+      <label class="inline"><input type="checkbox" class="wall" value="col"> Column wall</label>
+      <label class="inline"><input type="checkbox" class="wall" value="either"> Either wall</label>
+      <label class="inline"><input type="checkbox" class="wall" value="both"> Both wall</label>
+    </div>
+    <div class="row"><button type="button" class="primary" id="deal">Deal</button><button type="button" id="again" disabled>Deal another</button></div>
+    <p class="msg" id="dealMsg" role="status"></p>
+    <div class="board" id="board" aria-label="Board preview"></div>
+    <p class="quiet" id="boardLine"></p>
+  </section>
+
+  <section aria-labelledby="h-measure">
+    <h2 id="h-measure">How hard is it?</h2>
+    <p class="quiet">Each bot plays the board many times. Careful plays like an expert, casual like a typical player, random picks any pair. Par is what the casual bot needs.</p>
+    <div class="fields">
+      <label>Plays per bot <select id="plays"><option>20</option><option selected>40</option><option>100</option></select></label>
+      <button type="button" id="measure" disabled>Measure</button>
+    </div>
+    <p class="msg" id="measureMsg" role="status"></p>
+    <div class="scroll"><table id="measureTable" hidden>
+      <thead><tr><th>Bot</th><th>Wins</th><th>Adds used (middle of its wins)</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="h-save">
+    <h2 id="h-save">Save it</h2>
+    <div class="fields">
+      <label>Name (optional) <input type="text" id="name" maxlength="40"></label>
+      <label>Adds par <input type="number" id="par" min="0" max="20" step="1"></label>
+      <button type="button" class="primary" id="save" disabled>Save</button>
+    </div>
+    <p class="msg" id="saveMsg" role="status"></p>
+  </section>
+
+  <section aria-labelledby="h-saved">
+    <h2 id="h-saved">Saved boards</h2>
+    <div class="row"><button type="button" id="refresh">Show</button><span class="quiet" id="savedLine"></span></div>
+    <div class="scroll"><table id="savedTable" hidden>
+      <thead><tr><th>Slot</th><th>Name</th><th>Size</th><th>Adds</th><th>Par</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+</div>
+
+<script src="../config.js"></script>
+<script src="../game-logic.js"></script>
+<script src="../art.js"></script>
+<script src="tuner-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var L = window.NumberMatchLogic, ART = window.TenSpotArt, T = window.TenSpotTuner;
+  function $(id) { return document.getElementById(id); }
+  function msg(id, text, kind) { $(id).textContent = text; $(id).className = 'msg' + (kind ? ' ' + kind : ''); }
+
+  // The score server. ?api=http://127.0.0.1:PORT works for local tests only.
+  var API = (window.TENSPOT_CONFIG && window.TENSPOT_CONFIG.scoresApi) || '';
+  var asked = new URLSearchParams(location.search).get('api');
+  if (asked && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(asked)) API = asked;
+
+  // ---- the admin key: kept in this tab, or on this device when Remember is ticked ----
+  var KEY_STORE = 'tenspot.adminKey';
+  function stored() { try { return localStorage.getItem(KEY_STORE) || sessionStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } }
+  function keep(key, remember) {
+    try {
+      localStorage.removeItem(KEY_STORE); sessionStorage.removeItem(KEY_STORE);
+      if (key) (remember ? localStorage : sessionStorage).setItem(KEY_STORE, key);
+    } catch (e) { /* storage blocked: the key stays in the box for this visit */ }
+  }
+  $('key').value = stored();
+  try { $('remember').checked = !!localStorage.getItem(KEY_STORE); } catch (e) { /* no storage */ }
+  function call(method, path, body, admin) {
+    var headers = { 'content-type': 'application/json' };
+    if (admin) headers.authorization = 'Bearer ' + $('key').value.trim();
+    return fetch(API + path, { method: method, headers: headers, body: body == null ? undefined : JSON.stringify(body) })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          if (!r.ok) throw new Error(j.error || ('the server answered ' + r.status));
+          return j;
+        });
+      });
+  }
+  $('checkKey').addEventListener('click', function () {
+    keep($('key').value.trim(), $('remember').checked);
+    if (!API) return msg('keyMsg', 'No score server is set in config.js.', 'bad');
+    call('GET', '/v1/admin', null, true)
+      .then(function () { msg('keyMsg', 'The key works. You can save boards.', 'good'); })
+      .catch(function (e) { msg('keyMsg', 'Not accepted: ' + e.message + '.', 'bad'); });
+  });
+  $('remember').addEventListener('change', function () { keep($('key').value.trim(), this.checked); });
+
+  // ---- where it plays ----
+  function tomorrow() { var d = new Date(); d.setDate(d.getDate() + 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  $('date').value = tomorrow();
+  function slot() {
+    if ($('kind').value === 'daily') return 'daily/' + $('date').value + '/' + $('dailyN').value;
+    return 'saga/' + Number($('chapter').value) + '/' + Number($('sagaN').value);
+  }
+  function shape() { return $('kind').value === 'daily' ? L.DAILY_SHAPES[Number($('dailyN').value) - 1] : null; }
+  function slotChanged() {
+    var daily = $('kind').value === 'daily';
+    document.querySelectorAll('[data-for]').forEach(function (el) { el.hidden = el.getAttribute('data-for') !== (daily ? 'daily' : 'saga'); });
+    var sh = shape();
+    if (sh) { $('mascots').value = sh.mascots; $('adds').value = sh.adds; $('level').value = sh.level; }
+    $('slotLine').textContent = 'Saves to ' + slot() + (sh ? '. Daily board ' + $('dailyN').value + ' is ' + sh.cols + ' × ' + sh.rows + ' with an empty centre; hints, undos and the pack are shared by the day (3, 2, 1).' : '.');
+    $('save').textContent = 'Save to ' + slot();
+  }
+  ['kind', 'date', 'dailyN', 'chapter', 'sagaN'].forEach(function (id) { $(id).addEventListener('change', slotChanged); });
+  slotChanged();
+
+  // ---- deal ----
+  var design = null, seed = Date.now() % 1000000;
+  function walls() { return Array.prototype.filter.call(document.querySelectorAll('.wall'), function (b) { return b.checked; }).map(function (b) { return b.value; }); }
+  function deal(nextSeed) {
+    if (nextSeed) seed += 1;
+    var sh = shape();
+    var spec = {
+      cols: sh ? sh.cols : Number($('cols').value), rows: sh ? sh.rows : Number($('rows').value), centre: !!sh,
+      mascots: Number($('mascots').value), adds: Number($('adds').value), level: Number($('level').value),
+      walls: walls(), seed: seed
+    };
+    var d = L.dealDesign(spec);
+    if (!d) { msg('dealMsg', 'No clearable board found with these settings. Try more Adds, fewer walls or more mascots.', 'bad'); return null; }
+    setDesign(d);
+    msg('dealMsg', '');
+    return d;
+  }
+  function setDesign(d) {
+    design = d;
+    $('name').value = d.name || '';
+    $('par').value = d.par != null ? d.par : '';
+    draw(d);
+    $('again').disabled = $('measure').disabled = $('save').disabled = false;
+    $('measureTable').hidden = true; msg('measureMsg', ''); msg('saveMsg', '');
+  }
+  function draw(d) {
+    var b = $('board');
+    b.style.gridTemplateColumns = 'repeat(' + d.cols + ', minmax(0, 1fr))';
+    b.style.maxWidth = Math.min(520, d.cols * 64) + 'px';
+    b.innerHTML = '';
+    var counts = {};
+    d.cells.forEach(function (v) {
+      var c = document.createElement('div');
+      c.className = 'cell';
+      if (v > 0) { c.innerHTML = ART.mascotSVG(L.mascotOf(v), L.isSolid(v), 'arcade'); counts[L.mascotOf(v)] = 1; c.title = ART.mascotName(L.mascotOf(v), 'arcade'); }
+      else if (v < 0) { c.className += ' wall'; c.innerHTML = ART.wallSVG(L.WALL_KINDS[-v - 1]); c.title = ART.WALL_NAME[L.WALL_KINDS[-v - 1]]; }
+      else { c.className += ' empty'; c.title = 'Empty spot'; }
+      b.appendChild(c);
+    });
+    var tiles = d.cells.filter(function (v) { return v > 0; }).length;
+    $('boardLine').textContent = d.cols + ' across, ' + tiles + ' tiles, ' + Object.keys(counts).length + ' mascots, ' +
+      d.cells.filter(function (v) { return v < 0; }).length + ' walls, ' + (d.adds != null ? d.adds : L.addsFor(d.level)) + ' Adds, level ' + d.level + '.';
+  }
+  $('deal').addEventListener('click', function () { deal(false); });
+  $('again').addEventListener('click', function () { deal(true); });
+
+  // ---- measure ----
+  var NAMES = { careful: 'Careful', casual: 'Casual', random: 'Random' };
+  function measure() {
+    if (!design) return null;
+    msg('measureMsg', 'Playing…');
+    return new Promise(function (ok) {
+      setTimeout(function () {   // let the message show before the bots run
+        var m = T.measureBoard(L, design, { plays: Number($('plays').value), seed: seed });
+        var body = $('measureTable').querySelector('tbody');
+        body.innerHTML = '';
+        ['careful', 'casual', 'random'].forEach(function (k) {
+          var r = m.bots[k], tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + NAMES[k] + '</td><td>' + r.wins + ' of ' + r.plays + '</td><td>' + (r.adds == null ? 'no wins' : r.adds) + '</td>';
+          body.appendChild(tr);
+        });
+        $('measureTable').hidden = false;
+        $('par').value = m.par;
+        msg('measureMsg', m.label + '. Par ' + m.par + ' Add' + (m.par === 1 ? '' : 's') + '.');
+        ok(m);
+      }, 30);
+    });
+  }
+  $('measure').addEventListener('click', measure);
+
+  // ---- save ----
+  function save() {
+    if (!design) return Promise.resolve(null);
+    var d = JSON.parse(JSON.stringify(design));
+    var name = $('name').value.trim();
+    if (name) d.name = name; else delete d.name;
+    var par = $('par').value === '' ? null : Number($('par').value);
+    if (par != null) d.par = par; else delete d.par;
+    var where = slot();
+    msg('saveMsg', 'Saving…');
+    return call('PUT', '/v1/admin/boards/' + where, d, true)
+      .then(function () { design = d; msg('saveMsg', 'Saved to ' + where + '.', 'good'); return listSaved(); })
+      .catch(function (e) { msg('saveMsg', 'Not saved: ' + e.message, 'bad'); });
+  }
+  $('save').addEventListener('click', save);
+
+  // ---- saved boards: the chosen month (Daily) or every chapter (Saga) ----
+  function listSaved() {
+    var prefix = $('kind').value === 'daily' ? 'daily/' + $('date').value.slice(0, 7) : 'saga/';
+    return call('GET', '/v1/admin/boards?prefix=' + encodeURIComponent(prefix), null, true).then(function (r) {
+      var body = $('savedTable').querySelector('tbody');
+      body.innerHTML = '';
+      r.designs.forEach(function (row) {
+        var d = row.design, tr = document.createElement('tr');
+        var rows = Math.ceil(d.cells.length / d.cols);
+        tr.innerHTML = '<td>' + row.slot + '</td><td>' + (d.name ? d.name.replace(/[<&>]/g, '') : '') + '</td><td>' + d.cols + ' × ' + rows +
+          '</td><td>' + (d.adds != null ? d.adds : '') + '</td><td>' + (d.par != null ? d.par : '') + '</td>' +
+          '<td class="row"><button type="button" class="small" data-load>Load</button><button type="button" class="small" data-remove>Remove</button></td>';
+        tr.querySelector('[data-load]').addEventListener('click', function () { setDesign(d); $('board').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+        tr.querySelector('[data-remove]').addEventListener('click', function () {
+          call('DELETE', '/v1/admin/boards/' + row.slot, null, true).then(listSaved).catch(function (e) { $('savedLine').textContent = e.message; });
+        });
+        body.appendChild(tr);
+      });
+      $('savedTable').hidden = !r.designs.length;
+      $('savedLine').textContent = r.designs.length ? r.designs.length + ' saved under ' + prefix : 'Nothing saved under ' + prefix + ' yet.';
+      return r.designs;
+    }).catch(function (e) { $('savedLine').textContent = 'Could not list: ' + e.message + '.'; });
+  }
+  $('refresh').addEventListener('click', listSaved);
+
+  window.__designer = { deal: deal, measure: measure, save: save, listSaved: listSaved, design: function () { return design; } };
+})();
+</script>
+</body>
+</html>

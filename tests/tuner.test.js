@@ -115,6 +115,20 @@ test('realReach turns run-end counts into a reach curve', function () {
   assert.strictEqual(T.realReach(rows, 'normal'), null);
 });
 
+test('measuring a board: each bot plays it, par is what the casual bot needs', function () {
+  var easy = { v: 1, level: 5, cols: 5, cells: [1, 1, 3, 3, 5, 5, 7, 7], adds: 1 };
+  var m = T.measureBoard(L, easy, { plays: 10, seed: 3 });
+  assert.deepStrictEqual(Object.keys(m.bots), ['careful', 'casual', 'random']);
+  assert.deepStrictEqual(m.bots.careful, { wins: 10, plays: 10, adds: 0 });
+  assert.strictEqual(m.par, 0);
+  assert.strictEqual(m.label, 'Easy');
+  assert.deepStrictEqual(T.measureBoard(L, easy, { plays: 10, seed: 3 }), m, 'same seed, same answer');
+  var day3 = L.dealDesign({ cols: 7, rows: 7, mascots: 7, centre: true, adds: 3, level: 40, seed: 13 });
+  var m3 = T.measureBoard(L, day3, { plays: 12, seed: 5 });
+  assert.ok(m3.par >= 0 && m3.par <= 3, 'par is within the board\'s Adds');
+  assert.ok(['Easy', 'Medium', 'Hard', 'Brutal'].indexOf(m3.label) >= 0);
+});
+
 test('the tuner page loads the game rules and the core', function () {
   var html = require('fs').readFileSync('tools/tuner.html', 'utf8');
   assert.ok(html.indexOf('<script src="../game-logic.js"></script>') !== -1);

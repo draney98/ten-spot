@@ -7,7 +7,7 @@ and the score server uses only what ships with Node 22.
 ## Run it
 
 - **The game:** open `index.html` in a browser, or serve the folder with any static server.
-- **The live site:** `sh tools/build-site.sh` copies only what the game, the tuner and the tile sheet tool need into `public/`. Render runs it on every push.
+- **The live site:** `sh tools/build-site.sh` copies only what the game and the tools (tuner, tile sheet, board designer) need into `public/`. Render runs it on every push.
 - **The tests:** `npm test` (same as `node tests/run.js`). One line per test file; every file must say `ok`.
   `tests/browser.test.js` opens the real game in a headless browser and presses the buttons. It needs
   Playwright (`npm install --no-save playwright && npx playwright install chromium`); without it, it says SKIP.
@@ -15,6 +15,7 @@ and the score server uses only what ships with Node 22.
   Add `TENSPOT_ADMIN_KEY=<24 or more characters>` to turn on the admin routes that save Daily and Saga boards.
 - **The bot:** `node tools/sim.js 100` plays 100 runs and prints how far they get.
 - **The configurator:** open `tools/tuner.html` to try other difficulty numbers with the bot.
+- **Daily and Saga boards:** open `tools/designer.html` on the live site. Enter the admin key, pick a day and board (or a Saga chapter and board), deal, press Measure to see how the bots do and set par, then Save. Daily boards are dealt 3 × 3, 5 × 5 and 7 × 7 with an empty centre.
 - **New tile art:** open `tools/tiles.html` on the live site (it needs a web address, not a file). *Combine* puts a pixel set's 16 tiles on one square sheet for an image AI, with a prompt to start from; *Split* cuts the picture that comes back into 16 PNGs and downloads them as a zip that unzips into `art/<set>/`.
 
 ## Where things are
@@ -31,7 +32,7 @@ and the score server uses only what ships with Node 22.
 | `account.js` | The Account group in Settings: making an account, adding a device with a code, the recovery link, signing out. |
 | `config.js` | Settings shared by the game and the tuner: the score server's address. |
 | `server/` | The score server: `scores.js` (SQLite), `http.js` (routes), `limits.js` (posting limits), `migrations.js` (numbered database changes), `accounts.js` (accounts: device keys, link codes, recovery), `designs.js` (Daily and Saga boards, and the admin key), `index.js` (start-up). |
-| `tools/` | `tuner.html` and `tuner-core.js` (configurator and bot), `tiles.html` and `tiles-core.js` (tile sheet tool), `sim.js` (the bot from the command line). |
+| `tools/` | `tuner.html` and `tuner-core.js` (configurator, bots and board measuring), `tiles.html` and `tiles-core.js` (tile sheet tool), `designer.html` (board designer for Daily and Saga), `sim.js` (the bot from the command line). |
 | `tests/` | Plain node scripts, one per area. `run.js` runs them all. |
 | `design-info/`, `docs/`, `number-match.html` | Earlier design notes and the original single-file version. Kept in the repo, not published. |
 
