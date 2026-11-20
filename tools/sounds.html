@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- The sound board: every sound in sound.js, with a button each. Open tools/sounds.html in a browser. -->
+<title>ten-spot Sound Board</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&display=swap">
+<style>
+/* Layout: the game's own pad, one column of event rows, grouped from everyday to rare */
+:root {
+  --bg: #e3e9d8; --paper: #f2f6ea; --line: #b8c5a6; --ink: #161815; --muted: #4a5242;
+  --gold: #9a7200; --blue: #1747a6; --green: #1d7a2c; --red: #b23a2e; --binding: #30503d;
+  --font: 'Barlow', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #161c18; --paper: #1f2822; --line: #3a463f; --ink: #ece8dc; --muted: #a9b0a2;
+  --gold: #f0c64a; --blue: #8fb4ff; --green: #6fd38a; --red: #ff8a7a; --binding: #0f1411; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #161c18; --paper: #1f2822; --line: #3a463f; --ink: #ece8dc; --muted: #a9b0a2;
+  --gold: #f0c64a; --blue: #8fb4ff; --green: #6fd38a; --red: #ff8a7a; --binding: #0f1411; color-scheme: dark }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 16px; margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+main { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+h1 { margin: 0; font-size: 28px; font-weight: 800; color: var(--green); text-wrap: balance; }
+.lede { margin: 4px 0 0; color: var(--muted); line-height: 1.45; max-width: 60ch; }
+.sheet { background: var(--paper); border-radius: 4px; border-top: 10px solid var(--binding); padding: 6px 14px 10px; }
+h2 { margin: 12px 0 6px; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: 0; }
+.row p { margin: 0; flex: 1 1 auto; min-width: 0; line-height: 1.35; }
+.row b { display: block; font-size: 17px; }
+.row span { color: var(--muted); font-size: 14px; }
+button { font: inherit; font-weight: 700; cursor: pointer; border-radius: 8px; }
+.play { flex: none; width: 52px; height: 52px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); display: flex; align-items: center; justify-content: center; }
+.play:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.play:focus-visible, .big:focus-visible, input:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.play.on { background: var(--ink); color: var(--paper); }
+.rare .play { border-color: var(--gold); color: var(--gold); }
+.rare .play.on { background: var(--gold); color: var(--paper); }
+.big { width: 100%; min-height: 52px; border: 0; background: var(--ink); color: var(--paper); font-size: 17px; }
+.streak { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 14px; color: var(--muted); }
+.streak input { flex: 1 1 auto; accent-color: var(--green); }
+.streak output { font-variant-numeric: tabular-nums; min-width: 3ch; font-weight: 700; color: var(--ink); }
+.note { font-size: 14px; color: var(--muted); line-height: 1.45; margin: 0; }
+</style>
+
+</head>
+<body>
+<main>
+  <header>
+    <h1>ten-spot sounds</h1>
+    <p class="lede">Every event's sound, slot-machine style. Turn your phone's ringer on, then tap a ▶ to hear it. The rare moments (gold) are louder and longer on purpose.</p>
+  </header>
+  <button type="button" class="big" id="runDemo">▶ Hear a short game</button>
+  <div class="sheet" id="sheet"></div>
+  <p class="note">Each sound shifts its pitch a little every time, so a repeat never sounds exactly the same. All of them are made by the browser; the game ships no sound files.</p>
+</main>
+
+<script src="../sound.js"></script>
+<script>
+(function () {
+  var snd = window.TenSpotSound.create(function () { return true; });
+  var streak = 1;
+  var GROUPS = [
+    ['Every move', '', [
+      ['tap', 'Tap', 'A tile picked or put back: a soft tick.'],
+      ['match', 'Match', 'A pair cleared: a bell that climbs one note with each pair in a streak.', 'streak'],
+      ['row', 'Row emptied', 'The bell, plus a coin.', 'streak'],
+      ['bad', 'Wrong pick', 'A soft low bonk. Also when a button can’t be used yet.']]],
+    ['Buttons', '', [
+      ['hint', 'Hint', 'A sparkle.'],
+      ['undo', 'Undo', 'The bell played backwards.'],
+      ['add', 'Add', 'The reels spin, slow down and land.'],
+      ['pack', 'Pack', 'A coin slide as the tiles close up.']]],
+    ['Wins', '', [
+      ['streak', 'Streak up', 'At 1.5x and again at 2.0x: a quick rising chime.'],
+      ['wall', 'Wall gone', 'Ka-ching, with more coins for a bigger bonus.', null, { bonus: 2400 }],
+      ['finish', 'Finish', 'The rest cleared: a payout run of rising bells.', null, { pairs: 6 }],
+      ['clear', 'Level clear', 'A small win: rising notes ending on a chord.'],
+      ['stage', 'New stage', 'Reaching Normal or Hard, or the next Daily board: a level-up fanfare.']]],
+    ['Rare moments', 'rare', [
+      ['best', 'New best', 'Your score turns gold: a bonus-round chime, once a game.'],
+      ['sweep', 'Clean sweep', 'The jackpot: a fanfare and a rain of coins. Also a Daily under par.'],
+      ['end', 'Game over', 'The reels wind down to one soft low note.']]]
+  ];
+  var sheet = document.getElementById('sheet');
+  GROUPS.forEach(function (g) {
+    var h = document.createElement('h2'); h.textContent = g[0]; sheet.appendChild(h);
+    var box = document.createElement('div'); if (g[1]) box.className = g[1]; sheet.appendChild(box);
+    g[2].forEach(function (e) {
+      var row = document.createElement('div'); row.className = 'row';
+      var p = document.createElement('p');
+      p.innerHTML = '<b></b><span></span>';
+      p.querySelector('b').textContent = e[1]; p.querySelector('span').textContent = e[2];
+      if (e[3] === 'streak') {
+        var lab = document.createElement('label'); lab.className = 'streak';
+        var id = 'streak-' + e[0];
+        lab.htmlFor = id;
+        lab.innerHTML = 'Streak <input type="range" min="1" max="12" value="1" id="' + id + '"> <output>1</output>';
+        var inp = lab.querySelector('input'), outp = lab.querySelector('output');
+        inp.addEventListener('input', function () { outp.textContent = inp.value; });
+        p.appendChild(lab);
+        row._streak = inp;
+      }
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'play'; b.setAttribute('aria-label', 'Play ' + e[1]);
+      b.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>';
+      b.addEventListener('click', function () {
+        var opts = Object.assign({ streak: row._streak ? Number(row._streak.value) : 1 }, e[4] || {});
+        snd.play(e[0], opts);
+        if (row._streak) { row._streak.value = Math.min(12, Number(row._streak.value) + 1); row._streak.dispatchEvent(new Event('input')); }
+        b.classList.add('on'); setTimeout(function () { b.classList.remove('on'); }, 220);
+      });
+      row.appendChild(p); row.appendChild(b); box.appendChild(row);
+    });
+  });
+  // a short game: picks, a climbing streak, a wall, Add, a level clear and a clean sweep
+  document.getElementById('runDemo').addEventListener('click', function () {
+    var steps = [['tap', 0], ['match', 350, { streak: 1 }], ['tap', 700], ['match', 1000, { streak: 2 }], ['tap', 1350],
+      ['match', 1650, { streak: 3 }], ['tap', 2000], ['row', 2300, { streak: 4 }], ['tap', 2650], ['match', 2950, { streak: 5 }], ['streak', 2950],
+      ['tap', 3300], ['bad', 3550], ['hint', 4100], ['tap', 4600], ['match', 4900, { streak: 1 }], ['wall', 4900, { bonus: 900 }],
+      ['add', 5700], ['pack', 6900], ['finish', 7600, { pairs: 5 }], ['clear', 8300], ['best', 9700], ['sweep', 10800]];
+    steps.forEach(function (s) { setTimeout(function () { snd.play(s[0], s[2]); }, s[1]); });
+  });
+})();
+</script>
+</body>
+</html>

@@ -280,13 +280,13 @@
 
   /* ---------- 2b. QUIET TICKS (see sound.js) ---------- */
   var sound = window.TenSpotSound.create(function () { return ui.sound; });
-  function play(name) { sound.play(name); }
+  function play(name, opts) { sound.play(name, opts); }   // the sounds are in sound.js
   function setSound(on) {
     var was = ui.sound;
     ui.sound = !!on;
     store.set(KEY.sound, ui.sound ? 'on' : 'off');
     render();
-    if (ui.sound && !was) play('click');
+    if (ui.sound && !was) play('tap');
   }
 
   /* ---------- 3. TIMERS ----------
@@ -686,6 +686,7 @@
     }
   }
 
+  var bestRung = null;   // the game (run id and start) whose new best has already rung, so it rings once
   function render() {
     var s = state;
     renderGuide();   // first: it decides which tiles get the blue ring
@@ -735,6 +736,11 @@
     var passed = !daily && !dead && (s.score > record || !!s.newBest);
     paintStanding($('scoreStat'));
     $('scoreStat').classList.toggle('is-passed', passed);   // gold beats green; red beats both
+    var bestKey = s.runId + '/' + s.diff;
+    if (passed && record > 0 && bestRung !== bestKey) {
+      if (bestRung !== null && s.status === 'playing') play('best');   // not on the first draw after a reload
+      bestRung = bestKey;
+    } else if (bestRung === null) bestRung = '';
     if (passed) $('scoreStat').classList.remove('is-under');
     var capText = 'Level ' + s.level + ' · ' + stageLabel + ' ×' + mult.toFixed(1);
     var capCode = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, seed: s.seed });
@@ -927,7 +933,7 @@
 
     if (ev.type === 'select' || ev.type === 'deselect') {
       ui.hint = []; ui.note = '';
-      play('click');
+      play('tap');
     } else if (ev.type === 'bad') {
       ui.hint = [];
       ui.bad = [ev.id];
@@ -957,9 +963,21 @@
       var myGain = ++gainTok;
       later(function () { if (gainTok === myGain) { ui.gain = 0; render(); } }, 1400);
       if (ev.status !== 'playing') saveBestIfHigher();
-      play(ev.status === 'clear' ? 'clear' : (ev.rowsCleared.length ? 'row' : 'match'));   // game over plays its own sound
+      playMatch(ev);
     }
     render();
+  }
+
+  /** A pair's sounds: the bell climbs with the streak; a chime when the multiplier reaches 1.5x and
+      again at its top; ka-ching for a wall; a small win for the last pair. Game over plays its own sound. */
+  function playMatch(ev) {
+    if (ev.status === 'clear') play('clear');
+    else if (ev.status === 'playing') {
+      play(ev.rowsCleared.length ? 'row' : 'match', { streak: ev.streak });
+      var top = L.streakMult(1e6), before = L.streakMult(Math.max(1, (ev.streak || 1) - 1)), now = ev.streakMult || 1;
+      if ((now >= 1.5 && before < 1.5) || (now >= top && before < top)) play('streak');
+    }
+    if (ev.wallsGone) play('wall', { bonus: ev.wallBonus });
   }
 
   function onPack() {
@@ -985,7 +1003,8 @@
       var packGain = ++gainTok;
       later(function () { if (gainTok === packGain) { ui.gain = 0; render(); } }, 1400);
     }
-    play(gone ? 'row' : 'click');
+    play('pack');
+    if (gone) play('wall', { bonus: r.event.wallBonus });
     render();
     playPack(from, oldCount);
   }
@@ -1014,7 +1033,7 @@
       : 'Finished: ' + plural(r.event.pairs.length, 'pair', 'pairs') + ', +' + fmt(r.event.gain) + '.';
     later(function () { ui.flash = []; render(); }, 620);
     saveBestIfHigher();
-    play('sweep');
+    play(r.event.clean ? 'sweep' : 'finish', { pairs: r.event.pairs.length });
     render();
   }
 
@@ -1057,7 +1076,7 @@
       (r.event.addsLeft ? plural(r.event.addsLeft, 'add', 'adds') + ' left this level.' : 'That was your last add for this level.');
     later(function () { ui.born = []; render(); }, 700);
     if (r.event.status !== 'playing') saveBestIfHigher();
-    play('click');   // game over plays its own sound
+    play('add');
     render();
   }
 
@@ -1100,7 +1119,7 @@
     ui.flash = []; ui.bad = []; ui.hint = []; ui.born = []; ui.streakMult = 0;
     ui.gain = r.event.cost ? -r.event.cost : 0;
     ui.note = r.event.cost > 0 ? 'Undone (−' + r.event.cost + ' points).' : 'Undone.';
-    play('click');
+    play('undo');
     if (ui.gain) {
       var undoTok = ++gainTok;
       later(function () { if (gainTok === undoTok) { ui.gain = 0; render(); } }, 1400);
@@ -1121,7 +1140,7 @@
       ui.note = r.event.cost > 0
         ? 'Select two tiles with the same mascot. (−' + r.event.cost + ' points)'
         : '';
-      play('click');
+      play('hint');
       if (r.event.cost) {
         var hintTok = ++gainTok;
         ui.gain = -r.event.cost;
@@ -1386,7 +1405,7 @@
       var book = readBook();
       if (DY.record(book, day.date, day.results, Date.now())) store.set(KEY.daily, JSON.stringify(book));
     }
-    play('clear');
+    play(DY.total(day.results) < 0 ? 'sweep' : 'clear');   // under par is a jackpot
     render();
   }
   function dailyPractice() {

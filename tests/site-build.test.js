@@ -41,7 +41,7 @@ function localRefs(file) {
 
 test('every file the game and the tools (tuner, tile sheet, board designer) load is in the build', function () {
   var missing = [];
-  [path.join(out, 'index.html'), path.join(out, 'tools', 'tuner.html'), path.join(out, 'tools', 'tiles.html'), path.join(out, 'tools', 'designer.html')].forEach(function (page) {
+  [path.join(out, 'index.html'), path.join(out, 'tools', 'tuner.html'), path.join(out, 'tools', 'tiles.html'), path.join(out, 'tools', 'designer.html'), path.join(out, 'tools', 'sounds.html')].forEach(function (page) {
     localRefs(page).forEach(function (ref) {
       var target = fs.existsSync(ref) && fs.statSync(ref).isDirectory() ? path.join(ref, 'index.html') : ref;
       if (!fs.existsSync(target)) missing.push(path.relative(out, page) + ' -> ' + path.relative(out, ref));

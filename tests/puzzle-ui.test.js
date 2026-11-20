@@ -78,12 +78,15 @@ test('the clear card names the matches and a whole-number par, and Pack sits bes
   assert.ok(app.indexOf("'paste'") !== -1);
 });
 
-test('sound is a quiet tick and starts off', function () {
+test('sound starts off, and every event has its sound', function () {
   assert.ok(html.indexOf('aria-label="Sound"') !== -1);
   assert.ok(html.indexOf('data-sound="off"') !== -1);
   assert.ok(html.indexOf('data-sound="on"') !== -1);
   assert.ok(app.indexOf("store.get(KEY.sound) === 'on'") !== -1);
-  assert.ok(app.indexOf("play('click')") !== -1);
+  assert.ok(app.indexOf("play('tap')") !== -1);
+  ['undo', 'hint', 'add', 'pack', 'streak', 'wall', 'best', 'finish', 'sweep', 'stage'].forEach(function (n) {
+    assert.ok(app.indexOf("'" + n + "'") !== -1, n);
+  });
   assert.ok(app.indexOf("play('bad')") !== -1);
   assert.ok(app.indexOf("'clear'") !== -1);
   assert.ok(app.indexOf("'row'") !== -1);
@@ -132,7 +135,7 @@ test('Add is greyed out before level 30; from 30 too early is a mistake', functi
 });
 test('game over winds down with a sound before the card', function () {
   assert.ok(app.indexOf('function startWindDown()') !== -1);
-  assert.ok(app.indexOf("name === 'end'") !== -1);
+  assert.ok(app.indexOf("end: function (t)") !== -1);
   assert.ok(css.indexOf('#board.winding .c') !== -1);
   assert.ok(css.indexOf('.overlay.ov-late') !== -1);
 });
