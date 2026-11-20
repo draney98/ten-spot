@@ -187,6 +187,7 @@
     boardCode: typeof saved.boardCode === 'string' ? saved.boardCode : '',  // short code from the server; empty until that answer arrives
     saveFailed: false, // true when this browser won't let us save
     homeOpen: false,   // the start screen (Daily, Solitaire, Saga)
+    scoresOpen: false, // the High scores screen (from the menu)
     dayLoading: false  // fetching today's Daily boards
   };
 
@@ -694,9 +695,9 @@
 
     // theme + settings
     document.documentElement.classList.toggle('dark', ui.dark);
-    $('btnTheme').setAttribute('aria-pressed', String(ui.dark));
     $('settings').classList.toggle('open', ui.settingsOpen);
     $('btnSettings').setAttribute('aria-expanded', String(ui.settingsOpen));
+    $('btnSettings').setAttribute('aria-label', ui.settingsOpen ? 'Close the menu' : 'Menu');
     if (account) account.render();
     setPressed('[data-diff]', 'data-diff', s.diff);
     document.querySelectorAll('[data-diff]').forEach(function (b) {
@@ -711,9 +712,10 @@
     $('grid').style.setProperty('--cols', String(s.cols || L.colsFor(s.diff)));
 
     // while settings, a confirmation or the start screen are open, the board and its controls are switched off
-    var off = ui.settingsOpen || !!ui.confirm || ui.homeOpen;
+    var off = ui.settingsOpen || !!ui.confirm || ui.homeOpen || ui.scoresOpen;
     var daily = mode === 'daily' && !!day;
     renderHome();
+    renderScores();
     $('btnNew').hidden = daily;   // the Daily has no "new game"; the start screen switches games
     document.querySelectorAll('[data-diff]').forEach(function (b) { if (daily) { b.disabled = true; b.title = 'Start points are for Solitaire'; } });
     ['board', 'actions', 'note'].forEach(function (id) {
@@ -729,29 +731,29 @@
       el.classList.toggle('is-under', under);
     }
     paintStanding($('title'));
-    document.querySelectorAll('.stat:not(.stat-best)').forEach(paintStanding);
     var record = s.best[s.diff] || 0;
-    document.querySelector('.stat-best').classList.toggle('is-passed', s.score > record || !!s.newBest);
-    var capText = 'Level ' + s.level + ' · ' + stageLabel + ', ×' + mult.toFixed(1) + ', ';
+    var passed = !daily && !dead && (s.score > record || !!s.newBest);
+    paintStanding($('scoreStat'));
+    $('scoreStat').classList.toggle('is-passed', passed);   // gold beats green; red beats both
+    if (passed) $('scoreStat').classList.remove('is-under');
+    var capText = 'Level ' + s.level + ' · ' + stageLabel + ' ×' + mult.toFixed(1);
     var capCode = ui.boardCode || L.formatPuzzle({ diff: s.diff, level: s.level, seed: s.seed });
     if (daily) {
       var dPar = day.boards[day.index].par || 0;
-      capText = 'Daily ' + DY.dayNumber(day.date) + (day.practice ? ' practice' : '') + ' · board ' + (day.index + 1) + ' of 3 · par ' + plural(dPar, 'Add', 'Adds');
+      capText = 'Daily ' + DY.dayNumber(day.date) + (day.practice ? ' practice' : '') + ' · board ' + (day.index + 1) + ' of 3 · par ' + dPar +
+        ' · ⛳ ' + DY.signed(DY.total(day.results));
       capCode = '';
     }
     $('puzzleCode').classList.toggle('is-daily', daily);
     drawText($('captionText'), capText);
-    drawText($('captionCode'), capCode);
-    $('captionSr').textContent = capText + 'board ' + capCode;
+    $('captionSr').textContent = capText;
+    // the board's code lives in the menu, with the puzzle box
+    $('boardCodeNow').textContent = capCode;
+    $('boardCodeLine').hidden = !capCode;
     $('puzzleError').textContent = ui.puzzleError || '';
 
     // scoreboard
     drawText($('score'), fmt(s.score), 'Score ' + fmt(s.score));
-    if (daily) {
-      var soFar = DY.signed(DY.total(day.results));
-      drawText($('best'), '⛳ ' + soFar, 'Against par so far: ' + soFar);
-      document.querySelector('.stat-best').classList.remove('is-passed');
-    } else drawText($('best'), fmt(s.best[s.diff] || 0), 'Best ' + fmt(s.best[s.diff] || 0));
     var tag = '';
     if (ui.gain < 0) tag = '−' + fmt(Math.abs(ui.gain));
     else if ((s.streak || 0) >= 2) tag = '(' + L.streakMult(s.streak).toFixed(1) + 'x)';
@@ -766,6 +768,7 @@
     syncBoard();
     var noteText = ui.note || 'Select two tiles with the same mascot.';
     drawText($('note'), noteText, '');
+    $('note').hidden = !$('guide').hidden;   // the first level's pointer takes the status line's place
     if ($('noteSr').textContent !== noteText) $('noteSr').textContent = noteText;
 
     // bottom bar
@@ -778,25 +781,29 @@
     $('btnAdd').disabled = (addWhy === 'noAdds' || addWhy === 'notPlaying' || addGrey);
     $('btnAdd').classList.toggle('is-blocked', addGrey);
     $('btnAdd').setAttribute('aria-disabled', $('btnAdd').disabled ? 'true' : 'false');
-    $('undoCount').textContent = lim(s.undosLeft) + ' left';
-    $('hintCount').textContent = lim(s.hintsLeft) + ' left';
+    // the bottom bar's buttons show what is left as a small badge
+    $('undoCount').textContent = lim(s.undosLeft);
+    $('hintCount').textContent = lim(s.hintsLeft);
     var packLocked = s.level < L.PACK_FROM;
-    $('compactCount').textContent = packLocked ? 'at level ' + L.PACK_FROM : lim(s.compactsLeft) + ' left';
+    $('compactCount').textContent = packLocked ? 'L' + L.PACK_FROM : lim(s.compactsLeft);
+    $('compactCount').classList.toggle('is-locked', packLocked);
+    $('btnCompact').title = packLocked ? 'Pack: unlocks at level ' + L.PACK_FROM : 'Pack: close up the gaps';
     $('btnUndo').setAttribute('aria-label', 'Undo, ' + lim(s.undosLeft) + ' left');
     $('btnHint').setAttribute('aria-label', 'Hint, ' + lim(s.hintsLeft) + ' left');
     $('btnCompact').setAttribute('aria-label', packLocked ? 'Pack, unlocks at level ' + L.PACK_FROM : 'Pack, ' + lim(s.compactsLeft) + ' left');
     var plan = guide.on || ui.confirm ? null : finishPlanNow();
     $('btnFinish').hidden = !plan;
     if (plan) {
-      $('finishMain').textContent = plan.clean ? 'Clean sweep' : 'Finish the board';
-      $('finishSub').textContent = plural(plan.pairs, 'pair', 'pairs') + (plan.clean ? ', +' + fmt(plan.bonus) + ' bonus' : ' left, nothing to decide');
+      $('finishMain').textContent = plan.clean ? 'Clean sweep' : 'Finish';
+      $('finishSub').textContent = plan.clean ? '+' + fmt(plan.bonus) : plural(plan.pairs, 'pair', 'pairs') + ' left';
       $('btnFinish').setAttribute('aria-label', (plan.clean ? 'Clean sweep: clear ' : 'Finish the board: clear the last ') +
         plural(plan.pairs, 'pair', 'pairs') + (plan.clean ? ' for a +' + fmt(plan.bonus) + ' bonus' : ''));
     }
-    $('addMain').textContent = 'Add';
-    $('addSub').textContent = (addWhy === 'tooManyPairs')
-      ? 'Clear pairs first'
-      : s.addsLeft + ' of ' + (s.design ? s.design.adds : L.addsFor(s.level)) + ' left';
+    var addsAll = s.design ? s.design.adds : L.addsFor(s.level);
+    $('addSub').textContent = String(s.addsLeft);
+    var addSay = addWhy === 'tooManyPairs' ? 'Add: clear pairs first' : 'Add, ' + s.addsLeft + ' of ' + addsAll + ' left';
+    $('btnAdd').setAttribute('aria-label', addSay);
+    $('btnAdd').title = addSay;
 
     renderOverlay();
     saveSoon();
@@ -1471,7 +1478,54 @@
     $('homeDaily').classList.toggle('is-current', mode === 'daily');
     $('homeSolo').classList.toggle('is-current', mode === 'solitaire');
   }
-  function openHome() { ui.homeOpen = true; render(); $('homeDaily').disabled ? $('homeSolo').focus() : $('homeDaily').focus(); }
+  /* The High scores screen: Solitaire's bests and highest level, the Daily's streak and results. */
+  function shortDate(day) {
+    try { return new Date(day + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }); }
+    catch (e) { return day; }
+  }
+  function scoreRow(tbody, cells) {
+    var tr = document.createElement('tr');
+    cells.forEach(function (text, k) { var td = document.createElement(k ? 'td' : 'th'); td.textContent = text; tr.appendChild(td); });
+    tbody.appendChild(tr);
+  }
+  function renderScores() {
+    $('scores').hidden = !ui.scoresOpen;
+    if (!ui.scoresOpen) return;
+    var solo = mode === 'solitaire' ? state : soloState;
+    var best = (solo && solo.best) || {};
+    var body = $('scoresSolo');
+    body.textContent = '';
+    [['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']].forEach(function (d) {
+      var v = best[d[0]] || 0;
+      if (solo && solo.diff === d[0] && solo.score > v) v = solo.score;   // this game is already past it
+      scoreRow(body, [d[1], unlocked(d[0]) ? fmt(Math.round(v)) : 'Reach level ' + L.startLevel(d[0])]);
+    });
+    scoreRow(body, ['Highest level', String(reached())]);
+    var book = readBook(), date = today(), st = DY.streak(book, date);
+    var days = Object.keys(book.results).sort();
+    var bestDay = null;
+    days.forEach(function (d) { var t = DY.total(book.results[d].boards); if (bestDay === null || t < bestDay) bestDay = t; });
+    $('scoresDailyLine').textContent = days.length
+      ? '🔥 ' + plural(st.days, 'day', 'days') + ' in a row · ' + plural(days.length, 'day', 'days') + ' played · best ⛳ ' + DY.signed(bestDay)
+      : 'No Daily played yet. Three boards a day, the same for everyone.';
+    var cal = $('scoresCal');
+    cal.textContent = '';
+    DY.calendar(book, date, 14).forEach(function (c) {
+      var dot = document.createElement('span');
+      dot.className = 'cal-dot cal-' + c.state;
+      cal.appendChild(dot);
+    });
+    var dBody = $('scoresDaily');
+    dBody.textContent = '';
+    days.slice(-7).reverse().forEach(function (d) {
+      var boards = book.results[d].boards;
+      scoreRow(dBody, ['Daily ' + DY.dayNumber(d), shortDate(d), '⛳ ' + DY.signed(DY.total(boards)), boards.map(DY.row).join(' · ')]);
+    });
+  }
+  function openScores() { ui.scoresOpen = true; ui.settingsOpen = false; render(); $('scoresClose').focus(); }
+  function closeScores() { ui.scoresOpen = false; render(); }
+
+  function openHome() { ui.homeOpen = true; ui.settingsOpen = false; render(); $('homeDaily').disabled ? $('homeSolo').focus() : $('homeDaily').focus(); }
 
   function setTheme(dark) { ui.dark = dark; store.set(KEY.theme, dark ? 'dark' : 'light'); render(); }
   function setTiles(set) {
@@ -1530,8 +1584,7 @@
   $('btnCompact').addEventListener('click', onPack);
   $('btnUndo').addEventListener('click', onUndo);
   $('btnHint').addEventListener('click', onHint);
-  $('btnNew').addEventListener('click', askNewGame);
-  $('btnTheme').addEventListener('click', function () { setTheme(!ui.dark); });
+  $('btnNew').addEventListener('click', function () { ui.settingsOpen = false; askNewGame(); });
   $('btnSettings').addEventListener('click', function () { ui.settingsOpen = !ui.settingsOpen; render(); });
   function startPuzzle(spec) {
     if (spec && spec.old) {
@@ -1578,6 +1631,9 @@
   $('btnEndAgain').addEventListener('click', dailyPractice);
   $('btnEndSolo').addEventListener('click', enterSolitaire);
   $('btnHome').addEventListener('click', openHome);
+  $('btnScores').addEventListener('click', openScores);
+  $('scoresClose').addEventListener('click', closeScores);
+  $('scores').addEventListener('keydown', function (e) { if (e.key === 'Escape') closeScores(); });
   $('homeDaily').addEventListener('click', function () { enterDaily(); });
   $('homeSolo').addEventListener('click', enterSolitaire);
   $('homeClose').addEventListener('click', function () { ui.homeOpen = false; render(); });

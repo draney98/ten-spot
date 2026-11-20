@@ -72,7 +72,7 @@ body {
   color: var(--ink);
   transition: background-color .3s ease, color .3s ease;
 }
-.app { padding: 16px 16px 0; }
+.app { padding: 16px 8px 0; }   /* narrow sides on phones: the board gets the width */
 .a-board, .a-act, .a-head, button { touch-action: manipulation; }
 [hidden] { display: none !important; }
 
@@ -80,18 +80,25 @@ body {
 .layout {
   width: 100%; max-width: 600px; margin: 0 auto;
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px;
-  grid-template-areas: "head" "stats" "board" "note" "actions";
+  grid-template-areas: "head" "board" "note" "actions";
   /* the 1fr row (status line) soaks up spare height so the bottom bar
      sits at the bottom of the screen even when the board is short */
-  grid-template-rows: auto auto auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   min-height: calc(100vh - 16px);
 }
-.a-head { grid-area: head; } .a-set { grid-area: settings; } .a-stats { grid-area: stats; }
+.a-head { grid-area: head; } .a-set { grid-area: settings; }
 .a-board { grid-area: board; } .a-note { grid-area: note; } .a-act { grid-area: actions; }
 
 /* ---------- 4. HEADER ---------- */
-.a-head { display: flex; align-items: center; gap: 4px; height: 44px; }
-h1 { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 20px; line-height: 44px; font-weight: 700; }
+/* one line: the name, the score, the menu; the board's progress is the line under it */
+.a-head { position: relative; display: flex; align-items: center; gap: 8px; height: 48px; padding-bottom: 3px; }
+h1 { flex: 0 1 auto; min-width: 0; margin: 0; font-size: 20px; line-height: 44px; font-weight: 700; }
+.head-score { margin-left: auto; flex-direction: row; align-items: baseline; }
+.head-score .stat-big { font-size: 26px; }
+.a-head .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; }
+.i-close { display: none; }
+.set-toggle[aria-expanded="true"] .i-menu { display: none; }
+.set-toggle[aria-expanded="true"] .i-close { display: block; }
 h1.is-stuck { color: var(--strike); }
 h1.is-under { color: var(--h2i); }
 .icon-btn {
@@ -110,6 +117,14 @@ h1.is-under { color: var(--h2i); }
 
 /* ---------- 5. SETTINGS PANEL (ruled section, no card) ---------- */
 .a-set { display: none; flex-direction: column; gap: 18px; padding: 16px 0; border-top: 1.5px solid var(--ink); border-bottom: 1.5px solid var(--ink); }
+.menu-games { gap: 0; }
+.menu-item {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 4px;
+  border: 0; border-bottom: 1px solid var(--grid); background: transparent; color: var(--ink);
+  font: inherit; font-size: 17px; font-weight: 700; text-align: left; cursor: pointer;
+}
+.menu-item:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.menu-item:focus-visible { outline: 2.5px solid var(--focus); outline-offset: -2px; }
 .a-set.open { display: flex; animation: nmDrop .2s ease both; }
 .set-group { display: flex; flex-direction: column; gap: 8px; }
 .set-title { margin: 0; font-size: 15px; font-weight: 700; }
@@ -127,29 +142,25 @@ h1.is-under { color: var(--h2i); }
 
 /* ---------- 6. SCOREBOARD (a tally line) ---------- */
 .a-stats { display: flex; flex-direction: column; gap: 10px; }
-.stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
 .stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.stat-best { align-items: flex-end; text-align: right; color: var(--quiet); }
-.stat-best .stat-l, .stat-best .stat-big { color: var(--quiet); }
-.stat-best.is-passed, .stat-best.is-passed .stat-l, .stat-best.is-passed .stat-big { color: var(--gold); }
 .stat-figure { display: flex; align-items: baseline; }
 .stat-l { font-size: 13px; color: var(--muted); }
 .stat.is-stuck, .stat.is-stuck .stat-l, .stat.is-stuck .stat-big, .stat.is-stuck .stat-small { color: var(--strike); }
 .stat.is-under, .stat.is-under .stat-l, .stat.is-under .stat-big, .stat.is-under .stat-small { color: var(--h2i); }
 .stat.is-stuck .score-tag.is-loss, .stat.is-under .score-tag.is-loss { color: var(--strike); }
+.stat.is-passed, .stat.is-passed .stat-big, .stat.is-passed .score-tag { color: var(--gold); }   /* past your best */
 .stat-big { font-size: 32px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .stat-small { font-size: 24px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .score-tag { color: inherit; margin-left: 6px; font-size: 13px; font-weight: 700; }
 .score-tag.is-loss { color: var(--strike); }
-.progress-row { display: flex; align-items: center; gap: 10px; }
-.progress { flex: 1 1 auto; height: 5px; background: var(--line); overflow: hidden; }
+.progress { height: 5px; background: var(--line); overflow: hidden; }
 .progress-fill { height: 100%; width: 0; background: var(--ink); transition: width .45s ease; }
 .progress-text { font-size: 13px; color: var(--muted); white-space: nowrap; }
 
 /* ---------- 7. BOARD: a sheet torn from the pad ---------- */
 .sheet {
   position: relative; align-self: start; background: var(--paper); border-radius: 3px;
-  padding: 20px 6px 10px;
+  padding: 20px 3px 10px;
   /* two more sheets peeking out underneath */
   box-shadow: 0 3px 0 -1px var(--paper), 0 3px 0 0 var(--line), 0 6px 0 -1px var(--paper), 0 6px 0 0 var(--line);
 }
@@ -160,8 +171,9 @@ h1.is-under { color: var(--h2i); }
 .sheet.ended { min-height: 360px; }   /* room for the end-of-level card */
 .board-inner { position: relative; }
 .puzzle-code {
-  margin: 10px 0 0; font-size: 13px; font-weight: 600; text-align: center;
+  margin: 8px 2px 0; font-size: 13px; font-weight: 600; text-align: left;
   color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
 }
 .sheet.ended .puzzle-code { visibility: hidden; }
 /* the pad grid IS the board: cells share 1px grid lines, no gaps */
@@ -222,9 +234,10 @@ h1.is-under { color: var(--h2i); }
 .c-pack-hold { pointer-events: none; cursor: default; }
 .c-pack-hold:hover { background: transparent; }
 
-/* guided first level: a pencilled pointer above the board, and a blue ring on what it points at */
+/* guided first level: a pencilled pointer in place of the status line, and a blue ring on what it points at */
 .guide {
-  display: flex; align-items: center; gap: 4px; margin: 0 0 8px; padding: 4px 2px 4px 10px;
+  grid-area: note; align-self: start;
+  display: flex; align-items: center; gap: 4px; margin: 8px 0 0; padding: 4px 2px 4px 10px;
   border: 1.5px dashed var(--gain); border-radius: 6px; color: var(--gain);
 }
 .guide p { margin: 0; flex: 1 1 auto; min-width: 0; font-size: 15px; line-height: 1.35; font-weight: 600; }
@@ -233,7 +246,6 @@ h1.is-under { color: var(--h2i); }
   font: inherit; font-size: 14px; text-decoration: underline; cursor: pointer;
 }
 .guide-skip:focus-visible { outline: 2.5px solid var(--focus); outline-offset: -2px; }
-.sheet.ended .guide { visibility: hidden; }
 .c-guide { box-shadow: inset 0 0 0 3px var(--gain); animation: nmGuide 1.2s ease-in-out infinite; }
 #btnAdd.is-guide { box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--gain); }
 @keyframes nmGuide { 0%,100% { box-shadow: inset 0 0 0 3px var(--gain); } 50% { box-shadow: inset 0 0 0 3px transparent; } }
@@ -310,21 +322,30 @@ h1.is-under { color: var(--h2i); }
 /* ---------- 9. STATUS LINE + BOTTOM BAR ---------- */
 .a-note { margin: 6px 0 0; min-height: 20px; font-size: 15px; line-height: 1.4; color: var(--muted); text-align: center; }
 .a-act {
-  position: sticky; bottom: 0; z-index: 5; margin: 0 -16px;
-  padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+  position: sticky; bottom: 0; z-index: 5; margin: 0 -8px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
   background: var(--bar); border-top: 1.5px solid var(--line);
-  display: grid; grid-template-columns: repeat(3, minmax(0, 72px)) minmax(120px, 1fr);
-  gap: 8px; align-items: stretch;
+  display: flex; gap: 8px; align-items: center;
 }
+.act-gap { flex: 1 1 0; }
+/* square buttons about the size of a 7 x 7 board's tile; what is left shows as a badge */
 .tool {
-  min-width: 0; min-height: 56px; padding: 0; border-radius: 6px;
-  border: 1.5px solid var(--line); background: transparent; color: var(--ink);
-  font-family: inherit; font-size: 13px; font-weight: 700;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer;
+  position: relative; flex: none; width: 52px; height: 52px; padding: 0; border-radius: 8px;
+  border: 1.5px solid var(--line); background: var(--paper); color: var(--ink);
+  font-family: inherit; display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
+.tool svg { width: 26px; height: 26px; }
 .tool:hover:not(:disabled) { border-color: var(--ink); }
 .tool:disabled { opacity: .4; cursor: not-allowed; }
-.tool small { font-size: 11px; font-weight: 400; color: var(--muted); }
+.tool-count {
+  position: absolute; top: -7px; right: -7px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  background: var(--ink); color: var(--paper); font-size: 11.5px; font-weight: 700; line-height: 20px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.tool-count.is-locked { background: var(--quiet); }
+.tool-add { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.tool-add .tool-count { background: var(--gold); color: #fff; }
+.tool-add.is-blocked { background: var(--quiet); border-color: var(--quiet); }
 .btn {
   min-height: 48px; padding: 0 18px; border-radius: 6px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink);
   font-family: inherit; font-weight: 700; font-size: 15px;
@@ -353,9 +374,10 @@ h1.is-under { color: var(--h2i); }
 }
 .score-sync-row input:focus-visible { outline: 2.5px solid var(--focus); outline-offset: 2px; }
 .btn-finish {
-  grid-column: 1 / -1; min-height: 48px; padding: 4px 12px;
+  flex: 1 1 auto; min-width: 0; height: 52px; min-height: 0; padding: 4px 10px; gap: 6px;
   background: var(--h2i); border-color: var(--h2i); color: var(--paper);
 }
+.btn-finish:not([hidden]) + .act-gap { display: none; }
 .btn-finish[hidden] { display: none; }
 .btn-finish svg { width: 20px; height: 20px; flex: none; }
 .btn-add {
@@ -405,26 +427,28 @@ h1.is-under { color: var(--h2i); }
   .app { padding-top: 8px; }
   .layout { min-height: calc(100vh - 8px); }
   .a-head { margin-bottom: -8px; }   /* the 14px grid gap becomes 6px before the score */
-  .layout:has(.a-set.open) {
-    grid-template-areas: "head" "settings" "stats" "board" "note" "actions";
-    grid-template-rows: auto auto auto auto 1fr auto;
+  /* the menu covers the game below the header and scrolls on its own */
+  .a-set.open {
+    position: fixed; z-index: 15; left: 0; right: 0; bottom: 0; top: 56px;
+    padding: 4px 16px calc(24px + env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain;
+    background: var(--bg); border-bottom: 0;
   }
 }
 @media (max-width: 359px) {
-  .puzzle-code { white-space: normal; overflow-wrap: anywhere; }
-  .caption-board { display: none; }
+  .puzzle-code { font-size: 12px; }
 }
 
 /* ---------- 11. WIDER SCREENS ---------- */
 @media (min-width: 960px) {
   .layout {
     max-width: 1040px; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 36px; row-gap: 16px;
-    grid-template-areas: "head head" "board stats" "board actions" "board note" "board settings" "board .";
-    grid-template-rows: auto auto auto auto auto 1fr;
+    grid-template-areas: "head head" "board actions" "board note" "board settings" "board .";
+    grid-template-rows: auto auto auto auto 1fr;
     min-height: 0;
     padding-bottom: 32px;
   }
   .a-act { position: static; margin: 0; padding: 0; background: none; border-top: 0; }
+  .app { padding-left: 24px; padding-right: 24px; }
   .a-note { text-align: left; }
 }
 
@@ -477,7 +501,6 @@ h1.is-under { color: var(--h2i); }
 .home-name { font-size: 20px; font-weight: 700; }
 .home-line { font-size: 14px; color: var(--muted); line-height: 1.35; }
 .home-close { align-self: flex-end; margin-top: 4px; }
-.puzzle-code.is-daily .caption-board { display: none; }
 .daily-grid { margin: 2px 0; font: inherit; font-size: 22px; line-height: 1.3; white-space: pre; text-align: left; }
 .sheet.ended.day-done { min-height: 600px; }
 .daily-cal { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 300px; }
@@ -490,3 +513,17 @@ h1.is-under { color: var(--h2i); }
 @keyframes nmZoomOut { from { transform: scale(1.6); opacity: .2; } to { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .board-inner.zoom { animation: none; } }
 :root.dark .home { background: rgba(0, 0, 0, .5); }
+
+/* ---------- 13. HIGH SCORES (from the menu; it shares the start screen's frame) ---------- */
+.scores-inner { max-height: calc(100vh - 32px); overflow-y: auto; }
+.scores-h { margin: 8px 0 0; font-size: 15px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.scores-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.scores-table th, .scores-table td { padding: 7px 4px; border-bottom: 1px solid var(--grid); text-align: left; font-size: 15px; vertical-align: top; }
+.scores-table th { font-weight: 700; white-space: nowrap; }
+.scores-table td:nth-child(2) { text-align: right; font-weight: 700; }
+#scoresDaily td:nth-child(2) { text-align: left; font-weight: 400; color: var(--muted); white-space: nowrap; }
+#scoresDaily td:nth-child(3) { text-align: right; font-weight: 700; white-space: nowrap; }
+#scoresDaily td:nth-child(4) { font-size: 12px; white-space: nowrap; }
+.scores-line { margin: 2px 0; font-size: 15px; }
+#scoresCal { justify-content: flex-start; }
+.board-code-line b { user-select: all; }

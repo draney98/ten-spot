@@ -60,7 +60,7 @@ test('the clear card names the matches and a whole-number par, and Pack sits bes
   assert.ok(app.indexOf(' under par.') !== -1);
   assert.ok(app.indexOf(' over par.') !== -1);
   assert.ok(html.indexOf('id="btnCompact"') !== -1);
-  assert.ok(html.indexOf('>Pack<') !== -1);
+  assert.ok(html.indexOf('aria-label="Pack"') !== -1);   // an icon button; its name is in aria-label
   assert.ok(html.indexOf('id="btnAdd"') > html.indexOf('id="btnCompact"'));
   assert.ok(app.indexOf('packBoard') !== -1);
   assert.ok(app.indexOf('playPack') !== -1);
@@ -69,12 +69,11 @@ test('the clear card names the matches and a whole-number par, and Pack sits bes
   assert.ok(app.indexOf('wrapStroke') !== -1);
   assert.ok(css.indexOf('nmPackOut') !== -1);
   assert.ok(css.indexOf('.c-pack-laser .zap { stroke: var(--h3i);') !== -1);
-  assert.ok(css.indexOf('grid-template-columns: 1fr 1fr;') !== -1);
-  assert.ok(css.indexOf('.stat-best { align-items: flex-end; text-align: right;') !== -1);
+  assert.ok(/\.tool \{[^}]*width: 52px; height: 52px;/.test(css), 'small square buttons');
   assert.ok(html.indexOf('>Cleared<') === -1);
   assert.ok(html.indexOf('id="pct"') === -1);
   assert.ok(app.indexOf('is-passed') !== -1);
-  assert.ok(css.indexOf('.stat-best.is-passed') !== -1);
+  assert.ok(css.indexOf('.stat.is-passed') !== -1);   // the score turns gold past your best
   assert.ok(css.indexOf('-webkit-touch-callout: none') !== -1);
   assert.ok(app.indexOf("'paste'") !== -1);
 });
@@ -105,7 +104,7 @@ test('FIX3 local files carry a version placeholder', function () {
 
 test('top-of-page text is drawn by CSS so it cannot be selected', function () {
   assert.ok(css.indexOf('.drawn::before { content: attr(data-text); }') !== -1);
-  ['id="title" class="drawn"', 'id="score" data-text', 'id="best" data-text', 'id="note" data-text', 'id="noteSr"'].forEach(function (bit) {
+  ['id="title" class="drawn"', 'id="score" data-text', 'id="note" data-text', 'id="noteSr"'].forEach(function (bit) {
     assert.ok(html.indexOf(bit) !== -1, bit);
   });
   assert.ok(app.indexOf('function drawText(') !== -1);
@@ -164,7 +163,7 @@ test('the ramp on screen: stage in the caption, Start at, milestones, sweep, fre
   assert.ok(app.indexOf("'Finish the board?'") === -1, 'no pop-up: the finish is a button');
   assert.ok(html.indexOf('id="btnFinish"') !== -1 && html.indexOf('id="btnFinish" hidden') !== -1);
   assert.ok(css.indexOf('.btn-finish {') !== -1);
-  assert.ok(html.indexOf('a Finish button appears above the buttons') !== -1);
+  assert.ok(html.indexOf('a Finish button appears between the buttons') !== -1);
   assert.ok(app.indexOf("'numbermatch.best3.'") !== -1);
   assert.ok(app.indexOf("'That board code is from an older version of the game.'") !== -1);
 });

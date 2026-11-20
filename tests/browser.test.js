@@ -229,7 +229,7 @@ async function test(name, fn) {
     // decided but not a clean sweep (gaps): Finish clears it with no bonus
     await page.evaluate(function () { window.__nm.load([3, 1, 1, 3, 1, 1], { cols: 6, level: 12, addsLeft: 1 }); window.__nm.openSettings(false); });
     await page.waitForTimeout(150);
-    assert.strictEqual(await page.textContent('#finishMain'), 'Finish the board');
+    assert.strictEqual(await page.textContent('#finishMain'), 'Finish');
     var before = (await state(page)).score;
     await page.click('#btnFinish');
     await page.waitForTimeout(300);
@@ -441,7 +441,7 @@ async function test(name, fn) {
     await p.waitForFunction(function () { return window.__nm.mode() === 'daily'; }, null, { timeout: 6000 });
     await p.waitForTimeout(300);
     assert.ok(await p.isHidden('#home'));
-    assert.ok(await p.isHidden('#btnNew'), 'no New game in the Daily');
+    assert.ok(await p.evaluate(function () { return document.getElementById('btnNew').hidden; }), 'no New game in the Daily');
     assert.ok(/^Daily \d+ · board 1 of 3 · par /.test(await p.getAttribute('#captionText', 'data-text')));
     var sizes = [];
     for (var n = 1; n <= 3; n++) {
@@ -481,8 +481,9 @@ async function test(name, fn) {
     var back = await state(p);
     assert.strictEqual(back.runId, solo.runId, 'the same Solitaire game');
     assert.strictEqual(back.level, solo.level);
-    assert.ok(await p.isVisible('#btnNew'));
+    assert.ok(!(await p.evaluate(function () { return document.getElementById('btnNew').hidden; })), 'New game is back in the menu');
     // a practice run never changes the result
+    await p.click('#btnSettings');   // the ☰ menu
     await p.click('#btnHome');
     assert.ok(/^⛳ /.test(await p.textContent('#homeDailyLine')));
     await p.click('#homeDaily');
@@ -520,10 +521,47 @@ async function test(name, fn) {
     assert.strictEqual(s.cols, 5);
     assert.strictEqual(s.hintsLeft, 2, 'the hint used on board 1 is gone on board 2');
     assert.strictEqual(s.addsLeft, 2, 'Adds are per board');
+    await p.click('#btnSettings');   // the ☰ menu
     await p.click('#btnHome');
     await p.click('#homeSolo');
     await p.waitForTimeout(300);
     assert.strictEqual((await state(p)).hintsLeft, soloHints);
+    await p.context().close();
+  });
+
+  await test('one line on top; the ☰ menu has the games, New game, High scores and the board code', async function () {
+    var p = await openPage(game, { daily: true });
+    // a first visit: the guide's pointer takes the status line's place, under the board
+    assert.ok(await p.isVisible('#guide'));
+    assert.ok(await p.isHidden('#note'));
+    var g = await p.locator('#guide').boundingBox(), b = await p.locator('#board').boundingBox();
+    assert.ok(g.y > b.y + b.height - 1, 'the guide sits under the board');
+    await p.click('#guideSkip');
+    assert.ok(await p.isVisible('#note'));
+    // the header is one line: name, score, menu
+    var h = await p.locator('header.a-head').boundingBox();
+    assert.ok(h.height <= 56, 'one line: ' + h.height);
+    assert.ok(await p.isHidden('#btnNew'), 'New game is in the menu');
+    await p.click('#btnSettings');
+    assert.ok(await p.isVisible('#btnNew'));
+    assert.ok(await p.isVisible('#btnScores'));
+    assert.ok(/^[a-z0-9]+-[a-z0-9]+/i.test(await p.textContent('#boardCodeNow')), 'the board code is in the menu');
+    await p.click('#btnScores');
+    assert.ok(await p.isVisible('#scores'));
+    assert.ok(await p.isHidden('#settings'), 'the menu closes behind it');
+    var rows = await p.locator('#scoresSolo tr').allTextContents();
+    assert.strictEqual(rows.length, 4);
+    assert.ok(/^Easy/.test(rows[0]) && /^Highest level1$/.test(rows[3]), rows.join('|'));
+    assert.ok(/No Daily played yet/.test(await p.textContent('#scoresDailyLine')));
+    await p.click('#scoresClose');
+    assert.ok(await p.isHidden('#scores'));
+    // the score turns gold once it passes your best
+    await p.evaluate(function () { var s = window.__nm.state(); s.best[s.diff] = 0; });
+    var pair = await p.evaluate(function () { var L = window.NumberMatchLogic, s = window.__nm.state(); var q = L.findPair(s.cells, true, s.rules, true, s.cols); return [s.cells[q[0]].id, s.cells[q[1]].id]; });
+    await p.click('button.c[data-id="' + pair[0] + '"]');
+    await p.click('button.c[data-id="' + pair[1] + '"]');
+    await p.waitForTimeout(300);
+    assert.ok(await p.evaluate(function () { return document.getElementById('scoreStat').classList.contains('is-passed'); }), 'gold past the best');
     await p.context().close();
   });
 

@@ -25,10 +25,10 @@ test('the page loads the score client and points it at the score service', funct
   assert.ok(clientAt !== -1 && clientAt < appAt);
 });
 
-test('settings has an Account group, and the scoreboard still has Best', function () {
+test('settings has an Account group, and the menu has High scores', function () {
   ['acctOut', 'acctIn', 'acctCreateForm', 'acctName', 'acctLinkForm', 'acctLinkInput', 'btnAcctAddDevice', 'acctLinkBox',
    'acctDevices', 'btnAcctRecovery', 'btnAcctSignOut', 'acctRecoveryBox', 'acctRecoveryLink', 'btnAcctRecoveryDone',
-   'scoreSync', 'scoreCode', 'btnScoreCopy', 'btnScoreForget', 'scoreSyncError', 'best'].forEach(function (id) {
+   'scoreSync', 'scoreCode', 'btnScoreCopy', 'btnScoreForget', 'scoreSyncError', 'btnScores', 'scoresSolo', 'scoresDaily'].forEach(function (id) {
     assert.ok(html.indexOf('id="' + id + '"') !== -1, id);
   });
   assert.strictEqual(html.indexOf('id="btnScoreCreate"'), -1, 'new score codes are no longer made: accounts replace them');
