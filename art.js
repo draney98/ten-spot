@@ -40,7 +40,8 @@
   ];
 
   // A wall: faint bricks with arrows that say how it goes (see WALLS in game-logic.js), and its bonus underneath.
-  //   row: arrows left-right.  col: arrows up-down.  either: four separate arrows.  both: a cross with a solid centre.
+  //   row: arrows left-right.  col: arrows up-down.  either: four thin arrows around an empty ring, on fainter
+  //   bricks (the easy one: either line will do).  both: a cross with a solid centre.
   // Retro pixel set: eight original characters, 16 x 16 pixels, drawn for ten-spot. Each has its own
   // shape and its own colour, so they tell apart at a glance even at small sizes: wizard (purple,
   // a tall hat), ghost (pale blue, a wavy hem), mushroom (red cap), crab (orange, claws up), fish
@@ -339,7 +340,7 @@
   var WALL_MARK = {
     row: '<path d="' + WALL_ROW + '" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
     col: '<path d="' + WALL_COL + '" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-    either: '<path d="M3 12h7M14 12h7M12 3v7M12 14v7M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    either: '<path d="M3 12h5M16 12h5M12 3v5M12 16v5M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"/>',
     both: '<path d="' + WALL_ROW + WALL_COL + '" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="8.5" y="8.5" width="7" height="7" rx="1" fill="currentColor"/>'
   };
   var WALL_NAME = { row: 'Row wall', col: 'Column wall', either: 'Row-or-column wall', both: 'Row-and-column wall' };
@@ -709,7 +710,8 @@
   }
   /** A wall's bricks and arrows. kind: row | col | either | both. */
   function wallSVG(kind) {
-    return '<svg class="glyph wall-glyph" viewBox="0 0 24 24" aria-hidden="true">' + WALL_BRICKS + WALL_MARK[kind] + '</svg>';
+    var bricks = kind === 'either' ? WALL_BRICKS.replace('opacity=".3"', 'opacity=".18"') : WALL_BRICKS;   // the easy one looks lighter
+    return '<svg class="glyph wall-glyph" viewBox="0 0 24 24" aria-hidden="true">' + bricks + WALL_MARK[kind] + '</svg>';
   }
 
   /** A mascot's name in a set ('Longhorn', 'Wizard'). */
